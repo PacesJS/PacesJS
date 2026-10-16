@@ -318,9 +318,13 @@ describe('call graph', () => {
   });
 
   it('reveals the neighbours of a function from its +N chip', async () => {
-    const before = (await run()).graph.shownFns;
-    const after = (await run({ revealed: [fnNamed('buildInvoiceRows')] })).graph.shownFns;
-    expect(after).toBeGreaterThan(before);
+    const base = (await run()).graph;
+    const widest = base.nodes.reduce((a, n) =>
+      n.hiddenCallers + n.hiddenCallees > a.hiddenCallers + a.hiddenCallees ? n : a,
+    );
+    expect(widest.hiddenCallers + widest.hiddenCallees).toBeGreaterThan(0);
+    const after = (await run({ revealed: [widest.fn] })).graph.shownFns;
+    expect(after).toBeGreaterThan(base.shownFns);
   });
 
   it('connects the pruned graph even when one function dominates self time', async () => {

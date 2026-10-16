@@ -6,6 +6,7 @@ import type { CgNode } from '../data/types';
 import { NODE_H } from '../data/layout';
 import type { PlacedNode } from '../data/layout';
 import { fmtCount, fmtDuration } from '../util/format';
+import { edgeAnchors, edgeKey, edgePath, showViaLabel } from '../view/graph-edges';
 import {
   ZOOM_STEP,
   centerOn,
@@ -181,6 +182,7 @@ export function CallGraph() {
     );
   const { graph, layout } = res;
   const near = res.near ? new Set(res.near) : null;
+  const anchors = edgeAnchors(new Map(res.layout.nodes.map((n) => [n.fn, n])), res.graph.edges);
   const detail = detailAt(view.k);
   const byFn = new Map<number, CgNode>(graph.nodes.map((n) => [n.fn, n]));
   const maxTotal = graph.maxTotalUs;
@@ -344,23 +346,16 @@ export function CallGraph() {
               aria-hidden="true"
             >
               {graph.edges.map((e) => {
-                const a = nodeBox(e.from);
-                const b = nodeBox(e.to);
-                const x1 = a.x + a.w / 2;
-                const y1 = a.y + a.h;
-                const x2 = b.x + b.w / 2;
-                const y2 = b.y;
-                const my = (y1 + y2) / 2;
-                const isEgo = near
-                  ? near.has(e.from) &&
-                    near.has(e.to) &&
-                    (e.from === selFn || e.to === selFn || (near.has(e.from) && near.has(e.to)))
-                  : false;
+                const ends = anchors.get(edgeKey(e));
+                if (!ends) return null;
+                // Clicking a node lights up its own edges, whatever the ego fading does.
+                const touches = selFn !== null && (e.from === selFn || e.to === selFn);
+                const isEgo = touches || (near ? near.has(e.from) && near.has(e.to) : false);
                 const faded = near !== null && !isEgo;
                 return (
                   <path
                     key={`${e.from}-${e.to}`}
-                    d={`M${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`}
+                    d={edgePath(ends)}
                     fill="none"
                     strokeWidth={1.5 + (9 * e.timeUs) / graph.maxEdgeUs}
                     strokeDasharray={e.hiddenFrames > 0 ? '2 5' : e.back ? '5 4' : undefined}
@@ -454,7 +449,15 @@ export function CallGraph() {
                 );
               })}
             {graph.edges
-              .filter((e) => e.hiddenFrames > 0)
+              .filter(
+                (e) =>
+                  e.hiddenFrames > 0 &&
+                  showViaLabel(
+                    e.timeUs,
+                    graph.maxEdgeUs,
+                    selFn !== null && (e.from === selFn || e.to === selFn),
+                  ),
+              )
               .map((e) => {
                 const a = nodeBox(e.from);
                 const b = nodeBox(e.to);

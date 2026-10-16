@@ -874,6 +874,7 @@
   display: none;
 }
 
+.cg-scroll.is-compact .cg-label,
 .cg-scroll.is-compact .cg-via,
 .cg-scroll.is-minimal .cg-via {
   display: none;

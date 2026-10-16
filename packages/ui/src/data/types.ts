@@ -97,7 +97,8 @@ export interface TaskOption {
 export interface WaterfallRow {
   /** Row id: index in `rows`; row 0 is the task itself. */
   id: number;
-  kind: 'task' | 'call' | 'wait' | 'summary';
+  /** `fold`: a synthetic parent that stands for rows hidden by the UI (starts collapsed). */
+  kind: 'task' | 'call' | 'wait' | 'summary' | 'fold';
   /** Function id, -1 for the task and wait rows. */
   fn: number;
   /** Function ids from the root's child to this call, for the selection. Empty for task/wait rows. */
@@ -118,6 +119,12 @@ export interface WaterfallRow {
   resumed: boolean;
   /** Summary row: the tasks it stands for. */
   summaryTasks: number[];
+  /** Self time in microseconds. */
+  selfUs: number;
+  /** Fold rows: what they hide. */
+  fold?: 'small' | 'bootstrap';
+  /** Fold rows: how many rows they stand for. */
+  foldedCount?: number;
 }
 
 export interface WaterfallData {

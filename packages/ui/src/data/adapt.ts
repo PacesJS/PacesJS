@@ -94,7 +94,8 @@ export function waterfallData(
   req: WaterfallRequest,
 ): WaterfallData | null {
   const { track } = s;
-  const opts = { sort: req.sort, minDurationUs: req.minDurUs };
+  // -1 (auto) is a presentation fold done in the UI, so the engine keeps every row.
+  const opts = { sort: req.sort, minDurationUs: Math.max(0, req.minDurUs) };
   const mode: WaterfallData['mode'] =
     req.task >= 0 && req.task < track.tasks.length ? 'task' : req.range ? 'range' : 'run';
 
@@ -123,6 +124,7 @@ export function waterfallData(
         share: r.share,
         resumed: r.resumed,
         summaryTasks: r.summaryTasks,
+        selfUs: r.selfUs,
       };
     });
     for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
@@ -170,6 +172,7 @@ export function waterfallData(
       share: 1,
       resumed: false,
       summaryTasks: [],
+      selfUs: 0,
     },
   ];
   for (const r of wf.rows) {
@@ -193,6 +196,7 @@ export function waterfallData(
       share: r.share,
       resumed: r.resumed,
       summaryTasks: r.summaryTasks,
+      selfUs: r.selfUs,
     });
   }
   for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;

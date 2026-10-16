@@ -26,6 +26,7 @@ import {
   zoomWindow,
 } from '../view/waterfall-geometry';
 import type { TimeWindow } from '../view/waterfall-geometry';
+import { foldRows, hotTargetPath, initialCollapsed } from '../view/waterfall-fold';
 import { visibleRows } from '../view/waterfall-rows';
 import type { WaterfallSort } from '../view/waterfall-rows';
 import { Hint } from './Hint';
@@ -66,8 +67,10 @@ const MIN_DURATIONS: Array<{ us: number; label: string }> = [
   { us: 20_000, label: '20 ms' },
 ];
 
-function durLabel(r: WaterfallRow): string {
-  if (r.belowPrecision) return '< 2 ms';
+/** The "< X" label of a row below measurement precision; set once the summary is known. */
+function durLabel(r: WaterfallRow, threshold = '2 ms'): string {
+  if (r.kind === 'fold' && r.fold === 'small') return '';
+  if (r.belowPrecision) return `< ${threshold}`;
   return fmtDuration(r.end - r.start, { decimals: 1 });
 }
 
@@ -165,7 +168,23 @@ export function Waterfall() {
   const taskKey = data ? `${data.trackId}:${data.mode}:${data.taskIndex}` : '';
   const [showSmall, setShowSmall] = useState(false);
   const window = win && win.key === taskKey ? win.w : { start: 0, end: data?.taskUs ?? 1 };
-  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const threshold = fmtDuration(2 * summary.precisionUs, { approx: false, decimals: 1 });
+  const auto = minDurUs < 0;
+  // Presentation folds (tiny rows, Node bootstrap) over the engine's rows; nothing is dropped.
+  const folded = useMemo(
+    () =>
+      data
+        ? foldRows(data.rows, {
+            hideSmall: auto,
+            bootstrap: auto && data.mode === 'run',
+            threshold,
+            keep: new Set(),
+          })
+        : null,
+    [data, auto, threshold],
+  );
+  const rows = useMemo(() => folded?.rows ?? [], [folded]);
+
   const visible = useMemo(
     () => visibleRows(rows, collapsed, pathOnly && data ? data.criticalRows : null),
     [rows, collapsed, pathOnly, data],
@@ -189,20 +208,28 @@ export function Waterfall() {
     return rows.find(hit)?.id ?? null;
   }, [data, rows, sel]);
 
-  // A newly selected row opens the collapsed ancestors that hide it (state adjusted during render).
+  // Each new result opens along the chain to the target's hottest function and closes the rest;
+  // a selected row keeps its ancestors open. A newly selected row opens the ancestors that hide
+  // it. (State is adjusted while rendering.)
+  const [seenData, setSeenData] = useState<typeof data>(undefined);
   const [seenRow, setSeenRow] = useState<number | null>(null);
-  if (selectedRowId !== seenRow) {
-    setSeenRow(selectedRowId);
+  if ((data && folded && data !== seenData) || selectedRowId !== seenRow) {
+    const fresh = data !== seenData && data && folded;
+    const base: ReadonlySet<number> =
+      fresh && data && folded
+        ? initialCollapsed(folded.rows, data.criticalRows, folded.folds)
+        : collapsed;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const open = new Set<number>();
     if (selectedRowId !== null) {
-      const byId = new Map(rows.map((r) => [r.id, r]));
-      const hidden: number[] = [];
-      for (let p = byId.get(selectedRowId)?.parent ?? -1; p >= 0; p = byId.get(p)?.parent ?? -1) {
-        hidden.push(p);
-      }
-      if (hidden.some((id) => collapsed.has(id))) {
-        setCollapsed(new Set([...collapsed].filter((id) => !hidden.includes(id))));
+      for (let p = byId.get(selectedRowId)?.parent ?? -1; p !== -1; p = byId.get(p)?.parent ?? -1) {
+        open.add(p);
       }
     }
+    const next = new Set([...base].filter((id) => !open.has(id)));
+    if (fresh || next.size !== collapsed.size) setCollapsed(next);
+    setSeenData(data);
+    setSeenRow(selectedRowId);
   }
 
   // Scroll the selected row into view when the selection changes.
@@ -218,6 +245,20 @@ export function Waterfall() {
     // Only a change of selection moves the scroll position, not collapsing or sorting.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRowId, data]);
+
+  // The first screen of a fresh result starts at the hot chain, not at the top of a long run.
+  const focusId = useMemo(() => {
+    const path = hotTargetPath(rows);
+    return path ? (path[1] ?? path[0] ?? null) : null;
+  }, [rows]);
+  useEffect(() => {
+    if (!data || selectedRowId !== null || focusId === null) return;
+    const at = visible.findIndex((i) => rows[i]?.id === focusId);
+    const box = bodyRef.current;
+    if (at > 2 && box) box.scrollTo({ top: (at - 2) * WF.rowH });
+    // Only a new result moves the first screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const canvasRef = useCanvas(
     (ctx, { width: w }) => {
@@ -237,13 +278,14 @@ export function Waterfall() {
         });
         if (r.belowPrecision || !labelFitsBar(rect.w, col.x1 - col.x0)) return;
         // Only label a bar the text fits inside, never one it would spill out of.
-        const label = durLabel(r);
+        if (r.kind === 'fold' && r.fold === 'small') return;
+        const label = durLabel(r, threshold);
         if (ctx.measureText(label).width + 12 > rect.w) return;
         ctx.fillStyle = pal.ink;
         ctx.fillText(label, rect.x + 6, y + WF.barH / 2 + 0.5);
       });
     },
-    [data, slice, rows, window, pal, snap.options.critical, width, cols],
+    [data, slice, rows, window, pal, snap.options.critical, width, cols, threshold],
   );
 
   // Minimap bars (whole task) with the visible window outlined.
@@ -289,7 +331,18 @@ export function Waterfall() {
   const gridStyle = { ['--wf-grid' as string]: gridTemplate(cols) } as CSSProperties;
   const minWidth = WF.pad * 2 + cols.call + MIN_BAR_PX + cols.time + cols.share + WF.gap * 3;
 
+  const toggleFold = (id: number): void => {
+    const next = new Set(collapsed);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsed(next);
+  };
+
   const selectRow = (r: WaterfallRow): void => {
+    if (r.kind === 'fold') {
+      toggleFold(r.id);
+      return;
+    }
     if (r.kind === 'summary' && r.summaryTasks[0] !== undefined) {
       // A row standing for small tasks opens the first of them.
       dispatch({
@@ -317,7 +370,7 @@ export function Waterfall() {
           )
         : fitNumericWidth(
             column,
-            shown.map((r) => (column === 'time' ? durLabel(r) : fmtShare(r.share))),
+            shown.map((r) => (column === 'time' ? durLabel(r, threshold) : fmtShare(r.share))),
             (t) => measureText(t, `600 14px ${pal.fontSans}`),
           );
     dispatch({ type: 'prefs', prefs: { wfCols: { ...state.prefs.wfCols, [column]: next } } });
@@ -500,6 +553,7 @@ export function Waterfall() {
                 dispatch({ type: 'options', options: { minDurUs: Number(e.target.value) } })
               }
             >
+              <option value={-1}>Auto · hide under {threshold}</option>
               {MIN_DURATIONS.map((m) => (
                 <option key={m.us} value={m.us}>
                   {m.us === 0 ? m.label : `≥ ${m.label}`}
@@ -508,6 +562,18 @@ export function Waterfall() {
             </select>
           </div>
         </div>
+        {auto && folded && folded.hiddenSmall > 0 ? (
+          <span className="filter-summary" role="status">
+            Hiding rows under {threshold} ({folded.hiddenSmall})
+            <button
+              type="button"
+              className="filter-reset"
+              onClick={() => dispatch({ type: 'options', options: { minDurUs: 0 } })}
+            >
+              show
+            </button>
+          </span>
+        ) : null}
         <p className="axis-caption" style={{ fontWeight: 400 }}>
           x = time inside the task, ms · siblings in {order} · ~ = sampled estimate
         </p>
@@ -635,7 +701,7 @@ export function Waterfall() {
                     aria-level={r.depth + 1}
                     aria-expanded={r.hasChildren ? !collapsed.has(r.id) : undefined}
                     aria-selected={isSel}
-                    aria-label={`${r.name}, ${info.label}, ${durLabel(r)}, ${fmtShare(r.share)} of ${r.kind === 'task' ? 'itself' : 'task'}${r.critical ? ', critical path' : ''}`}
+                    aria-label={`${r.name}, ${info.label}, ${durLabel(r, threshold)}, ${fmtShare(r.share)} of ${r.kind === 'task' ? 'itself' : 'task'}${r.critical ? ', critical path' : ''}`}
                     className={`wf-row${isSel ? ' is-selected' : ''}${hoverRow === r.id ? ' is-hover' : ''}${isLinked ? ' is-linked' : ''}`}
                     style={{ top: (from + k) * WF.rowH }}
                     onClick={() => selectRow(r)}
@@ -675,7 +741,7 @@ export function Waterfall() {
                         style={{ background: originColor(r.origin, false) }}
                       />
                       <span
-                        className={`wf-label${isUser ? ' is-user' : ''}${r.kind === 'wait' ? ' is-wait' : ''}`}
+                        className={`wf-label${isUser ? ' is-user' : ''}${r.kind === 'wait' || r.kind === 'fold' ? ' is-wait' : ''}`}
                       >
                         {r.name}
                       </span>
@@ -689,7 +755,7 @@ export function Waterfall() {
                     </div>
                     <div className="wf-bar-cell" role="cell" aria-hidden="true" />
                     <div className="wf-time" role="cell">
-                      {durLabel(r)}
+                      {durLabel(r, threshold)}
                     </div>
                     <div className="wf-share" role="cell">
                       {fmtShare(r.share)}
@@ -710,8 +776,7 @@ export function Waterfall() {
         </span>
         <span className="wf-legend-item">
           <span className="wf-legend-swatch swatch-hatch" aria-hidden="true" />
-          Under {fmtDuration(2 * summary.intervalUs, { approx: false, decimals: 0 })}, below
-          sampling precision
+          Under {threshold}, below sampling precision
         </span>
         <span className="wf-legend-item">
           <span className="wf-legend-swatch swatch-wait" aria-hidden="true" />

@@ -46,7 +46,7 @@ interface Workers {
   /** Zoo capture the dev host serves as the baseline session (differential mode); null for none. */
   baselineFixture: string | null;
   /** Start (once per worker) a preview server for another capture and return its URL. */
-  serve(fixture: string, baseline?: string): Promise<string>;
+  serve(fixture: string, baseline?: string, modelFile?: string): Promise<string>;
 }
 
 interface Preview {
@@ -102,13 +102,14 @@ export const test = base.extend<{ app: Page }, Workers>({
     async ({}, use) => {
       const running = new Map<string, Preview>();
       try {
-        await use(async (fixture, baseline) => {
-          const key = `${fixture}|${baseline ?? ''}`;
+        await use(async (fixture, baseline, modelFile) => {
+          const key = `${fixture}|${baseline ?? ''}|${modelFile ?? ''}`;
           let preview = running.get(key);
           if (!preview) {
             preview = await startPreview({
               PACES_DEV_FIXTURE: fixture,
               ...(baseline ? { PACES_DEV_BASELINE: baseline } : {}),
+              ...(modelFile ? { PACES_DEV_MODEL_FILE: modelFile } : {}),
             });
             running.set(key, preview);
           }
@@ -139,10 +140,11 @@ export { expect };
 /** Open the UI on another zoo capture and wait for the findings. */
 export async function openFixture(
   page: Page,
-  serve: (fixture: string, baseline?: string) => Promise<string>,
+  serve: (fixture: string, baseline?: string, modelFile?: string) => Promise<string>,
   fixture: string,
+  modelFile?: string,
 ): Promise<void> {
-  await page.goto(`${await serve(fixture)}/`);
+  await page.goto(`${await serve(fixture, undefined, modelFile)}/`);
   await expect(page.getByRole('heading', { name: 'Findings' })).toBeVisible();
   await page.evaluate(
     () =>

@@ -31,8 +31,12 @@ async function readBody(req: IncomingMessage): Promise<string> {
 }
 
 function createHost(): (req: IncomingMessage, res: ServerResponse, next: () => void) => void {
-  const model = loadModel(fixtureName);
-  const bytes = engine.serializeModel(model);
+  // PACES_DEV_MODEL_FILE serves a model that was serialized earlier (the CLI's cached model),
+  // so the UI is exercised on deserialized data and not only on a freshly analyzed model.
+  const modelFile = process.env['PACES_DEV_MODEL_FILE'];
+  const bytes = modelFile ? new Uint8Array(readFileSync(modelFile)) : null;
+  const model = bytes ? engine.deserializeModel(bytes) : loadModel(fixtureName);
+  const modelBytes = bytes ?? engine.serializeModel(model);
   const baselineName = process.env['PACES_DEV_BASELINE'];
   const baselineBytes = baselineName ? engine.serializeModel(loadModel(baselineName)) : null;
   let settings: Record<string, unknown> = {};
@@ -53,7 +57,7 @@ function createHost(): (req: IncomingMessage, res: ServerResponse, next: () => v
       });
     }
     if (route === 'model') {
-      const out = url.searchParams.get('which') === 'baseline' ? baselineBytes : bytes;
+      const out = url.searchParams.get('which') === 'baseline' ? baselineBytes : modelBytes;
       if (!out) return json(res, { error: 'no baseline' }, 404);
       res.setHeader('content-type', 'application/octet-stream');
       return void res.end(Buffer.from(out));

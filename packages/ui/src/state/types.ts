@@ -60,7 +60,10 @@ export interface ViewOptions {
   zoomPath: number[];
   /** Waterfall sibling order. */
   wfSort: 'time' | 'duration' | 'share';
-  /** Waterfall: hide calls shorter than this many microseconds (0 shows all). */
+  /**
+   * Waterfall: -1 folds rows below measurement precision and 0.1% of the run behind one summary
+   * row (the default), 0 shows every row, and a positive value drops calls shorter than that.
+   */
   minDurUs: number;
   logical: boolean;
   sort: FlameSort;
@@ -97,7 +100,7 @@ export const DEFAULT_OPTIONS: ViewOptions = {
   targetOnly: false,
   zoomPath: [],
   wfSort: 'time',
-  minDurUs: 0,
+  minDurUs: -1,
   logical: true,
   sort: 'heavy',
   color: 'origin',

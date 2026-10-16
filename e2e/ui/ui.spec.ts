@@ -503,7 +503,8 @@ test.describe('whole run, stitching and the entry root', () => {
     await settled(app);
     await expect(app.getByLabel('Task').locator('option:checked')).toContainText('Whole run');
     const rows = app.getByRole('table', { name: 'Waterfall rows' }).getByRole('row');
-    await expect(rows.first()).toHaveAttribute('aria-label', /server\.js,/);
+    // The first screen opens on the chain to the target's hottest function, past the entry root.
+    await expect(rows.and(app.getByRole('row', { name: /^getOrders,/ })).first()).toBeVisible();
     await expect(app.getByRole('button', { name: /Show \d+ small tasks/ })).toBeVisible();
   });
 

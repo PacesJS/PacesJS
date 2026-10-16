@@ -821,6 +821,67 @@ describe('task picker', () => {
   });
 });
 
+describe('whole-run waterfall noise', () => {
+  const eslint = fixtureModel('eslint-cli');
+  const openRun = async () => {
+    history.replaceState(null, '', `#v=waterfall&tr=${eslint.tracks[eslint.primaryTrack]?.id}`);
+    open(eslint);
+    await ready();
+    return screen.findByRole('table', { name: 'Waterfall rows' });
+  };
+  const rowsOf = (table: HTMLElement) => within(table).getAllByRole('row');
+
+  it('hides tiny rows by default and says what it is hiding', async () => {
+    await openRun();
+    expect(await screen.findByText(/Hiding rows under/)).toBeTruthy();
+    const min = screen.getByLabelText('Min duration') as HTMLSelectElement;
+    expect(min.selectedOptions[0]?.textContent).toMatch(/^Auto · hide under/);
+  });
+
+  it('folds node bootstrap into one collapsed row', async () => {
+    const table = await openRun();
+    await waitFor(() => expect(rowsOf(table).length).toBeGreaterThan(3));
+    const boot = rowsOf(table).find((r) =>
+      /^node bootstrap,/.test(r.getAttribute('aria-label') ?? ''),
+    );
+    expect(boot?.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      rowsOf(table).some((r) =>
+        /^prepareMainThreadExecution,/.test(r.getAttribute('aria-label') ?? ''),
+      ),
+    ).toBe(false);
+  });
+
+  it('opens a fold when its row is clicked', async () => {
+    const table = await openRun();
+    await waitFor(() => expect(rowsOf(table).length).toBeGreaterThan(3));
+    const fold = rowsOf(table).find((r) =>
+      /rows? under .* hidden,/.test(r.getAttribute('aria-label') ?? ''),
+    );
+    expect(fold?.getAttribute('aria-expanded')).toBe('false');
+    await userEvent.click(fold as HTMLElement);
+    await waitFor(() => {
+      const again = rowsOf(table).find(
+        (r) => r.getAttribute('aria-label') === fold?.getAttribute('aria-label'),
+      );
+      expect(again?.getAttribute('aria-expanded')).toBe('true');
+    });
+  });
+
+  it('shows every row when Any is chosen, and the chip goes away', async () => {
+    await openRun();
+    await userEvent.selectOptions(screen.getByLabelText('Min duration'), '0');
+    expect(screen.queryByText(/Hiding rows under/)).toBeNull();
+    expect(decodeURIComponent(location.hash)).toContain('mind:0');
+  });
+
+  it('shows everything from the chip', async () => {
+    await openRun();
+    await userEvent.click(await screen.findByRole('button', { name: 'show' }));
+    expect(screen.queryByText(/Hiding rows under/)).toBeNull();
+  });
+});
+
 describe('click-off deselects', () => {
   it('clears the selection when empty space in the waterfall is clicked', async () => {
     history.replaceState(null, '', `#v=waterfall&tr=${orders.tracks[0]?.id}&sel=fn:283`);
@@ -837,7 +898,7 @@ describe('click-off deselects', () => {
     open();
     await ready();
     const table = await screen.findByRole('table', { name: 'Waterfall rows' });
-    const row = (await within(table).findAllByRole('row'))[1] as HTMLElement;
+    const row = (await within(table).findAllByRole('row'))[0] as HTMLElement;
     await userEvent.click(row);
     expect(decodeURIComponent(location.hash)).toContain('sel=node');
   });

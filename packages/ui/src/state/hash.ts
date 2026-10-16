@@ -176,7 +176,7 @@ function decodeOptions(text: string): ViewOptions {
     else if (key === 'cpo') o.pathOnly = val === '1';
     else if (key === 'wsort' && (val === 'time' || val === 'duration' || val === 'share'))
       o.wfSort = val;
-    else if (key === 'mind') o.minDurUs = Math.max(0, int(val) ?? 0);
+    else if (key === 'mind') o.minDurUs = Math.max(-1, int(val) ?? -1);
     else if (key === 'logical') o.logical = val === '1';
     else if (key === 'sort' && (val === 'heavy' || val === 'alpha')) o.sort = val;
     else if (key === 'color' && (val === 'origin' || val === 'self')) o.color = val;
