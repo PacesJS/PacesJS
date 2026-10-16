@@ -406,6 +406,17 @@ function applyOne(model: ExecutionModel, work: Working, t: Transform): Working {
       }
       return rebuild(model, work, { fnOf });
     }
+    case 'hide-origins': {
+      const hide = new Uint8Array(8);
+      for (const o of t.origins) hide[o] = 1;
+      const fnOf = identityFns(tree);
+      for (let i = 1; i < tree.length; i++) {
+        const f = tree.fn[i] ?? 0;
+        const origin = f >= F ? Origin.Dependency : (model.functions.origin[f] ?? Origin.User);
+        if (hide[origin] === 1) fnOf[i] = -1;
+      }
+      return rebuild(model, work, { fnOf });
+    }
     case 'drop-idle': {
       const keepLeaf = new Uint8Array(tree.length).fill(1);
       for (let i = 1; i < tree.length; i++) {

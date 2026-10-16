@@ -6,6 +6,7 @@ import { transformLabel } from '../state/transforms';
 import { hasTransform } from '../state/transforms';
 import type { Transform } from '../state/types';
 import { Icon } from './Icon';
+import { Popover } from './Popover';
 
 interface TransformBarProps {
   /** Session file shown at the right, when the host provides it. */
@@ -134,19 +135,21 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
           </li>
         ) : null}
       </ol>
-      <div className="menu-anchor">
-        <button
-          type="button"
-          className="chip-add"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          <Icon name="plus" size={14} strokeWidth={2} />
-          Add transform
-        </button>
-        {menuOpen ? (
-          <div className="menu" role="menu" aria-label="Add transform" style={{ top: 38, left: 0 }}>
+      <Popover
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        role="menu"
+        label="Add transform"
+        style={{ top: 38, left: 0 }}
+        trigger={(p) => (
+          <button type="button" className="chip-add" {...p}>
+            <Icon name="plus" size={14} strokeWidth={2} />
+            Add transform
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
             {entries.map((e) => (
               <button
                 key={e.label}
@@ -156,7 +159,7 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
                 disabled={e.disabled}
                 onClick={() => {
                   dispatch({ type: 'add-transform', transform: e.transform });
-                  setMenuOpen(false);
+                  close();
                 }}
               >
                 {e.label}
@@ -167,44 +170,48 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
                 Select a function to merge, focus or collapse it.
               </span>
             ) : null}
-          </div>
-        ) : null}
-      </div>
+          </>
+        )}
+      </Popover>
       <div className="header-spacer" />
       {sessionPath ? <span className="session-path">{sessionPath}</span> : null}
-      <div className="menu-anchor compare-anchor">
-        <button
-          type="button"
-          className="btn btn-sm"
-          aria-haspopup={hasBaseline ? 'dialog' : undefined}
-          aria-expanded={hasBaseline ? compareOpen : undefined}
-          aria-disabled={hasBaseline ? undefined : true}
-          aria-describedby={hasBaseline ? undefined : compareTipId}
-          onClick={() => {
-            if (hasBaseline) setCompareOpen((v) => !v);
-          }}
-        >
-          Compare with…
-        </button>
-        {hasBaseline ? null : (
-          <span role="tooltip" id={compareTipId} className="compare-tip">
-            No baseline in this session. Run paces diff a.paces b.paces to open two sessions in
-            differential mode.
-          </span>
-        )}
-        {hasBaseline && compareOpen ? (
-          <div
-            className="menu"
+      <div className="compare-anchor">
+        {hasBaseline ? (
+          <Popover
+            open={compareOpen}
+            onOpenChange={setCompareOpen}
             role="dialog"
-            aria-label="Compare with another session"
+            label="Compare with another session"
             style={{ top: 38, right: 0, width: 320 }}
+            trigger={(p) => (
+              <button type="button" className="btn btn-sm" {...p}>
+                Compare with…
+              </button>
+            )}
           >
-            <p className="section-sub" style={{ padding: 8, lineHeight: '20px' }}>
-              A baseline session is loaded: the flame graph shows the difference (blue = faster,
-              orange = slower).
-            </p>
-          </div>
-        ) : null}
+            {() => (
+              <p className="section-sub" style={{ padding: 8, lineHeight: '20px' }}>
+                A baseline session is loaded: the flame graph shows the difference (blue = faster,
+                orange = slower).
+              </p>
+            )}
+          </Popover>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-sm"
+              aria-disabled="true"
+              aria-describedby={compareTipId}
+            >
+              Compare with…
+            </button>
+            <span role="tooltip" id={compareTipId} className="compare-tip">
+              No baseline in this session. Run paces diff a.paces b.paces to open two sessions in
+              differential mode.
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

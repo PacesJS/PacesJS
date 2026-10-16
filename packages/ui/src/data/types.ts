@@ -1,4 +1,4 @@
-import type { Finding } from '@pacesjs/engine';
+import type { Finding, ModelWarning, RunKind } from '@pacesjs/engine';
 import type { Selection, TimeRange, Transform } from '../state/types';
 
 // View models: what the components render. Every number comes from an engine query; the adapter
@@ -9,14 +9,30 @@ export interface Scope {
   track: string;
   transforms: Transform[];
   range: TimeRange | null;
+  /** Origins hidden by the Show filter (engine origin ids); their self time moves to the caller. */
+  hide: number[];
 }
 
 export interface TrackSummary {
   id: string;
   label: string;
   kind: string;
+  /** `support` tracks are launcher processes such as npx, shown muted and after the target. */
+  role: 'target' | 'support';
+  /** The target process: the default track. */
+  primary: boolean;
+  /** Entry script of this track's process ('' when unknown). */
+  entry: string;
   samples: number;
   durationUs: number;
+}
+
+export interface TargetSummary {
+  /** Entry script of the primary track, e.g. `eslint/bin/eslint.js`. */
+  entry: string;
+  kind: RunKind;
+  /** npm packages whose functions are first-party for this run. */
+  packages: string[];
 }
 
 export interface ModelSummary {
@@ -26,13 +42,19 @@ export interface ModelSummary {
   precisionUs: number;
   endedBy: string;
   mode: string;
+  /** Target first, then its workers, then supporting processes. */
   tracks: TrackSummary[];
+  /** Id of the target process: the default track. */
+  primaryTrack: string;
+  target: TargetSummary;
   /** In the engine's ranking order: the first one is the top finding. */
   findings: Finding[];
-  warnings: string[];
+  warnings: ModelWarning[];
   totalSamples: number;
   projectRoot: string;
   functionCount: number;
+  /** Every package name, sorted: collapsed package `i` has function id `functionCount + i`. */
+  packages: string[];
   hasBaseline: boolean;
 }
 
@@ -53,13 +75,17 @@ export interface SelectionInfo {
   track: string | null;
   task: TaskInfo | null;
   loc: string;
+  /** Plumbing function: the default transforms merge it away, so no row shows it. */
+  plumbing: boolean;
 }
 
 export interface TaskOption {
   index: number;
+  group: 'Entry' | 'Requests' | 'Timers' | 'I/O' | 'Microtasks' | 'Other';
   label: string;
   startUs: number;
   durationUs: number;
+  busyUs: number;
   longest: boolean;
 }
 
@@ -107,6 +133,8 @@ export interface FlameOptions {
   color: 'origin' | 'self';
   /** Transformed call node ids, outermost first. */
   zoom: number[];
+  /** Function ids of a call chain to zoom to (hot paths); wins over `zoom` when it resolves. */
+  zoomPath: number[];
 }
 
 /** Columnar frames for the canvas. x and w are fractions of the zoomed root's total. */
@@ -254,12 +282,47 @@ export interface SourceInfo {
   loc: string;
 }
 
+export interface HotPathRow {
+  /** Function ids of the chain, outermost first. */
+  fns: number[];
+  names: string[];
+  /** `file:line` of the last frame. */
+  loc: string;
+  selfUs: number;
+  totalUs: number;
+  /** Share of the track's busy time. */
+  share: number;
+}
+
+/** Time hidden by the origin filter, per origin group, for the "hiding ..." chip. */
+export interface HiddenOrigin {
+  origin: number;
+  selfUs: number;
+}
+
+export interface OutlineItem {
+  fn: number;
+  name: string;
+  line: number;
+  selfUs: number;
+  totalUs: number;
+  origin: number;
+}
+
+/** The functions of one file that ran, in line order: the outline beside the full source view. */
+export interface FileOutline {
+  path: string;
+  items: OutlineItem[];
+}
+
 // ---- Overview lanes ----
 
 export interface LaneData {
   id: string;
   label: string;
   meta: string;
+  /** Supporting launcher process (npx): drawn muted, after the target. */
+  support: boolean;
   durationUs: number;
   cpu: Float32Array;
   taskStart: Float64Array;

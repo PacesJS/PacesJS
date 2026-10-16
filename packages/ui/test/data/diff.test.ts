@@ -5,8 +5,18 @@ import { nodeElk } from '../helpers/node-elk';
 import { fixtureModel, ordersModel } from '../helpers/real-model';
 
 const head = ordersModel();
-const scope = { track: head.tracks[0]?.id ?? '', transforms: [...DEFAULT_TRANSFORMS], range: null };
-const opts = { sort: 'heavy' as const, color: 'origin' as const, zoom: [] as number[] };
+const scope = {
+  track: head.tracks[0]?.id ?? '',
+  transforms: [...DEFAULT_TRANSFORMS],
+  range: null,
+  hide: [],
+};
+const opts = {
+  sort: 'heavy' as const,
+  color: 'origin' as const,
+  zoom: [] as number[],
+  zoomPath: [] as number[],
+};
 const indexOf = (names: string[], name: string): number => names.indexOf(name);
 
 describe('differential flame graph', () => {

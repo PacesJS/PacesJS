@@ -20,7 +20,9 @@ export type Transform =
   | { kind: 'invert' }
   | { kind: 'collapse-dependencies' }
   | { kind: 'merge-plumbing' }
-  | { kind: 'drop-idle' };
+  | { kind: 'drop-idle' }
+  /** Merges frames of these origins into their nearest kept caller (self time moves up). Never hides the root. */
+  | { kind: 'hide-origins'; origins: OriginId[] };
 
 export type TransformKind = Transform['kind'];
 
@@ -136,6 +138,15 @@ export interface WaterfallOptions {
   followAsync?: boolean;
   /** Rows deeper than this are omitted (default unlimited). */
   maxDepth?: number;
+  /** Merge frames of these origins into their caller before building rows. */
+  hideOrigins?: OriginId[];
+  /** Omit rows shorter than this, with everything beneath them. */
+  minDurationUs?: number;
+  /**
+   * How siblings are ordered: by start time (default), or by duration or share, longest first.
+   * Rows stay in depth-first order and `id` stays the row's index in `rows`.
+   */
+  sort?: 'time' | 'duration' | 'share';
 }
 
 // ---- Flame graph ----
@@ -247,6 +258,10 @@ export interface FunctionRowsOptions {
   userFirst?: boolean;
   /** Keep idle, gc and root rows (default false). */
   includeIdle?: boolean;
+  /** Keep only functions of these origins (collapsed package rows count as dependencies). */
+  origins?: OriginId[];
+  /** Keep only functions of this npm package, including its collapsed package row. */
+  pkg?: string;
 }
 
 export interface FunctionRow {
@@ -304,6 +319,72 @@ export interface FunctionSourceInfo {
   /** Busy fraction of this function per bucket across the track (for the header sparkline). */
   sparkline: Float32Array;
   mapMissing: boolean;
+}
+
+// ---- Hot paths, package breakdown, callers ----
+
+export interface FunctionLocation {
+  name: string;
+  /** Project-relative original path (absolute outside the project), or a node: URL. */
+  file: string;
+  /** 1-based original line of the function's definition. */
+  line: number;
+}
+
+/** A call chain, outermost frame first, that carries a share of the track's busy time. */
+export interface HotPath {
+  fns: FnId[];
+  locations: FunctionLocation[];
+  /** Self time of the last frame, microseconds (dependency time under it is included when hidden). */
+  selfUs: number;
+  /** Total time of the last frame. */
+  totalUs: number;
+  /** `totalUs` as a share of the track's busy time, 0..1. */
+  share: number;
+}
+
+export interface HotPathOptions {
+  /** At most this many chains (default 8). */
+  limit?: number;
+  /** A frame counts while it carries at least this share of busy time (default 0.02). */
+  minShare?: number;
+  /** Only frames of this origin appear; other frames fold into their caller (e.g. `Origin.User`). */
+  origin?: OriginId;
+}
+
+export interface PackageFunction extends FunctionLocation {
+  fn: FnId;
+  self: number;
+  total: number;
+}
+
+export interface CallerNode extends FunctionLocation {
+  fn: FnId;
+  /** Microseconds of this function's time reached through the caller. */
+  weightUs: number;
+  /** Estimated calls from the caller. */
+  calls: number;
+  /** Callers of this caller, one level further up. */
+  callers: CallerNode[];
+}
+
+// ---- Task list ----
+
+export type TaskGroup = 'Entry' | 'Requests' | 'Timers' | 'I/O' | 'Microtasks' | 'Other';
+
+/** One row of the task picker: what ran, when, and how busy it was. */
+export interface TaskDescriptor {
+  /** Index into `Track.tasks`. */
+  index: number;
+  group: TaskGroup;
+  /** Entry kind plus the first frame of the target's code, e.g. `request · GET /orders`. */
+  label: string;
+  startUs: number;
+  durationUs: number;
+  /** Sampled self time without idle. */
+  busyUs: number;
+  /** The single longest task of the track. */
+  longest: boolean;
 }
 
 // ---- Track timeline ----

@@ -76,9 +76,17 @@ export function TrackLanes() {
                   >
                     <Icon name="pin" size={16} />
                   </button>
-                  <div className="lane-name">
+                  <div className={`lane-name${lane.support ? ' is-support' : ''}`}>
                     <span className="lane-title">{lane.label}</span>
                     <span className="lane-meta">{lane.meta}</span>
+                    {lane.support ? (
+                      <span
+                        className="lane-support"
+                        title="npx/npm wrapper process: it launches the target and does little work itself"
+                      >
+                        supporting
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <LanePlot

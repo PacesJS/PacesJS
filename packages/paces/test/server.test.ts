@@ -64,6 +64,11 @@ beforeAll(async () => {
       modelBytes: MODEL,
       baseline: { file: 'base.paces', manifest: manifest(root), modelBytes: BASELINE },
       embedded: new Map([['src/gone.ts', new TextEncoder().encode('embedded text')]]),
+      info: {
+        target: 'app.js',
+        primaryTrack: 'p1',
+        warningsSummary: { total: 2, byCode: { 'map-missing': 2 } },
+      },
     },
     uiDir: join(base, 'ui'),
     configDir: join(base, 'config'),
@@ -147,6 +152,13 @@ describe('/api/session and /api/model', () => {
     expect(body.hasBaseline).toBe(true);
   });
 
+  it('returns warningsSummary, target and primaryTrack for the header', async () => {
+    const body = (await (await api('/api/session')).json()) as Record<string, unknown>;
+    expect(body.warningsSummary).toEqual({ total: 2, byCode: { 'map-missing': 2 } });
+    expect(body.target).toBe('app.js');
+    expect(body.primaryTrack).toBe('p1');
+  });
+
   it('streams the model bytes unchanged as octet-stream', async () => {
     const res = await api('/api/model');
     expect(res.headers.get('content-type')).toBe('application/octet-stream');
@@ -192,7 +204,13 @@ describe('/api/source', () => {
 
   it('falls back to the embedded copy of a file that is gone', async () => {
     const { body } = await get('src/gone.ts');
-    expect(body).toMatchObject({ exists: true, text: 'embedded text', changedSinceProfile: true });
+    expect(body).toMatchObject({
+      exists: true,
+      text: 'embedded text',
+      origin: 'embedded',
+      status: 'ok',
+      changedSinceProfile: false,
+    });
   });
 
   it.each([
@@ -201,8 +219,22 @@ describe('/api/source', () => {
     join(tmpdir(), 'anything.txt'),
     '\\\\server\\share\\x.ts',
     'C:\\Windows\\win.ini',
-  ])('refuses %s', async (path) => {
-    expect((await get(path)).status).toBe(403);
+  ])('refuses %s without leaking content', async (path) => {
+    const { body } = await get(path);
+    expect(body).toMatchObject({ exists: false, text: '' });
+    expect(body.status).toMatch(/outside-root|missing/);
+    expect(body.hint).toBeTypeOf('string');
+  });
+
+  it('reports a status and an actionable hint for a missing file inside the root', async () => {
+    const { body } = await get('src/missing.ts');
+    expect(body).toMatchObject({ exists: false, status: 'missing', origin: 'disk' });
+    expect(String(body.hint)).toContain('--embed-sources');
+  });
+
+  it('reports outside-root for a real file the profile never loaded', async () => {
+    const { body } = await get(join(base, 'outside.txt'));
+    expect(body).toMatchObject({ exists: false, status: 'outside-root' });
   });
 
   it('requires the path parameter', async () => {

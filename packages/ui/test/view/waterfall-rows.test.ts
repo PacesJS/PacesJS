@@ -9,8 +9,9 @@ const scope = {
   track: model.tracks[0]?.id ?? '',
   transforms: [...DEFAULT_TRANSFORMS],
   range: null,
+  hide: [],
 };
-const wf = createQueries(model).waterfall(scope, -1);
+const wf = createQueries(model).waterfall(scope, -1, { sort: 'time', minDurUs: 0 });
 const rows = wf?.rows ?? [];
 
 describe('visible waterfall rows', () => {
@@ -20,7 +21,7 @@ describe('visible waterfall rows', () => {
 
   it('hides the rows under a collapsed parent', () => {
     const parent = rows.findIndex((r) => r.name === 'getOrders');
-    expect(visibleRows(rows, new Set([parent]))).toHaveLength(parent + 1);
+    expect(visibleRows(rows, new Set([rows[parent]?.id ?? -1]))).toHaveLength(parent + 1);
   });
 
   it('collapses everything except the critical chain in path-only mode', () => {

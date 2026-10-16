@@ -4,9 +4,8 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { contentHash } from '@pacesjs/format';
 import type { Manifest } from '@pacesjs/format';
-import { guardSourcePath } from './source-guard.js';
+import { createSourceResolver } from './source-resolver.js';
 import { readSettings, writeSettings } from './settings.js';
 
 export interface HostSession {
@@ -18,6 +17,12 @@ export interface HostSession {
   baseline?: { file: string; manifest: Manifest; modelBytes: Uint8Array };
   /** Embedded sources by project-relative path. */
   embedded?: Map<string, Uint8Array>;
+  /** URLs of every script the profiled processes parsed: files V8 loaded may be read for source. */
+  scriptUrls?: string[];
+  /** Source maps by script URL; their `sourcesContent` backs original files that are not on disk. */
+  sourceMaps?: Record<string, string>;
+  /** Headline facts for the UI header, from the model. */
+  info?: { target?: unknown; primaryTrack?: unknown; warningsSummary?: unknown };
 }
 
 export interface HostOptions {
@@ -161,36 +166,18 @@ export async function startHost(options: HostOptions): Promise<Host> {
     res.end(html);
   };
 
+  const resolver = createSourceResolver({
+    projectRoot: session.manifest.projectRoot,
+    scriptUrls: session.scriptUrls ?? [],
+    sourceMaps: session.sourceMaps ?? {},
+    ...(session.embedded ? { embedded: session.embedded } : {}),
+    startedAt: session.manifest.startedAt,
+  });
+
   const sourceApi = (url: URL, res: ServerResponse): void => {
     const requested = url.searchParams.get('path');
     if (!requested) return json(res, 400, { error: 'path is required' });
-    const root = session.manifest.projectRoot;
-    const guarded = guardSourcePath(root, requested);
-    if (!guarded) return json(res, 403, { error: 'path is outside the profiled project' });
-    const rel = relativeKey(root, guarded === 'missing' ? requested : guarded.path);
-    const embedded = rel ? session.embedded?.get(rel) : undefined;
-    if (guarded === 'missing' || !isFile(guarded.path)) {
-      if (embedded) {
-        return json(res, 200, {
-          exists: true,
-          text: Buffer.from(embedded).toString('utf8'),
-          hash: contentHash(embedded),
-          changedSinceProfile: true,
-        });
-      }
-      return json(res, 200, { exists: false, text: '', hash: '', changedSinceProfile: false });
-    }
-    const bytes = readFileSync(guarded.path);
-    const hash = contentHash(bytes);
-    const changed = embedded
-      ? contentHash(embedded) !== hash
-      : statSync(guarded.path).mtimeMs > session.manifest.startedAt;
-    json(res, 200, {
-      exists: true,
-      text: bytes.toString('utf8'),
-      hash,
-      changedSinceProfile: changed,
-    });
+    json(res, 200, resolver.resolve(requested));
   };
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -246,6 +233,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
       return json(res, 200, {
         meta: meta(session.file, session.manifest),
         hasBaseline: session.baseline !== undefined,
+        warningsSummary: session.info?.warningsSummary ?? { total: 0, byCode: {} },
+        target: session.info?.target ?? null,
+        primaryTrack: session.info?.primaryTrack ?? null,
         ...(session.baseline
           ? { baseline: meta(session.baseline.file, session.baseline.manifest) }
           : {}),
@@ -275,11 +265,10 @@ export async function startHost(options: HostOptions): Promise<Host> {
       ) {
         return json(res, 400, { error: 'file (string) and line (positive integer) are required' });
       }
-      const guarded = guardSourcePath(session.manifest.projectRoot, body.file);
-      if (!guarded || guarded === 'missing') {
+      const file = resolver.diskPath(body.file);
+      if (!file)
         return json(res, 403, { error: 'file is missing or outside the profiled project' });
-      }
-      options.openInEditor?.(guarded.path, body.line as number);
+      options.openInEditor?.(file, body.line as number);
       return json(res, 200, { ok: true });
     }
     if (p === '/api/settings') {
@@ -325,19 +314,4 @@ export async function startHost(options: HostOptions): Promise<Host> {
         server.close(() => ok());
       }),
   };
-}
-
-function isFile(p: string): boolean {
-  try {
-    return statSync(p).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function relativeKey(root: string, p: string): string | undefined {
-  const norm = (s: string): string => s.replaceAll('\\', '/');
-  const r = norm(resolve(root));
-  const abs = norm(resolve(root, p));
-  return abs.toLowerCase().startsWith(`${r.toLowerCase()}/`) ? abs.slice(r.length + 1) : undefined;
 }

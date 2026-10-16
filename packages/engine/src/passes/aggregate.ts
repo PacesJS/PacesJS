@@ -19,6 +19,8 @@ export interface AggregateFunctions {
   origin: Uint8Array;
   pkg: Uint32Array;
   plumbing: Uint8Array;
+  /** Module loading is plumbing for display but not an async cost. */
+  loader: Uint8Array;
 }
 
 export interface TrackAggregateInput {
@@ -188,7 +190,7 @@ export function aggregateTrack(input: TrackAggregateInput): TrackAggregateResult
     kindBusy[kind] = (kindBusy[kind] ?? 0) + (tasks.busy[k] ?? 0);
     for (let i = input.taskSampleStart[k] ?? 0; i < (input.taskSampleEnd[k] ?? 0); i++) {
       const leaf = tree.fn[input.samples.node[i] ?? 0] ?? 0;
-      if ((functions.plumbing[leaf] ?? 0) === 1) {
+      if ((functions.plumbing[leaf] ?? 0) === 1 && (functions.loader[leaf] ?? 0) === 0) {
         kindPlumbing[kind] = (kindPlumbing[kind] ?? 0) + (input.samples.dur[i] ?? 0);
       }
     }

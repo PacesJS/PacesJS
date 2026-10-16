@@ -24,7 +24,7 @@ export function encodeSelection(sel: Selection): string {
     case 'fn':
       return `fn:${sel.fn}`;
     case 'node':
-      return `node:${enc(sel.track)}:${sel.path.join('.')}`;
+      return `node:${enc(sel.track)}:${sel.path.join('.')}${sel.row === undefined ? '' : `:${sel.row}`}`;
     case 'task':
       return `task:${enc(sel.track)}:${sel.task}`;
     case 'range':
@@ -44,14 +44,16 @@ function decodePath(text: string | undefined): number[] | null {
 }
 
 export function decodeSelection(text: string): Selection {
-  const [kind, a, b] = text.split(':');
+  const [kind, a, b, c] = text.split(':');
   if (kind === 'fn') {
     const fn = int(a);
     return fn === null ? NO_SELECTION : { kind: 'fn', fn };
   }
   if (kind === 'node') {
     const path = decodePath(b);
-    return a === undefined || path === null ? NO_SELECTION : { kind, track: dec(a), path };
+    const row = int(c);
+    if (a === undefined || path === null) return NO_SELECTION;
+    return { kind, track: dec(a), path, ...(row === null ? {} : { row }) };
   }
   if (kind === 'task') {
     const idx = int(b);
@@ -131,6 +133,12 @@ function encodeOptions(o: ViewOptions): string {
   const parts: string[] = [];
   if (o.critical !== DEFAULT_OPTIONS.critical) parts.push(`crit:${o.critical ? 1 : 0}`);
   if (o.pathOnly !== DEFAULT_OPTIONS.pathOnly) parts.push(`cpo:${o.pathOnly ? 1 : 0}`);
+  if (o.hide.length > 0) parts.push(`hide:${o.hide.join('.')}`);
+  if (o.fnPkg !== DEFAULT_OPTIONS.fnPkg) parts.push(`fpkg:${enc(o.fnPkg)}`);
+  if (o.targetOnly) parts.push('tonly:1');
+  if (o.zoomPath.length > 0) parts.push(`zp:${o.zoomPath.join('.')}`);
+  if (o.wfSort !== DEFAULT_OPTIONS.wfSort) parts.push(`wsort:${o.wfSort}`);
+  if (o.minDurUs !== DEFAULT_OPTIONS.minDurUs) parts.push(`mind:${o.minDurUs}`);
   if (o.logical !== DEFAULT_OPTIONS.logical) parts.push(`logical:${o.logical ? 1 : 0}`);
   if (o.sort !== DEFAULT_OPTIONS.sort) parts.push(`sort:${o.sort}`);
   if (o.color !== DEFAULT_OPTIONS.color) parts.push(`color:${o.color}`);
@@ -139,19 +147,34 @@ function encodeOptions(o: ViewOptions): string {
   if (o.zoom.length > 0) parts.push(`zoom:${o.zoom.join('.')}`);
   if (o.task !== DEFAULT_OPTIONS.task) parts.push(`task:${o.task}`);
   if (o.expanded.length > 0) parts.push(`exp:${o.expanded.map(enc).join('|')}`);
+  if (o.reveal.length > 0) parts.push(`rev:${o.reveal.join('.')}`);
   if (o.line !== DEFAULT_OPTIONS.line) parts.push(`line:${o.line}`);
   return parts.join(',');
 }
 
 function decodeOptions(text: string): ViewOptions {
-  const o: ViewOptions = { ...DEFAULT_OPTIONS, zoom: [], expanded: [] };
+  const o: ViewOptions = {
+    ...DEFAULT_OPTIONS,
+    zoom: [],
+    expanded: [],
+    reveal: [],
+    hide: [],
+    zoomPath: [],
+  };
   for (const part of text.split(',')) {
     const i = part.indexOf(':');
     if (i < 0) continue;
     const key = part.slice(0, i);
     const val = part.slice(i + 1);
     if (key === 'crit') o.critical = val === '1';
+    else if (key === 'hide') o.hide = decodePath(val) ?? [];
+    else if (key === 'fpkg') o.fnPkg = dec(val);
+    else if (key === 'tonly') o.targetOnly = val === '1';
+    else if (key === 'zp') o.zoomPath = decodePath(val) ?? [];
     else if (key === 'cpo') o.pathOnly = val === '1';
+    else if (key === 'wsort' && (val === 'time' || val === 'duration' || val === 'share'))
+      o.wfSort = val;
+    else if (key === 'mind') o.minDurUs = Math.max(0, int(val) ?? 0);
     else if (key === 'logical') o.logical = val === '1';
     else if (key === 'sort' && (val === 'heavy' || val === 'alpha')) o.sort = val;
     else if (key === 'color' && (val === 'origin' || val === 'self')) o.color = val;
@@ -164,6 +187,7 @@ function decodeOptions(text: string): ViewOptions {
         .filter((n): n is number => n !== null);
     else if (key === 'task') o.task = int(val) ?? -1;
     else if (key === 'line') o.line = int(val) ?? 0;
+    else if (key === 'rev') o.reveal = decodePath(val) ?? [];
     else if (key === 'exp') o.expanded = val.split('|').map(dec).filter(Boolean);
   }
   return o;

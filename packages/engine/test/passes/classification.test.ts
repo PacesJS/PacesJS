@@ -27,8 +27,9 @@ describe('classification on the orders server', () => {
     expect(find('(garbage collector)')?.origin).toBe('gc');
   });
 
-  it('treats the collector wrapper as framework infrastructure', () => {
-    expect(find('import_node_http.Server.emit')?.origin).toBe('framework');
+  it("treats paces' own wrapper as hidden node plumbing, never user code", () => {
+    const wrapper = functions.find((f) => f.name === 'import_node_http.Server.emit');
+    expect(wrapper).toMatchObject({ origin: 'node', plumbing: true });
   });
 });
 
@@ -75,6 +76,6 @@ describe('classification edge cases', () => {
     });
     expect(functions.find((f) => f.name === 'f')?.origin).toBe('user');
     expect(functions.find((f) => f.name === 'g')?.origin).toBe('dependency');
-    expect(ctx.warnings.some((w) => w.includes('not a valid regular expression'))).toBe(true);
+    expect(ctx.warnings).toEqual([{ kind: 'invalid-pattern', severity: 'warn', detail: '(' }]);
   });
 });

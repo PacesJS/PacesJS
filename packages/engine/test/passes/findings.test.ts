@@ -169,6 +169,7 @@ describe('findings: rules without a zoo app', () => {
           { type: 'loop', time: 1_800_000_000_200, p50: 1, p99: 20, max: 30 },
         ],
       }),
+      { runKind: 'server' },
     );
     const lag = m.findings.filter((x) => x.kind === 'event-loop-lag');
     expect(lag.length).toBe(1);

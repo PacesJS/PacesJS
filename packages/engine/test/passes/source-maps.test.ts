@@ -100,7 +100,7 @@ describe('source maps edge cases', () => {
     expect(run(capture).describeFn('map').file).toBe('node_modules/lodash/map.js');
   });
 
-  it('degrades to generated names with a warning when the map is missing', () => {
+  it('degrades to generated names and flags the function when the map is missing', () => {
     const capture = synthCapture([{ stack: [{ name: 'a', url, line: 4, col: 2 }], samples: 2 }], {
       scripts: [{ scriptId: '1', url, sourceMapURL: 'bundle.js.map', hash: 'h' }],
     });
@@ -112,9 +112,7 @@ describe('source maps edge cases', () => {
       mapMissing: 1,
       mapped: 0,
     });
-    expect(ctx.warnings).toEqual([
-      'Source map missing for dist/bundle.js; showing generated names and lines.',
-    ]);
+    expect(ctx.warnings).toEqual([]);
   });
 
   it('warns instead of throwing on a map that is not JSON', () => {
@@ -123,6 +121,8 @@ describe('source maps edge cases', () => {
     });
     const { describeFn, ctx } = run(capture);
     expect(describeFn('a').mapMissing).toBe(1);
-    expect(ctx.warnings[0]).toContain('could not be parsed');
+    expect(ctx.warnings).toEqual([
+      { kind: 'source-map-invalid', severity: 'warn', detail: 'dist/bundle.js' },
+    ]);
   });
 });

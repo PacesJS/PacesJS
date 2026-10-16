@@ -85,3 +85,50 @@ export function resolveSourcePath(source: string, sourceRoot: string, scriptUrl:
   const base = dirnameOf(urlToPath(scriptUrl));
   return collapseDots(`${base}/${normalized}`);
 }
+
+export function basenameOf(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i < 0 ? path : path.slice(i + 1);
+}
+
+/** `.../node_modules/.pnpm/x@1/node_modules/x/lib/y.js` -> `x/lib/y.js`; other paths are unchanged. */
+export function displayPath(path: string): string {
+  const marker = 'node_modules/';
+  const at = path.lastIndexOf(marker);
+  return at < 0 ? path : path.slice(at + marker.length);
+}
+
+/** paces' own preload scripts, as installed (paces, @pacesjs/collector-node) or built in the monorepo. */
+const INSTRUMENTATION =
+  /(^|\/)(paces|collector-node|@pacesjs\/collector-node)\/dist\/preload\.cjs$/;
+
+export function isPacesInstrumentation(path: string): boolean {
+  return INSTRUMENTATION.test(path);
+}
+
+/** `**` crosses directories, `*` and `?` stay inside one; the whole path must match. */
+export function globToRegExp(glob: string): RegExp {
+  let out = '';
+  const g = normalizeSlashes(glob);
+  for (let i = 0; i < g.length; i++) {
+    const c = g[i] ?? '';
+    if (c === '*') {
+      if (g[i + 1] === '*') {
+        i++;
+        if (g[i + 1] === '/') {
+          i++;
+          out += '(?:.*/)?';
+        } else out += '.*';
+      } else out += '[^/]*';
+    } else if (c === '?') out += '[^/]';
+    else out += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${out}$`);
+}
+
+/** True when a `focus` entry is a path glob rather than a package name. */
+export function isGlob(entry: string): boolean {
+  return (
+    /[*?]/.test(entry) || (entry.includes('/') && !entry.startsWith('@')) || entry.includes('\\')
+  );
+}

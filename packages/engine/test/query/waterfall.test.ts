@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { analyze } from '../../src/analyze.js';
-import { TaskKind } from '../../src/model.js';
+import { Origin, TaskKind } from '../../src/model.js';
 import type { RuntimeEvent } from '../../src/raw.js';
 import { DEFAULT_TRANSFORMS } from '../../src/query/types.js';
+import { describeTasks } from '../../src/query/tasks.js';
 import { applyTransforms, describeFunction } from '../../src/query/view.js';
 import { waterfallForRange, waterfallForTask } from '../../src/query/waterfall.js';
 import { loadModel } from '../helpers/fixtures.js';
@@ -133,5 +134,77 @@ describe('waterfall on an inverted view', () => {
       task ?? 0,
     );
     expect(inverted.rows.map((r) => r.fn)).toEqual(normal.rows.map((r) => r.fn));
+  });
+});
+
+describe('waterfall options on the eslint cli', () => {
+  const m = loadModel('eslint-cli');
+  const view = applyTransforms(m, m.primaryTrack, DEFAULT_TRANSFORMS);
+  const entryTask = describeTasks(m, m.primaryTrack)[0]?.index ?? 0;
+  const plain = waterfallForTask(m, view, entryTask);
+
+  const isConsistent = (w: typeof plain): boolean =>
+    w.rows.every((r, i) => r.id === i && r.parent < r.id) &&
+    w.criticalPath.every((id) => w.rows[id]?.critical === true);
+
+  it('has dependency rows by default (collapsed packages)', () => {
+    expect(plain.rows.some((r) => r.fn >= m.functions.length)).toBe(true);
+  });
+
+  it('hides rows of the given origins and keeps ids, parents and the critical path consistent', () => {
+    const w = waterfallForTask(m, view, entryTask, { hideOrigins: [Origin.Dependency] });
+    expect(w.rows.length).toBeLessThan(plain.rows.length);
+    expect(w.rows.some((r) => r.fn >= m.functions.length)).toBe(false);
+    expect(isConsistent(w)).toBe(true);
+  });
+
+  it('drops rows shorter than the minimum duration together with their subtrees', () => {
+    const w = waterfallForTask(m, view, entryTask, { minDurationUs: 5000 });
+    expect(w.rows.length).toBeGreaterThan(0);
+    expect(w.rows.length).toBeLessThan(plain.rows.length);
+    expect(w.rows.every((r) => r.durUs >= 5000)).toBe(true);
+    expect(isConsistent(w)).toBe(true);
+  });
+
+  it('orders siblings by start time by default', () => {
+    const starts = new Map<number, number[]>();
+    for (const r of plain.rows) starts.set(r.parent, [...(starts.get(r.parent) ?? []), r.start]);
+    for (const list of starts.values()) expect(list).toEqual([...list].sort((a, b) => a - b));
+  });
+
+  it.each(['duration', 'share'] as const)('orders siblings by %s, longest first', (sort) => {
+    const w = waterfallForTask(m, view, entryTask, { sort });
+    expect(isConsistent(w)).toBe(true);
+    expect(w.rows).toHaveLength(plain.rows.length);
+    const durations = new Map<number, number[]>();
+    for (const r of w.rows) {
+      if (r.kind === 'wait') continue;
+      durations.set(r.parent, [...(durations.get(r.parent) ?? []), r.durUs]);
+    }
+    for (const list of durations.values()) expect(list).toEqual([...list].sort((a, b) => b - a));
+  });
+
+  it('keeps every row, one per parent, in depth-first order after sorting', () => {
+    const w = waterfallForTask(m, view, entryTask, { sort: 'duration' });
+    const seen = new Set<number>();
+    for (const r of w.rows) {
+      expect(r.parent < 0 || seen.has(r.parent)).toBe(true);
+      seen.add(r.id);
+    }
+    expect(seen.size).toBe(w.rows.length);
+  });
+
+  it('applies the same filters to a time range', () => {
+    const w = waterfallForRange(m, view, 0, m.meta.durationUs, {
+      hideOrigins: [Origin.Dependency],
+      minDurationUs: 3000,
+      sort: 'duration',
+    });
+    expect(w.rows.every((r) => r.durUs >= 3000 && r.fn < m.functions.length)).toBe(true);
+    expect(isConsistent(w)).toBe(true);
+  });
+
+  it('keeps ids equal to indexes when a depth limit removes rows', () => {
+    expect(isConsistent(waterfallForTask(m, view, entryTask, { maxDepth: 3 }))).toBe(true);
   });
 });

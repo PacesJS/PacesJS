@@ -2,6 +2,7 @@ import { classify } from '../../src/passes/classification.js';
 import { ingest } from '../../src/passes/ingest.js';
 import { detectPlumbing } from '../../src/passes/plumbing.js';
 import { resolveSourceMaps } from '../../src/passes/source-maps.js';
+import type { WarningDraft } from '../../src/passes/types.js';
 import type { AnalyzeOptions } from '../../src/config.js';
 import { DEFAULT_THRESHOLDS } from '../../src/config.js';
 import { Origin, ORIGIN_NAMES } from '../../src/model.js';
@@ -13,7 +14,7 @@ export function runPasses(capture: RawCapture, options: AnalyzeOptions = {}) {
     thresholds: DEFAULT_THRESHOLDS,
     options,
     strings: createStringTable(),
-    warnings: [] as string[],
+    warnings: [] as WarningDraft[],
   };
   const ing = ingest(capture, ctx);
   const sm = resolveSourceMaps({ capture, ingest: ing }, ctx);

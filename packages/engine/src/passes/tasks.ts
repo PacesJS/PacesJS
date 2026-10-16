@@ -58,6 +58,18 @@ const MAIN_FILE_PREFIXES = [
   'node:internal/process/pre_execution',
 ];
 
+/** Task label prefix per kind. */
+const KIND_PREFIX: Record<number, string> = {
+  [TaskKind.Main]: 'main',
+  [TaskKind.Request]: 'request',
+  [TaskKind.Timer]: 'timer',
+  [TaskKind.Immediate]: 'immediate',
+  [TaskKind.Microtask]: 'microtasks',
+  [TaskKind.Io]: 'I/O',
+  [TaskKind.Other]: 'other',
+};
+const MODULE_PREFIX = /^(require|import) ▸ /;
+
 function lowerBound(a: Float64Array, x: number): number {
   let lo = 0;
   let hi = a.length;
@@ -79,7 +91,12 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
   const strings = ctx.strings.strings;
   const nameOf = (fn: number): string => strings[functions.name[fn] ?? 0] ?? '';
   const fileOf = (fn: number): string => strings[functions.file[fn] ?? 0] ?? '';
-  const display = (fn: number): string => nameOf(fn) || basename(fileOf(fn)) || '(anonymous)';
+  const display = (fn: number): string => {
+    const name = nameOf(fn);
+    if (name) return name;
+    const file = basename(fileOf(fn));
+    return file ? `(anonymous in ${file})` : '(anonymous)';
+  };
 
   // The function of each node's ancestor directly under the root.
   const entryOf = new Int32Array(tree.length).fill(-1);
@@ -206,14 +223,14 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
       if (meaningful < 0 && fallback >= 0 && i >= a + 20) break;
     }
     const subject = meaningful >= 0 ? meaningful : fallback >= 0 ? fallback : entry;
-    let text: string;
-    if (taskKind === TaskKind.Request) {
-      text = strings[requests.label[taskReq[k] ?? 0] ?? 0] ?? '';
-    } else if (taskKind === TaskKind.Timer) text = `timer · ${display(subject)}`;
-    else if (taskKind === TaskKind.Immediate) text = `immediate · ${display(subject)}`;
-    else if (taskKind === TaskKind.Microtask) {
-      text = meaningful >= 0 ? `microtask · ${display(meaningful)}` : 'microtasks';
-    } else text = display(subject);
+    // Entry kind prefix plus the first frame of the target's own code.
+    const what = display(subject);
+    const text =
+      taskKind === TaskKind.Request
+        ? `request · ${strings[requests.label[taskReq[k] ?? 0] ?? 0] ?? ''}`
+        : taskKind === TaskKind.Main
+          ? `main · ${MODULE_PREFIX.test(what) ? `load ${what.replace(MODULE_PREFIX, '')}` : what}`
+          : `${KIND_PREFIX[taskKind] ?? 'other'} · ${what}`;
     label[k] = ctx.strings.intern(text);
   }
 

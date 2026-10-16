@@ -9,6 +9,8 @@ export type {
   AgentFinding,
   AgentFunction,
   AgentHotPath,
+  AgentPackage,
+  AgentPhase,
   AgentSummary,
   AgentTaskKindStats,
   SourceLocation,
@@ -27,5 +29,8 @@ export { flameLayout, flameLayoutOfTree } from './query/flame.js';
 export { callGraph } from './query/callgraph.js';
 export { functionRows, sandwich } from './query/functions.js';
 export { functionSource } from './query/source.js';
+export { getEmbeddedSource } from './query/embedded-source.js';
 export { timelineLane } from './query/timeline.js';
+export { describeTasks } from './query/tasks.js';
+export { callersOf, hotPaths, packageBreakdown } from './query/paths.js';
 export { hoverRelated, relatedIds } from './query/selection.js';

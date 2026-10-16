@@ -1,12 +1,16 @@
 import { diffModels } from '@pacesjs/engine';
 import type { ExecutionModel, ModelDiff } from '@pacesjs/engine';
 import type { Selection } from '../state/types';
+import type { FunctionFilter } from './adapt';
 import {
   callGraphData,
   egoNeighbourhood,
+  fileOutline,
   flameData,
   functionDetails,
   functionsTable,
+  hiddenTime,
+  hotPathRows,
   overviewData,
   sandwichRows,
   sourceInfo,
@@ -16,15 +20,18 @@ import {
 import { browserElk } from './elk-browser';
 import { layoutGraph } from './layout';
 import type { ElkProvider, GraphLayout } from './layout';
-import { locationOf, modelCtx, scopeView, toEngineStack, trackIndexOf } from './scope';
+import { locationOf, modelCtx, scopeView, toEngineStack, trackIndexOf, trackOrder } from './scope';
 import type { Scoped } from './scope';
 import type {
   CallGraphData,
   CallGraphQuery,
   Details,
+  FileOutline,
   FlameData,
   FlameOptions,
   FunctionsResult,
+  HiddenOrigin,
+  HotPathRow,
   ModelSummary,
   OverviewData,
   SandwichRow,
@@ -39,9 +46,12 @@ export type {
   CallGraphData,
   CallGraphQuery,
   Details,
+  FileOutline,
   FlameData,
   FlameOptions,
   FunctionsResult,
+  HiddenOrigin,
+  HotPathRow,
   ModelSummary,
   OverviewData,
   SandwichRow,
@@ -51,6 +61,12 @@ export type {
   TaskOption,
   WaterfallData,
 } from './types';
+
+/** Sibling order and shortest call of the waterfall; the engine applies both. */
+export interface WaterfallShape {
+  sort: 'time' | 'duration' | 'share';
+  minDurUs: number;
+}
 
 export interface GraphResult {
   graph: CallGraphData;
@@ -64,13 +80,18 @@ export interface Queries {
   summary(): ModelSummary;
   overview(): OverviewData;
   tasks(scope: Scope): TaskOption[];
-  waterfall(scope: Scope, task: number): WaterfallData | null;
+  waterfall(scope: Scope, task: number, shape: WaterfallShape): WaterfallData | null;
   flame(scope: Scope, opts: FlameOptions): FlameData;
-  functions(scope: Scope, filter: string): FunctionsResult;
+  functions(scope: Scope, filter: string, narrow?: FunctionFilter): FunctionsResult;
   details(scope: Scope, fn: number): Details | null;
   sandwich(scope: Scope, fn: number): SandwichRow[];
   callGraph(scope: Scope, query: CallGraphQuery, expandedPackages: string[]): Promise<GraphResult>;
   source(scope: Scope, fn: number): SourceInfo | null;
+  outline(scope: Scope, fn: number): FileOutline | null;
+  /** The dominant call chains of the scope's track (engine `hotPaths`). */
+  hotPaths(scope: Scope, limit: number): HotPathRow[];
+  /** Self time of the origins the Show filter hides, for the "hiding ..." chip. */
+  hidden(scope: Scope): HiddenOrigin[];
   describe(scope: Scope, selection: Selection): SelectionInfo;
   /** Package name of a function, '' for user code. */
   packageOf(fn: number): string;
@@ -84,6 +105,7 @@ const NO_SELECTION: SelectionInfo = {
   track: null,
   task: null,
   loc: '',
+  plumbing: false,
 };
 
 export function createQueries(
@@ -105,6 +127,7 @@ export function createQueries(
       scope.transforms,
       withRange ? scope.range : null,
       expanded,
+      scope.hide,
     ]);
     const hit = cache.get(key);
     if (hit) {
@@ -115,7 +138,7 @@ export function createQueries(
     const built = scopeView(
       ctx,
       trackIndexOf(model, scope.track),
-      toEngineStack(ctx, scope.transforms, expanded, withRange ? scope.range : null),
+      toEngineStack(ctx, scope.transforms, expanded, withRange ? scope.range : null, scope.hide),
     );
     cache.set(key, built);
     if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value as string);
@@ -130,13 +153,19 @@ export function createQueries(
 
   return {
     summary() {
-      const tracks = model.tracks.map((t) => ({
-        id: t.id,
-        label: t.label,
-        kind: t.kind,
-        samples: t.samples.length,
-        durationUs: t.durationUs,
-      }));
+      const tracks = trackOrder(model).map((i) => {
+        const t = model.tracks[i] as ExecutionModel['tracks'][number];
+        return {
+          id: t.id,
+          label: t.label,
+          kind: t.kind,
+          role: t.role,
+          primary: i === model.primaryTrack,
+          entry: t.entry,
+          samples: t.samples.length,
+          durationUs: t.durationUs,
+        };
+      });
       return {
         command: model.meta.command,
         durationUs: model.meta.durationUs,
@@ -145,11 +174,18 @@ export function createQueries(
         endedBy: model.meta.endedBy,
         mode: model.meta.mode,
         tracks,
+        primaryTrack: model.tracks[model.primaryTrack]?.id ?? '',
+        target: {
+          entry: model.target.entry,
+          kind: model.target.kind,
+          packages: model.target.packages,
+        },
         findings: model.findings,
         warnings: model.meta.warnings,
         totalSamples: tracks.reduce((a, t) => a + t.samples, 0),
         projectRoot: model.meta.projectRoot,
         functionCount: F,
+        packages: ctx.pkgs,
         hasBaseline: baseline !== null,
       };
     },
@@ -158,18 +194,21 @@ export function createQueries(
       return overviewCache;
     },
     tasks(scope) {
-      const track = model.tracks[trackIndexOf(model, scope.track)];
-      return track ? taskOptions(model, track) : [];
+      return taskOptions(model, trackIndexOf(model, scope.track));
     },
-    waterfall(scope, task) {
-      return waterfallData(model, scoped(scope, [], false), { task, range: scope.range });
+    waterfall(scope, task, shape) {
+      return waterfallData(model, scoped(scope, [], false), {
+        task,
+        range: scope.range,
+        ...shape,
+      });
     },
     flame(scope, opts) {
       if (baseline && !diff) diff = diffModels(baseline, model);
       return flameData(model, scoped(scope), opts, diff);
     },
-    functions(scope, filter) {
-      return functionsTable(model, scoped(scope), scope.range, filter);
+    functions(scope, filter, narrow) {
+      return functionsTable(model, scoped(scope), scope.range, filter, narrow);
     },
     details(scope, fn) {
       return functionDetails(model, scoped(scope), scope.range, fn);
@@ -199,11 +238,26 @@ export function createQueries(
     source(scope, fn) {
       return sourceInfo(model, scoped(scope), fn);
     },
+    outline(scope, fn) {
+      return fileOutline(model, scoped(scope), fn);
+    },
+    hotPaths(scope, limit) {
+      return hotPathRows(model, scoped(scope), limit);
+    },
+    hidden(scope) {
+      if (scope.hide.length === 0) return [];
+      return hiddenTime(model, scoped({ ...scope, hide: [] }), scope.hide);
+    },
     describe(scope, selection) {
       const s = scoped(scope);
-      const named = (fn: number): Pick<SelectionInfo, 'fn' | 'name' | 'loc'> => {
+      const named = (fn: number): Pick<SelectionInfo, 'fn' | 'name' | 'loc' | 'plumbing'> => {
         const info = s.info(fn);
-        return { fn, name: info.name || '(anonymous)', loc: locationOf(info) };
+        return {
+          fn,
+          name: info.name || '(anonymous)',
+          loc: locationOf(info),
+          plumbing: info.plumbing,
+        };
       };
       switch (selection.kind) {
         case 'fn':

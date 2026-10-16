@@ -17,7 +17,9 @@ describe('task segmentation on the orders server', () => {
       (k) => tasks?.kind[k] === TaskKind.Request,
     );
     expect(requestTasks.length).toBeGreaterThanOrEqual(14);
-    expect(new Set(requestTasks.map((k) => label(m, 0, k)))).toEqual(new Set(['GET /orders']));
+    expect(new Set(requestTasks.map((k) => label(m, 0, k)))).toEqual(
+      new Set(['request · GET /orders']),
+    );
   });
 
   it('puts the root-level getOrders continuation of every request inside a request task', () => {
@@ -62,6 +64,12 @@ describe('task segmentation on the orders server', () => {
     const k = Array.from(worker?.tasks.busy ?? []).indexOf(longest);
     expect(worker?.tasks.kind[k]).toBe(TaskKind.Main);
     expect(longest / 1000).toBeGreaterThan(1000);
+  });
+
+  it('labels startup work with the module it loads, never a bare file name', () => {
+    const worker = m.tracks[1];
+    const k = Array.from(worker?.tasks.busy ?? []).indexOf(Math.max(...(worker?.tasks.busy ?? [])));
+    expect(label(m, 1, k)).toBe('main · load zoo/orders-server/dist/worker.js');
   });
 
   it('points each task at a contiguous range of spans', () => {

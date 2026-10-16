@@ -4,8 +4,8 @@ import type { EngineApi } from '@pacesjs/format';
 
 declare const __ENGINE_VERSION__: string | undefined;
 
-/** Shape of the agent-facing digest; the engine owns the exact fields, the CLI prints what it finds. */
-export type AgentSummary = Record<string, unknown>;
+export type { AgentSummary } from '@pacesjs/engine';
+import type { AgentSummary } from '@pacesjs/engine';
 
 export interface Engine extends EngineApi {
   buildAgentSummary(model: ExecutionModel): AgentSummary;
@@ -38,7 +38,11 @@ export function loadEngine(
   const fn = <T>(name: string): T => mod[name] as T;
   return {
     engineVersion: version,
-    analyze: (capture: RawCapture) => fn<(c: RawCapture) => ExecutionModel>('analyze')(capture),
+    analyze: (capture: RawCapture, options?: Record<string, unknown>) =>
+      fn<(c: RawCapture, o?: Record<string, unknown>) => ExecutionModel>('analyze')(
+        capture,
+        options,
+      ),
     serializeModel: (m) => fn<(m: ExecutionModel) => Uint8Array>('serializeModel')(m),
     deserializeModel: (b) => fn<(b: Uint8Array) => ExecutionModel>('deserializeModel')(b),
     buildAgentSummary: (m) => fn<(m: ExecutionModel) => AgentSummary>('buildAgentSummary')(m),

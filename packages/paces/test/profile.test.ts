@@ -14,6 +14,7 @@ const flags = (over: Partial<Flags> = {}): Flags => ({
   include: [],
   exclude: [],
   json: false,
+  focus: [],
   ...over,
 });
 const base = { cwd: resolve(import.meta.dirname, '..'), preload };

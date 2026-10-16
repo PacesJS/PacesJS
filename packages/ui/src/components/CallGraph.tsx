@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync, useElementWidth } from '../app/hooks';
 import type { CgNode } from '../data/types';
@@ -22,11 +22,16 @@ const ORIGIN_VAR = [
 export function CallGraph() {
   const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select } = useApp();
   const [all, setAll] = useState(false);
-  const [reveal, setReveal] = useState<{ key: string; ids: number[] }>({ key: '', ids: [] });
   const [fit, setFit] = useState(false);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const boxW = useElementWidth(scrollEl);
-  const revealIds = reveal.key === scopeKey ? reveal.ids : [];
+  const revealIds = snap.options.reveal;
+  const reveal = (ids: number[]): void =>
+    dispatch({
+      type: 'options',
+      options: { reveal: [...new Set([...revealIds, ...ids])] },
+      replace: true,
+    });
   const expanded = snap.options.expanded;
   const selFn = selection.fn;
   const egoFn = snap.options.ego ? selFn : null;
@@ -39,6 +44,23 @@ export function CallGraph() {
     () => new Map<number, PlacedNode>((res?.layout.nodes ?? []).map((n) => [n.fn, n])),
     [res],
   );
+
+  const selBox = selFn === null ? undefined : pos.get(selFn);
+  useEffect(() => {
+    // Keep the selected node in view: centre it when it sits outside the scroll box.
+    if (!scrollEl || !selBox) return;
+    const margin = 24;
+    const fits =
+      selBox.x >= scrollEl.scrollLeft + margin &&
+      selBox.x + selBox.w <= scrollEl.scrollLeft + scrollEl.clientWidth - margin &&
+      selBox.y >= scrollEl.scrollTop + margin &&
+      selBox.y + selBox.h <= scrollEl.scrollTop + scrollEl.clientHeight - margin;
+    if (fits) return;
+    scrollEl.scrollTo({
+      left: Math.max(0, selBox.x + selBox.w / 2 - scrollEl.clientWidth / 2),
+      top: Math.max(0, selBox.y + selBox.h / 2 - scrollEl.clientHeight / 2),
+    });
+  }, [scrollEl, selBox]);
 
   if (q.error)
     return (
@@ -99,11 +121,7 @@ export function CallGraph() {
           </button>
         ))}
         {selectionHidden ? (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setReveal({ key: scopeKey, ids: [...revealIds, selFn] })}
-          >
+          <button type="button" className="btn" onClick={() => reveal([selFn])}>
             Reveal {selection.name}
           </button>
         ) : null}
@@ -272,7 +290,9 @@ export function CallGraph() {
                     />
                   </span>
                   <span className="cg-node-stats">
-                    self {fmtDuration(n.selfUs)} · total {fmtDuration(n.totalUs)}
+                    <span className="cg-node-self">{fmtDuration(n.selfUs)}</span>
+                    <span className="cg-node-self-label">self</span>
+                    <span className="cg-node-total">total {fmtDuration(n.totalUs)}</span>
                   </span>
                 </button>
               );
@@ -340,7 +360,7 @@ export function CallGraph() {
                     className="cg-chip"
                     aria-label={`Show ${n.hiddenCallees} hidden callee${n.hiddenCallees === 1 ? '' : 's'} of ${n.name}`}
                     style={{ left: box.x + box.w - 18, top: box.y + box.h - 10 }}
-                    onClick={() => setReveal({ key: scopeKey, ids: [...revealIds, n.fn] })}
+                    onClick={() => reveal([n.fn])}
                   >
                     +{n.hiddenCallees}
                   </button>,
@@ -354,7 +374,7 @@ export function CallGraph() {
                     className="cg-chip"
                     aria-label={`Show ${n.hiddenCallers} hidden caller${n.hiddenCallers === 1 ? '' : 's'} of ${n.name}`}
                     style={{ left: box.x + box.w - 18, top: box.y - 14 }}
-                    onClick={() => setReveal({ key: scopeKey, ids: [...revealIds, n.fn] })}
+                    onClick={() => reveal([n.fn])}
                   >
                     +{n.hiddenCallers}
                   </button>,

@@ -13,7 +13,7 @@
 
 .wf-grid {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 76px 60px;
+  grid-template-columns: var(--wf-grid, 320px minmax(160px, 1fr) 76px 60px);
   column-gap: var(--sp-12);
   padding: 0 var(--sp-8);
   align-items: end;
@@ -64,6 +64,48 @@
   text-align: right;
 }
 
+.wf-head-cell {
+  position: relative;
+  white-space: nowrap;
+}
+
+/* Column drag handle on a header edge: a wide hit area with a thin visible line. */
+.wf-resizer {
+  position: absolute;
+  top: -4px;
+  bottom: -6px;
+  width: 16px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.wf-resizer::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--c-border-strong);
+  opacity: 0.5;
+}
+
+.wf-resizer.is-right {
+  right: calc(var(--sp-6) * -1 - 8px);
+}
+
+.wf-resizer.is-left {
+  left: calc(var(--sp-6) * -1 - 8px);
+}
+
+.wf-resizer:hover::after,
+.wf-resizer:focus-visible::after {
+  background: var(--c-accent);
+  opacity: 1;
+}
+
 .wf-body {
   position: relative;
   max-height: 720px;
@@ -76,8 +118,11 @@
 }
 
 .wf-row {
+  position: absolute;
+  left: 0;
+  right: 0;
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 76px 60px;
+  grid-template-columns: var(--wf-grid, 320px minmax(160px, 1fr) 76px 60px);
   column-gap: var(--sp-12);
   align-items: center;
   min-height: 32px;
@@ -102,11 +147,17 @@
   background: var(--c-bg);
 }
 
+/* The selected function elsewhere in the tree: a faint mark, not a highlight. */
+.wf-row.is-linked:not(.is-selected) {
+  box-shadow: inset 3px 0 0 var(--c-accent-tint);
+}
+
 .wf-name {
   display: flex;
   align-items: center;
   gap: var(--sp-6);
   min-width: 0;
+  overflow: hidden;
 }
 
 .wf-twisty {
@@ -124,6 +175,10 @@
 }
 
 .wf-label {
+  flex: 0 1 auto;
+  min-width: 3ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--fs-14);
   line-height: var(--lh-20);
   white-space: nowrap;
@@ -137,6 +192,8 @@
 }
 
 .wf-loc {
+  flex: 1 1 0;
+  min-width: 0;
   font-size: var(--fs-12);
   line-height: var(--lh-16);
   color: var(--c-muted);
@@ -152,6 +209,8 @@
 }
 
 .wf-time {
+  white-space: nowrap;
+  overflow: hidden;
   font-size: var(--fs-14);
   line-height: var(--lh-20);
   font-weight: var(--fw-semi);
@@ -160,6 +219,8 @@
 }
 
 .wf-share {
+  white-space: nowrap;
+  overflow: hidden;
   font-size: var(--fs-12);
   line-height: var(--lh-16);
   color: var(--c-muted);
@@ -364,10 +425,29 @@
 }
 
 .cg-node-stats {
-  font-size: var(--fs-11);
-  line-height: var(--lh-14);
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* Self time is what the node is about: large and first; total is the secondary number. */
+.cg-node-self {
+  font-size: var(--fs-17);
+  line-height: var(--lh-22);
+  font-weight: var(--fw-semi);
+}
+
+.cg-node-self-label,
+.cg-node-total {
+  font-size: var(--fs-11);
+  line-height: var(--lh-14);
+  color: var(--c-muted);
+}
+
+.cg-node-total {
+  margin-left: auto;
 }
 
 .cg-label,
@@ -675,4 +755,59 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-8);
+}
+
+/* Hot paths panel */
+.hot-paths {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.hot-path-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.hot-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-4) var(--sp-16);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--sp-8) var(--sp-12);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-ctl);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font: inherit;
+  text-align: left;
+}
+
+.hot-path:hover {
+  background: var(--c-bg);
+}
+
+.hot-path-chain {
+  flex: 1 1 320px;
+  min-width: 0;
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semi);
+  overflow-wrap: anywhere;
+}
+
+.hot-path-stats {
+  font-size: var(--fs-12);
+  color: var(--c-muted);
+}
+
+.hot-path-loc {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-muted);
 }

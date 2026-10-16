@@ -25,6 +25,7 @@ import {
 } from './launch.js';
 import { waitForWindowClose } from './lifecycle.js';
 import { serveMcp } from './mcp.js';
+import { buildTools } from './mcp-tools.js';
 import { NoProcessesError, preloadPath, runProfile } from './profile.js';
 import { startHost } from './server.js';
 import type { HostSession } from './server.js';
@@ -78,6 +79,23 @@ function readSessionFile(file: string, engineVersion?: string): Session {
   );
 }
 
+/** Counts of warnings by code (structured warnings) or as plain messages (older engines). */
+export function summarizeWarnings(warnings: unknown): {
+  total: number;
+  byCode: Record<string, number>;
+} {
+  const byCode: Record<string, number> = {};
+  const list = Array.isArray(warnings) ? warnings : [];
+  for (const w of list) {
+    const code =
+      w && typeof w === 'object' && typeof (w as { code?: unknown }).code === 'string'
+        ? (w as { code: string }).code
+        : 'warning';
+    byCode[code] = (byCode[code] ?? 0) + 1;
+  }
+  return { total: list.length, byCode };
+}
+
 function toHostSession(
   file: string,
   session: Session,
@@ -89,7 +107,26 @@ function toHostSession(
     const bytes = session.sources[s.hash];
     if (bytes) embedded.set(s.path, bytes);
   }
-  return { file, manifest: session.manifest, modelBytes: engine.serializeModel(model), embedded };
+  const scriptUrls = new Set<string>();
+  for (const t of session.capture.tracks) for (const sc of t.scripts) scriptUrls.add(sc.url);
+  const m = model as unknown as {
+    target?: unknown;
+    primaryTrack?: unknown;
+    meta?: { warnings?: unknown };
+  };
+  return {
+    file,
+    manifest: session.manifest,
+    modelBytes: engine.serializeModel(model),
+    embedded,
+    scriptUrls: [...scriptUrls],
+    sourceMaps: session.capture.sourceMaps,
+    info: {
+      target: m.target ?? null,
+      primaryTrack: m.primaryTrack ?? null,
+      warningsSummary: summarizeWarnings(m.meta?.warnings),
+    },
+  };
 }
 
 /** Starts the server, opens the window and waits until it closes (or Ctrl+C). */
@@ -172,7 +209,7 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
   let model: ExecutionModel | undefined;
   if (engine) {
     try {
-      model = engine.analyze(capture);
+      model = engine.analyze(capture, analyzeOptions(p.flags));
       const bytes = engine.serializeModel(model);
       writeSessionFile(out, writeSession(capture, { engineVersion, sources, model: bytes }));
       io.err(`paces: ${model.findings.length} finding${model.findings.length === 1 ? '' : 's'}`);
@@ -191,14 +228,23 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
   return result.exitCode;
 }
 
-function modelOf(file: string, engine: Engine): { session: Session; model: ExecutionModel } {
+function analyzeOptions(flags: Flags): Record<string, unknown> | undefined {
+  return flags.focus.length > 0 ? { focus: flags.focus } : undefined;
+}
+
+function modelOf(
+  file: string,
+  engine: Engine,
+  flags?: Flags,
+): { session: Session; model: ExecutionModel } {
   const session = readSessionFile(file, engine.engineVersion);
-  return { session, model: loadModel(session, engine).model };
+  const options = flags ? analyzeOptions(flags) : undefined;
+  return { session, model: loadModel(session, engine, options).model };
 }
 
 async function cmdOpen(file: string, flags: Flags, io: Io): Promise<number> {
   const engine = loadEngine();
-  const { session, model } = modelOf(file, engine);
+  const { session, model } = modelOf(file, engine, flags);
   await present(toHostSession(resolve(file), session, model, engine), flags, io);
   return 0;
 }
@@ -227,7 +273,7 @@ async function cmdImport(file: string, flags: Flags, io: Io): Promise<number> {
   });
   const engine = loadEngine();
   const out = resolve(cwd, flags.out ?? defaultSessionPath(cwd, new Date(), existsSync, '-import'));
-  const model = engine.analyze(capture);
+  const model = engine.analyze(capture, analyzeOptions(flags));
   const bytes = writeSession(capture, {
     engineVersion: engine.engineVersion,
     model: engine.serializeModel(model),
@@ -241,18 +287,22 @@ async function cmdImport(file: string, flags: Flags, io: Io): Promise<number> {
 
 function cmdSummary(file: string, flags: Flags, io: Io): number {
   const engine = loadEngine();
-  const { session, model } = modelOf(file, engine);
+  const { session, model } = modelOf(file, engine, flags);
   const summary = engine.buildAgentSummary(model);
   if (flags.json) io.out(JSON.stringify(summary, null, 2));
   else io.out(formatSummary(summary, `${session.manifest.command.join(' ')}  (${basename(file)})`));
   return 0;
 }
 
-async function cmdMcp(file: string): Promise<number> {
+async function cmdMcp(file: string, flags: Flags): Promise<number> {
   const engine = loadEngine();
-  const { model } = modelOf(file, engine);
+  const { model } = modelOf(file, engine, flags);
   const summary = engine.buildAgentSummary(model);
-  await serveMcp(process.stdin, process.stdout, () => summary);
+  await serveMcp(
+    process.stdin,
+    process.stdout,
+    buildTools(model, () => summary),
+  );
   return 0;
 }
 
@@ -286,7 +336,7 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
       case 'summary':
         return cmdSummary(parsed.files[0], parsed.flags, io);
       case 'mcp':
-        return await cmdMcp(parsed.files[0]);
+        return await cmdMcp(parsed.files[0], parsed.flags);
     }
   } catch (e) {
     io.err(`paces: ${e instanceof Error ? e.message : String(e)}`);

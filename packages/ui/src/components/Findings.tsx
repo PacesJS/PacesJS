@@ -1,23 +1,10 @@
 import { useState } from 'react';
-import type { Finding, ShowMe } from '@pacesjs/engine';
+import type { Finding } from '@pacesjs/engine';
 import { useApp } from '../app/context';
-import { showMeAction } from '../state/showme';
-import type { Selection } from '../state/types';
+import { withVisibleTarget } from '../state/showme-resolve';
+import { clearShowMeAction, isShowing, showMeAction, showMeContext } from '../state/showme';
 
-const SEVERITY_RANK = { high: 0, medium: 1, low: 2 } as const;
 const SEVERITY_LABEL = { high: 'High', medium: 'Medium', low: 'Low' } as const;
-
-export function rankFindings(findings: readonly Finding[]): Finding[] {
-  return findings
-    .map((f, i) => ({ f, i }))
-    .sort(
-      (a, b) =>
-        SEVERITY_RANK[a.f.severity] - SEVERITY_RANK[b.f.severity] ||
-        b.f.impact - a.f.impact ||
-        a.i - b.i,
-    )
-    .map((x) => x.f);
-}
 
 export function opensLabel(f: Finding): string {
   const v = f.showMe.view;
@@ -29,18 +16,26 @@ export function opensLabel(f: Finding): string {
   return 'track timeline';
 }
 
-function sameTarget(sel: Selection, showMe: ShowMe): boolean {
-  if (showMe.task !== undefined) return sel.kind === 'task' && sel.task === showMe.task;
-  if (showMe.fn !== undefined) return sel.kind === 'fn' && sel.fn === showMe.fn;
-  return false;
-}
-
 export function Findings() {
-  const { summary, snap, dispatch, primaryTrack } = useApp();
+  const { client, summary, snap, dispatch, primaryTrack, search } = useApp();
   const [all, setAll] = useState(false);
-  const ranked = rankFindings(summary.findings);
+  // The engine already ranks findings (severity, impact, rule order, id): #1 is the top finding.
+  const ranked = summary.findings;
   const shown = all ? ranked : ranked.slice(0, 5);
-  const activeId = ranked.find((f) => sameTarget(snap.selection, f.showMe))?.id ?? null;
+  const ctx = showMeContext(summary);
+  /** Show me (or clear it when active), then bring the proving view into sight. */
+  const press = async (f: Finding, active: boolean): Promise<void> => {
+    if (active) {
+      dispatch(clearShowMeAction(f, snap));
+      return;
+    }
+    const target = await withVisibleTarget(client, f.showMe);
+    dispatch(showMeAction(target, snap, primaryTrack, ctx));
+    requestAnimationFrame(() =>
+      document.querySelector('.main-view')?.scrollIntoView({ block: 'start' }),
+    );
+  };
+  const activeId = ranked.find((f) => isShowing(f, snap, search, ctx))?.id ?? null;
 
   return (
     <div className="findings">
@@ -80,9 +75,11 @@ export function Findings() {
                     type="button"
                     className={`btn${active ? ' btn-primary' : ''}`}
                     aria-label={`Show me: ${f.title}`}
-                    onClick={() => dispatch(showMeAction(f.showMe, snap, primaryTrack))}
+                    aria-pressed={active}
+                    title={active ? 'Showing this finding. Press again to clear it.' : undefined}
+                    onClick={() => void press(f, active)}
                   >
-                    Show me
+                    {active ? 'Showing' : 'Show me'}
                   </button>
                 </div>
               </li>

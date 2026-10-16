@@ -69,11 +69,11 @@ export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): Sour
           sourceRoot: parsed.sourceRoot ?? '',
         };
       } catch {
-        ctx.warnings.push(`Source map for ${pretty} could not be parsed; showing generated code.`);
+        ctx.warnings.push({ kind: 'source-map-invalid', severity: 'warn', detail: pretty });
         result = 'missing';
       }
     } else if (ref) {
-      ctx.warnings.push(`Source map missing for ${pretty}; showing generated names and lines.`);
+      // Reported by `analyze` once classification knows whether the file is the target's or a dependency's.
       result = 'missing';
     }
     cache.set(url, result);

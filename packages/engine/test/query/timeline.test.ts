@@ -24,7 +24,7 @@ describe('timeline lane on the orders server', () => {
   it('lists task blocks with labels and flags long request tasks', () => {
     const requests = lane.tasks.filter((t) => t.kind === TaskKind.Request);
     expect(requests.length).toBeGreaterThanOrEqual(14);
-    expect(requests.every((t) => t.label === 'GET /orders')).toBe(true);
+    expect(requests.every((t) => t.label === 'request · GET /orders')).toBe(true);
     expect(requests.filter((t) => t.long).length).toBe(14);
   });
 

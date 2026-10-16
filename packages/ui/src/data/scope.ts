@@ -2,6 +2,7 @@ import { Origin, applyTransforms, describeFunction } from '@pacesjs/engine';
 import type {
   ExecutionModel,
   FunctionInfo,
+  OriginId,
   Track,
   Transform as EngineTransform,
   TransformedView,
@@ -29,10 +30,23 @@ export function modelCtx(model: ExecutionModel): ModelCtx {
   return { model, pkgs: [...all].sort(), depPkgs: [...deps].sort() };
 }
 
-/** The engine works on one track. "All tracks" has no engine query, so it resolves to the first. */
+/**
+ * The engine works on one track. "All tracks" has no engine query, so the default resolves to the
+ * target process (`model.primaryTrack`), and so does an unknown id.
+ */
 export function trackIndexOf(model: ExecutionModel, id: string): number {
   const i = model.tracks.findIndex((t) => t.id === id);
-  return i < 0 ? 0 : i;
+  return i < 0 ? model.primaryTrack : i;
+}
+
+/**
+ * Display order of the tracks: the target process first, then the other target tracks (its
+ * workers), then supporting launcher processes such as npx.
+ */
+export function trackOrder(model: ExecutionModel): number[] {
+  const rank = (i: number): number =>
+    i === model.primaryTrack ? 0 : model.tracks[i]?.role === 'support' ? 2 : 1;
+  return model.tracks.map((_, i) => i).sort((a, b) => rank(a) - rank(b) || a - b);
 }
 
 /**
@@ -44,6 +58,7 @@ export function toEngineStack(
   ui: readonly Transform[],
   expanded: readonly string[],
   range: TimeRange | null,
+  hide: readonly number[] = [],
 ): EngineTransform[] {
   const F = ctx.model.functions.length;
   const out: EngineTransform[] = [];
@@ -92,6 +107,8 @@ export function toEngineStack(
         break;
     }
   }
+  // Last, so what the other transforms collapsed counts as dependencies and self time moves up.
+  if (hide.length > 0) out.push({ kind: 'hide-origins', origins: [...hide] as OriginId[] });
   return out;
 }
 

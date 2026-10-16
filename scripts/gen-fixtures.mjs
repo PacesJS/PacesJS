@@ -1,7 +1,15 @@
 // Regenerates engine test fixtures by running every zoo app under the real collector.
 // Usage: pnpm fixtures [app-name ...]   (builds packages first: pnpm build)
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -49,6 +57,17 @@ async function buildOrdersServer() {
   });
 }
 
+// The collector writes argv and cwd to <track>.info; readCaptureDir does not surface them yet.
+function surfaceArgv(capture, dir) {
+  for (const track of capture.tracks) {
+    const file = join(dir, 'raw', track.info.id + '.info');
+    if (!existsSync(file)) continue;
+    const info = JSON.parse(readFileSync(file, 'utf8'));
+    if (Array.isArray(info.argv)) track.info.argv = info.argv;
+    if (typeof info.cwd === 'string') track.info.cwd = info.cwd;
+  }
+}
+
 function redact(text) {
   // Order matters: the file URL form contains the forward-slash form.
   let out = text.replaceAll(pathToFileURL(root).href, 'file:///project');
@@ -86,6 +105,7 @@ for (const app of apps) {
     endedBy: 'exit',
     projectRoot: root,
   });
+  surfaceArgv(capture, dir);
   const text = redact(JSON.stringify(capture));
   const file = join(outDir, `${app.name}.capture.json.gz`);
   writeFileSync(file, gzipSync(text, { level: 9 }));

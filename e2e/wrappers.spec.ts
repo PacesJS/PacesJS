@@ -49,6 +49,11 @@ test.describe('wrapper matrix', () => {
       const all = await profile(dir, ['npm', 'run', 'start']);
       expect(all.run.code, all.run.stderr).toBe(0);
       expect(all.session?.manifest.tracks.length).toBeGreaterThanOrEqual(2);
+      expect(all.run.stderr).not.toContain('DEP0190');
+      const noisy = all.run.stderr
+        .split(/\r?\n/)
+        .filter((l) => l.trim() && !l.startsWith('paces:'));
+      expect(noisy).toEqual([]);
 
       const out = join(dir, 'filtered.paces');
       const filtered = await runPaces(

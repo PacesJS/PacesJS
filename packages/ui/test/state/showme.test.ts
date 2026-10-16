@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createState, reducer, snapshotOf } from '../../src/state/reducer';
-import { showMeAction } from '../../src/state/showme';
+import type { Finding } from '@pacesjs/engine';
+import { clearShowMeAction, isShowing, showMeAction, showingText } from '../../src/state/showme';
 import { initialSnapshot } from '../../src/state/types';
 
 describe('Show me', () => {
@@ -76,5 +77,124 @@ describe('Show me', () => {
     const next = snapshotOf(reducer(state, action));
     expect(next.selection).toEqual({ kind: 'fn', fn: 3 });
     expect(next.options.line).toBe(43);
+  });
+});
+
+const finding = (showMe: Finding['showMe'], title = 'Finding'): Finding => ({
+  id: title,
+  kind: 'hot-function',
+  severity: 'medium',
+  title,
+  summary: '',
+  rule: '',
+  impact: 0.1,
+  showMe,
+  evidence: [],
+});
+
+const ctx = { functionCount: 100, packages: ['ajv', 'fast-uri'] };
+
+describe('Show me contract', () => {
+  const run = (showMe: Finding['showMe'], start = initialSnapshot()) => {
+    const state = createState(start);
+    return snapshotOf(reducer(state, showMeAction(showMe, start, 'p1', ctx)));
+  };
+
+  it('selects the package node of a hot dependency and reveals its neighbours', () => {
+    const next = run({ view: 'callgraph', track: 'p1', options: { expandPackage: 'fast-uri' } });
+    expect(next.view).toBe('callgraph');
+    expect(next.selection).toEqual({ kind: 'fn', fn: 101 });
+    expect(next.options.reveal).toEqual([101]);
+    expect(next.transforms.map((t) => t.k)).toContain('collapse-deps');
+  });
+
+  it('opens the waterfall on the lag window and selects that range', () => {
+    const next = run({
+      view: 'timeline',
+      track: 'p1-w1',
+      range: [1000, 5000],
+      options: { delayLane: true },
+    });
+    expect(next.view).toBe('waterfall');
+    expect(next.track).toBe('p1-w1');
+    expect(next.range).toEqual([1000, 5000]);
+    expect(next.selection).toEqual({ kind: 'range', from: 1000, to: 5000 });
+    expect(next.options.task).toBe(-1);
+  });
+
+  it('opens the flame graph on the window of a GC finding', () => {
+    expect(run({ view: 'timeline', range: [1, 9], options: { gcMarkers: true } }).view).toBe(
+      'flame',
+    );
+  });
+
+  it('zooms the flame graph to the call chain of a hot path', () => {
+    const next = run({
+      view: 'flame',
+      track: 'p1',
+      fn: 12,
+      options: { zoomPath: '3,17,12' },
+    });
+    expect(next.view).toBe('flame');
+    expect(next.options.zoomPath).toEqual([3, 17, 12]);
+    expect(next.selection).toEqual({ kind: 'fn', fn: 12 });
+  });
+
+  it('forgets an earlier zoom chain when another target is shown', () => {
+    const start = {
+      ...initialSnapshot(),
+      options: { ...initialSnapshot().options, zoomPath: [1, 2] },
+    };
+    expect(run({ view: 'functions', fn: 4 }, start).options.zoomPath).toEqual([]);
+  });
+
+  it('puts a search target into the search box', () => {
+    const state = createState(initialSnapshot());
+    const action = showMeAction(
+      { view: 'functions', options: { search: 'JSON' } },
+      snapshotOf(state),
+      'p1',
+      ctx,
+    );
+    expect(reducer(state, action).search).toBe('JSON');
+  });
+
+  const targets: Array<[string, Finding['showMe']]> = [
+    ['a function', { view: 'functions', track: 'p1', fn: 7 }],
+    ['a task', { view: 'waterfall', track: 'p1', task: 3 }],
+    ['a package', { view: 'callgraph', track: 'p1', options: { expandPackage: 'ajv' } }],
+    ['a range', { view: 'timeline', track: 'p1', range: [10, 20], options: { delayLane: true } }],
+  ];
+
+  it.each(targets)('knows it is showing %s, and clears it', (_name, showMe) => {
+    const f = finding(showMe);
+    const start = initialSnapshot();
+    expect(isShowing(f, start, '', ctx)).toBe(false);
+    const shown = run(showMe);
+    expect(isShowing(f, shown, '', ctx)).toBe(true);
+    const cleared = snapshotOf(reducer(createState(shown), clearShowMeAction(f, shown)));
+    expect(isShowing(f, cleared, '', ctx)).toBe(false);
+    expect(cleared.selection).toEqual({ kind: 'none' });
+  });
+
+  it('puts plumbing back when clearing an unmerge target', () => {
+    const f = finding({ view: 'flame', options: { unmergePlumbing: true } });
+    const shown = run(f.showMe);
+    expect(isShowing(f, shown, '', ctx)).toBe(true);
+    const cleared = snapshotOf(reducer(createState(shown), clearShowMeAction(f, shown)));
+    expect(cleared.transforms.map((t) => t.k)).toContain('merge-plumbing');
+    expect(isShowing(f, cleared, '', ctx)).toBe(false);
+  });
+
+  it('is no longer showing once the selection moves elsewhere', () => {
+    const f = finding({ view: 'functions', track: 'p1', fn: 7 });
+    const moved = { ...run(f.showMe), selection: { kind: 'fn', fn: 8 } as const };
+    expect(isShowing(f, moved, '', ctx)).toBe(false);
+  });
+
+  it('announces the finding and its target', () => {
+    expect(showingText(finding({ view: 'flame' }, 'Hot function'), 'lineTotal')).toBe(
+      'Showing: Hot function · lineTotal',
+    );
   });
 });

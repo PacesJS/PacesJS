@@ -5,8 +5,12 @@ import type { QueryClient } from '../data/protocol';
 import type { ModelSummary } from '../data/queries';
 import type { HostAdapter } from '../host/adapter';
 import { hashToSnapshot } from '../state/hash';
+import { parsePrefs } from '../state/prefs';
+import type { Prefs } from '../state/prefs';
 import { createState, reducer, snapshotOf } from '../state/reducer';
-import { showMeAction } from '../state/showme';
+import { showMeAction, showMeContext } from '../state/showme';
+import { withVisibleTarget } from '../state/showme-resolve';
+import type { ShowMe } from '@pacesjs/engine';
 import { initialSnapshot } from '../state/types';
 import type { Snapshot } from '../state/types';
 import { Shell } from './Shell';
@@ -24,16 +28,20 @@ interface Ready {
   sessionPath?: string;
   dismissed: string[];
   pinned: string[];
+  prefs: Prefs;
 }
 
 /** Open on the top finding; with no findings, open the flame graph. A hash in the URL wins. */
-export function openingSnapshot(summary: ModelSummary, hash: string): Snapshot {
+export function openingSnapshot(summary: ModelSummary, hash: string, topShowMe?: ShowMe): Snapshot {
   if (hash.length > 1) return hashToSnapshot(hash);
   const base = initialSnapshot();
   const top = summary.findings[0];
   if (!top) return { ...base, view: 'flame' };
+  const showMe = topShowMe ?? top.showMe;
   const primary = summary.tracks[0]?.id ?? '';
-  return snapshotOf(reducer(createState(base), showMeAction(top.showMe, base, primary)));
+  return snapshotOf(
+    reducer(createState(base), showMeAction(showMe, base, primary, showMeContext(summary))),
+  );
 }
 
 async function boot(host: HostAdapter, inProcess: boolean): Promise<Ready> {
@@ -53,6 +61,8 @@ async function boot(host: HostAdapter, inProcess: boolean): Promise<Ready> {
     client = await workerClient(bytes, baselineBytes);
   }
   const summary = await client.summary();
+  const topFinding = summary.findings[0];
+  const top = topFinding ? await withVisibleTarget(client, topFinding.showMe) : undefined;
   const strings = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
   const pinnedSaved = strings(settings['pinnedTracks']);
@@ -61,9 +71,10 @@ async function boot(host: HostAdapter, inProcess: boolean): Promise<Ready> {
   return {
     client,
     summary,
-    initial: openingSnapshot(summary, location.hash),
+    initial: openingSnapshot(summary, location.hash, top),
     sessionPath,
     dismissed: strings(settings['dismissedHints']),
+    prefs: parsePrefs(settings['uiPrefs']),
     pinned: pinnedSaved.length > 0 ? pinnedSaved : summary.tracks.slice(0, 1).map((t) => t.id),
   };
 }
@@ -117,6 +128,7 @@ export function App({ host, inProcess = false }: AppProps) {
       sessionPath={r.sessionPath}
       initialDismissed={r.dismissed}
       initialPinned={r.pinned}
+      initialPrefs={r.prefs}
     />
   );
 }

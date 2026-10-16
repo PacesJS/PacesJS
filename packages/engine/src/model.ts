@@ -48,14 +48,31 @@ export const TASK_KIND_NAMES = [
   'other',
 ] as const;
 
+/** What the profiled program is: a long-running server, a command-line tool, or a plain script. */
+export type RunKind = 'server' | 'cli' | 'script';
+
+/** One aggregated warning per `kind`: never one entry per file. */
+export interface ModelWarning {
+  kind: string;
+  /** 'warn' needs attention (e.g. a missing source map in the target's own code); 'info' is expected. */
+  severity: 'info' | 'warn';
+  summary: string;
+  /** Number of occurrences the summary stands for. */
+  count: number;
+  /** Up to 20 samples (file paths, patterns, track ids). */
+  details: string[];
+}
+
 export interface SessionMeta extends CaptureMeta {
   /** ± measurement precision in microseconds (one sampling interval). */
   precisionUs: number;
   /** Whole-run duration in microseconds. */
   durationUs: number;
   engineVersion: string;
-  /** Warnings raised by passes, e.g. missing source maps. */
-  warnings: string[];
+  /** Aggregated warnings raised by passes, at most one per kind. */
+  warnings: ModelWarning[];
+  /** `server` when request events or a listening server were seen, else `cli` or `script`. */
+  runKind: RunKind;
 }
 
 /** One row per distinct function (after source mapping). */
@@ -75,6 +92,8 @@ export interface FunctionTable {
   mapped: Uint8Array;
   /** 1 = a source map was expected but missing. */
   mapMissing: Uint8Array;
+  /** 1 = module loading: a loader frame (require, Module._load, ...) or a module's top-level function. */
+  loader: Uint8Array;
 }
 
 /** Call tree in depth-first preorder: a node's subtree is the contiguous range [i, subtreeEnd[i]). */
@@ -187,10 +206,26 @@ export interface TaskKindStats {
   plumbing: Float64Array;
 }
 
+/** `target`: the program being profiled (and its workers); `support`: launcher processes such as npx. */
+export type TrackRole = 'target' | 'support';
+
+/** What was profiled. `packages` is empty when the target is the project itself. */
+export interface TargetInfo {
+  /** npm package names whose functions are first-party (origin `user`), e.g. `['eslint']`. */
+  packages: string[];
+  /** Entry script of the primary track: project-relative inside the project root, absolute outside. */
+  entry: string;
+  kind: RunKind;
+}
+
 export interface Track {
   id: TrackId;
   kind: TrackKind;
+  /** e.g. `eslint · pid 128952`, `npx · pid 128196 (supporting)`, `worker 1 · thread 1`. */
   label: string;
+  role: TrackRole;
+  /** Entry script of this track's process ('' when unknown), same form as `TargetInfo.entry`. */
+  entry: string;
   parent?: TrackId;
   callTree: CallTree;
   samples: Samples;
@@ -214,6 +249,7 @@ export type FindingKind =
   | 'sync-io'
   | 'hot-function'
   | 'hot-dependency'
+  | 'hot-path'
   | 'gc-pressure'
   | 'async-overhead'
   | 'heavy-serialization'
@@ -262,4 +298,7 @@ export interface ExecutionModel {
   packages: PackageTable;
   taskKinds: TaskKindStats;
   findings: Finding[];
+  target: TargetInfo;
+  /** Index into `tracks` of the program being profiled: the busiest track that is not supporting. */
+  primaryTrack: number;
 }

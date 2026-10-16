@@ -23,6 +23,13 @@ export interface RunOptions {
   timeoutMs?: number;
 }
 
+// pnpm leaks `npm_config_*` variables npm does not know, so npm prints warnings to stderr.
+function cleanEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.toLowerCase().startsWith('npm_config_')),
+  );
+}
+
 export function tempDir(prefix = 'paces-e2e-'): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
@@ -39,9 +46,13 @@ export function runPaces(args: string[], options: RunOptions = {}): Promise<Pace
     const child = spawn(process.execPath, [PACES_CLI, ...args], {
       cwd: options.cwd ?? ROOT,
       env: {
-        ...process.env,
+        ...cleanEnv(),
         PACES_GRACE_MS: '300',
         PACES_CONFIG_DIR: config,
+        // npm's own update notices go to stderr and vary by day; they are not paces output.
+        NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+        NPM_CONFIG_FUND: 'false',
+        NPM_CONFIG_AUDIT: 'false',
         ...options.env,
       },
       stdio: ['ignore', 'pipe', 'pipe'],

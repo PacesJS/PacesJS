@@ -9,7 +9,13 @@ const model = ordersModel();
 const q = createQueries(model, null, nodeElk);
 const main = model.tracks[0]?.id ?? '';
 const worker = model.tracks[1]?.id ?? '';
-const scope = { track: main, transforms: [...DEFAULT_TRANSFORMS], range: null };
+const scope = {
+  track: main,
+  transforms: [...DEFAULT_TRANSFORMS],
+  range: null,
+  hide: [] as number[],
+};
+const shape = { sort: 'time', minDurUs: 0 } as const;
 const fnNamed = (name: string): number =>
   q.functions(scope, name).rows.find((r) => r.name === name)?.fn ?? -1;
 const lineTotal = fnNamed('lineTotal');
@@ -98,7 +104,7 @@ describe('details and sandwich', () => {
 
 describe('flame data', () => {
   const flame = (zoom: number[] = [], sort: 'heavy' | 'alpha' = 'heavy') =>
-    q.flame(scope, { sort, color: 'origin', zoom });
+    q.flame(scope, { sort, color: 'origin', zoom, zoomPath: [] });
 
   it('starts with an all-samples root covering the full width', () => {
     const f = flame();
@@ -126,16 +132,35 @@ describe('flame data', () => {
     expect(names).toEqual([...names].sort());
   });
 
+  it('zooms to a hot path by function ids, using the longest prefix that exists', () => {
+    const chain = q.hotPaths(scope, 1)[0]?.fns ?? [];
+    const f = q.flame(scope, { sort: 'heavy', color: 'origin', zoom: [], zoomPath: chain });
+    expect(f.crumbs.map((c) => c.name).at(-1)).toBe('lineTotal');
+    expect(f.w[0]).toBe(1);
+    const bogus = q.flame(scope, {
+      sort: 'heavy',
+      color: 'origin',
+      zoom: [],
+      zoomPath: [chain[0] ?? 0, 999_999],
+    });
+    expect(bogus.crumbs).toHaveLength(1);
+  });
+
   it('has no change data without a baseline', () => {
     expect(flame().delta).toBeUndefined();
   });
 });
 
 describe('waterfall', () => {
-  const wf = q.waterfall(scope, -1);
+  const wf = q.waterfall(scope, -1, shape);
 
   it('opens on the longest task and makes the task itself the root row', () => {
-    expect(wf?.rows[0]).toMatchObject({ kind: 'task', depth: 0, name: 'GET /orders', parent: -1 });
+    expect(wf?.rows[0]).toMatchObject({
+      kind: 'task',
+      depth: 0,
+      name: 'request · GET /orders',
+      parent: -1,
+    });
     expect(wf?.rows[0]?.end).toBe(wf?.taskUs);
   });
 
@@ -155,7 +180,7 @@ describe('waterfall', () => {
 
   it('marks the widest child at each level as the critical path, task first', () => {
     const crit = (wf?.criticalRows ?? []).map((id) => wf?.rows[id]?.name);
-    expect(crit.slice(0, 3)).toEqual(['GET /orders', 'getOrders', 'renderInvoice']);
+    expect(crit.slice(0, 3)).toEqual(['request · GET /orders', 'getOrders', 'renderInvoice']);
     expect(wf?.rows.filter((r) => r.critical).map((r) => r.id)).toEqual(wf?.criticalRows);
   });
 
@@ -164,15 +189,34 @@ describe('waterfall', () => {
   });
 
   it('shows a time range when no task is chosen', () => {
-    const r = q.waterfall({ ...scope, range: [394_000, 594_000] }, -1);
+    const r = q.waterfall({ ...scope, range: [394_000, 594_000] }, -1, shape);
     expect(r?.taskIndex).toBe(-1);
     expect(r?.taskLabel).toMatch(/^Range /);
   });
 
-  it('offers the longest task first in the picker', () => {
+  it('puts the longest sibling first when the engine sorts by duration, children under parents', () => {
+    const sorted = q.waterfall(scope, -1, { sort: 'duration', minDurUs: 0 });
+    const rows = sorted?.rows ?? [];
+    const parent = rows.find((r) => rows.filter((k) => k.parent === r.id).length > 2);
+    const lengths = rows.filter((r) => r.parent === parent?.id).map((r) => r.end - r.start);
+    expect(lengths).toEqual([...lengths].sort((a, b) => b - a));
+    expect(rows.map((r) => r.id)).toEqual(rows.map((_, i) => i));
+    expect(rows.slice(1).every((r) => (rows[r.parent]?.depth ?? 99) < r.depth)).toBe(true);
+  });
+
+  it('drops calls under the minimum duration with everything beneath them, keeping the task row', () => {
+    const all = q.waterfall(scope, -1, shape)?.rows.length ?? 0;
+    const kept = q.waterfall(scope, -1, { sort: 'time', minDurUs: 30_000 })?.rows ?? [];
+    expect(kept[0]?.kind).toBe('task');
+    expect(kept.length).toBeLessThan(all);
+    expect(kept.every((r) => r.kind === 'task' || r.end - r.start >= 30_000)).toBe(true);
+  });
+
+  it('groups the task picker by what started the work, longest task flagged', () => {
     const tasks = q.tasks(scope);
-    expect(tasks[0]?.longest).toBe(true);
-    expect(tasks.some((t) => t.label === 'GET /orders')).toBe(true);
+    expect(tasks[0]?.group).toBe('Entry');
+    expect(tasks.filter((t) => t.longest)).toHaveLength(1);
+    expect(tasks.some((t) => t.group === 'Requests' && t.label.endsWith('GET /orders'))).toBe(true);
   });
 });
 
@@ -235,6 +279,70 @@ describe('source', () => {
   });
 });
 
+describe('origin filter', () => {
+  const hide = (...origins: number[]) => ({ ...scope, hide: origins });
+  const row = (name: string, sc = scope) => q.functions(sc, name).rows.find((r) => r.name === name);
+
+  it('removes the hidden origin from the functions table', () => {
+    expect(row('readFileUtf8')?.origin).toBe(4);
+    expect(row('readFileUtf8', hide(4))).toBeUndefined();
+  });
+
+  it('moves the hidden self time to the caller, so totals do not shrink', () => {
+    const before = row('readFileSync');
+    const after = row('readFileSync', hide(4));
+    expect(after?.selfUs).toBeGreaterThan(before?.selfUs ?? 0);
+    expect(after?.totalUs).toBeCloseTo(before?.totalUs ?? 0, 0);
+  });
+
+  it('reports how much time each hidden origin held', () => {
+    const [native] = q.hidden(hide(4));
+    expect(native?.origin).toBe(4);
+    expect(native?.selfUs).toBeGreaterThan(0);
+    expect(q.hidden(scope)).toEqual([]);
+  });
+
+  it('applies to the waterfall rows too', () => {
+    const names = q.waterfall(hide(4), -1, shape)?.rows.map((r) => r.name) ?? [];
+    expect(names).not.toContain('readFileUtf8');
+    expect(names).toContain('readFileSync');
+  });
+
+  it('narrows the functions table to one origin or one package', () => {
+    const mine = q.functions(scope, '', { origins: [0] }).rows;
+    expect(mine.every((r) => r.origin === 0)).toBe(true);
+    const ajv = q.functions(collapsed, '', { pkg: 'ajv' }).rows;
+    expect(ajv.length).toBeGreaterThan(0);
+    expect(ajv.every((r) => r.pkg === 'ajv')).toBe(true);
+  });
+});
+
+describe('hot paths', () => {
+  it('lists the dominant call chains with their time, share and location', () => {
+    const paths = q.hotPaths(scope, 4);
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths[0]?.names.at(-1)).toBe('lineTotal');
+    expect(paths[0]?.share).toBeGreaterThan(0.5);
+    expect(paths[0]?.loc).toMatch(/money\.ts:\d+$/);
+    expect(paths.length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('file outline', () => {
+  it('lists the functions of the same file in line order', () => {
+    const o = q.outline(scope, lineTotal);
+    expect(o?.path).toMatch(/src\/util\/money\.ts$/);
+    expect(o?.items.map((i) => i.name)).toContain('lineTotal');
+    expect(o?.items.map((i) => i.name)).toContain('formatCurrency');
+    const lines = (o?.items ?? []).map((i) => i.line);
+    expect(lines).toEqual([...lines].sort((a, b) => a - b));
+  });
+
+  it('has no outline for a collapsed package', () => {
+    expect(q.outline(collapsed, ajvId())).toBeNull();
+  });
+});
+
 describe('overview lanes', () => {
   const o = q.overview();
 
@@ -245,7 +353,7 @@ describe('overview lanes', () => {
   });
 
   it('splits the lane label into title and detail', () => {
-    expect(o.lanes[0]?.label).toBe('main');
+    expect(o.lanes[0]?.label).toBe('server');
     expect(o.lanes[1]?.label).toBe('worker 1');
   });
 
@@ -264,8 +372,8 @@ describe('describe', () => {
     expect(q.describe(scope, { kind: 'fn', fn: lineTotal }).name).toBe('lineTotal');
     const node = q.describe(scope, { kind: 'node', track: main, path: [271, 279] });
     expect(node).toMatchObject({ name: 'renderInvoice', path: [271, 279] });
-    expect(q.describe(scope, { kind: 'task', track: main, task: 7 }).task?.label).toBe(
-      'GET /orders',
+    expect(q.describe(scope, { kind: 'task', track: main, task: 7 }).task?.label).toMatch(
+      /GET \/orders$/,
     );
     expect(q.describe(scope, { kind: 'none' }).fn).toBeNull();
   });

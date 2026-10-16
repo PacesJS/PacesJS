@@ -20,6 +20,13 @@ const META = {
 };
 
 describe('readCaptureDir', () => {
+  it('copies argv and cwd of each process into its track info', async () => {
+    const r = await runWithPreload(['-e', `${BUSY};busy()`]);
+    const info = readCaptureDir(r.dir, META).tracks[0]?.info;
+    expect(info?.argv?.[0]).toBe(process.execPath);
+    expect(info?.cwd).toBe(process.cwd());
+  });
+
   it('builds tracks for a process and its worker thread, linked by parent', async () => {
     const code = `${BUSY};const {Worker}=require('node:worker_threads');
       new Worker(${JSON.stringify(`${BUSY};busy()`)},{eval:true}).on('exit',()=>busy())`;

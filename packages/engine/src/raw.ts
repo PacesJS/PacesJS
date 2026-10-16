@@ -13,6 +13,10 @@ export interface TrackInfo {
   threadId?: number;
   /** Track that spawned this one (worker -> its process, child process -> parent process). */
   parent?: TrackId;
+  /** Command line of the process: [node, entry script, ...arguments]. Absent in older sessions. */
+  argv?: string[];
+  /** Directory the process ran in. */
+  cwd?: string;
 }
 
 export interface CdpCallFrame {

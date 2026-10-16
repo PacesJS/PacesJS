@@ -2,14 +2,22 @@ import { useEffect, useMemo, useReducer, useRef } from 'react';
 import type { HostAdapter } from '../host/adapter';
 import type { QueryClient } from '../data/protocol';
 import type { ModelSummary, Scope } from '../data/queries';
-import { DetailsDrawer } from '../components/DetailsDrawer';
 import { Header } from '../components/Header';
-import { MainView } from '../components/MainView';
+import { fmtRange } from '../util/format';
 import { Overview } from '../components/Overview';
 import { ShortcutSheet } from '../components/ShortcutSheet';
-import { SourcePanel } from '../components/SourcePanel';
+import { Workspace } from '../components/Workspace';
 import { hashToSnapshot, snapshotToHash } from '../state/hash';
-import { resolveKey } from '../state/keymap';
+import { isTypingTarget, resolveKey } from '../state/keymap';
+import {
+  CLEAR_SELECTION,
+  clearShowMeAction,
+  hasSelection,
+  isShowing,
+  showMeContext,
+  showingText,
+} from '../state/showme';
+import type { Prefs } from '../state/prefs';
 import { createState, reducer, snapshotOf } from '../state/reducer';
 import { addTransform } from '../state/transforms';
 import { ALL_TRACKS } from '../state/types';
@@ -26,9 +34,8 @@ interface ShellProps {
   sessionPath?: string;
   initialDismissed: string[];
   initialPinned: string[];
+  initialPrefs: Prefs;
 }
-
-const SMALL_PROFILE_SAMPLES = 200;
 
 export function Shell({
   host,
@@ -38,18 +45,25 @@ export function Shell({
   sessionPath,
   initialDismissed,
   initialPinned,
+  initialPrefs,
 }: ShellProps) {
   const [state, dispatch] = useReducer(reducer, initial, (snap) => ({
     ...createState(snap),
     dismissed: initialDismissed,
     pinned: initialPinned,
+    prefs: initialPrefs,
   }));
   const snap = snapshotOf(state);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const scope: Scope = useMemo(
-    () => ({ track: snap.track, transforms: snap.transforms, range: snap.range }),
-    [snap.track, snap.transforms, snap.range],
+    () => ({
+      track: snap.track,
+      transforms: snap.transforms,
+      range: snap.range,
+      hide: snap.options.hide,
+    }),
+    [snap.track, snap.transforms, snap.range, snap.options.hide],
   );
   const scopeKey = useMemo(() => JSON.stringify(scope), [scope]);
 
@@ -65,6 +79,7 @@ export function Shell({
       track: null,
       task: null,
       loc: '',
+      plumbing: false,
     };
     return snap.selection.kind === 'fn' ? { ...base, fn: snap.selection.fn } : base;
   }, [describeQ.data, snap.selection]);
@@ -93,17 +108,22 @@ export function Shell({
   }, []);
 
   // Persist dismissed hints and pinned tracks through the host.
-  const savedRef = useRef(JSON.stringify({ d: initialDismissed, p: initialPinned }));
+  const savedRef = useRef(
+    JSON.stringify({ d: initialDismissed, p: initialPinned, u: initialPrefs }),
+  );
   useEffect(() => {
-    const now = JSON.stringify({ d: state.dismissed, p: state.pinned });
+    const now = JSON.stringify({ d: state.dismissed, p: state.pinned, u: state.prefs });
     if (now === savedRef.current) return;
     savedRef.current = now;
-    void host
-      .loadSettings()
-      .then((s) =>
-        host.saveSettings({ ...s, dismissedHints: state.dismissed, pinnedTracks: state.pinned }),
-      );
-  }, [host, state.dismissed, state.pinned]);
+    void host.loadSettings().then((s) =>
+      host.saveSettings({
+        ...s,
+        dismissedHints: state.dismissed,
+        pinnedTracks: state.pinned,
+        uiPrefs: state.prefs,
+      }),
+    );
+  }, [host, state.dismissed, state.pinned, state.prefs]);
 
   // Theme override for screenshots and links: ?theme=dark|light
   useEffect(() => {
@@ -115,9 +135,11 @@ export function Shell({
     document.title = 'paces';
   }, []);
 
+  const summaryRef = useRef(summary);
   const selectionRef = useRef(selection);
   useEffect(() => {
     selectionRef.current = selection;
+    summaryRef.current = summary;
   });
 
   const select = (selection: Selection): void => dispatch({ type: 'select', selection });
@@ -190,6 +212,13 @@ export function Shell({
           break;
         case 'escape':
           if (stateRef.current.shortcutsOpen) dispatch({ type: 'set-shortcuts', open: false });
+          else if (!isTypingTarget(e.target)) {
+            const shown = summaryRef.current.findings.find((f) =>
+              isShowing(f, s, stateRef.current.search, showMeContext(summaryRef.current)),
+            );
+            if (shown) dispatch(clearShowMeAction(shown, s));
+            else if (hasSelection(s)) dispatch(CLEAR_SELECTION);
+          }
           break;
       }
     };
@@ -197,8 +226,14 @@ export function Shell({
     return () => window.removeEventListener('keydown', onKey);
   }, [client]);
 
-  const perTrackSamples = Math.max(0, ...summary.tracks.map((t) => t.samples));
-  const small = perTrackSamples > 0 && perTrackSamples < SMALL_PROFILE_SAMPLES;
+  const ctx = showMeContext(summary);
+  const finding = summary.findings.find((f) => isShowing(f, snap, state.search, ctx));
+  const showing = finding
+    ? showingText(
+        finding,
+        selection.name || (snap.range ? fmtRange(snap.range[0], snap.range[1]) : ''),
+      )
+    : null;
 
   const value: AppContextValue = {
     host,
@@ -220,39 +255,11 @@ export function Shell({
     <AppContext.Provider value={value}>
       <Header searchRef={searchRef} sessionPath={sessionPath} />
       <main className="app-main">
-        {small || summary.warnings.length > 0 ? (
-          <div className="banner-stack">
-            {small ? (
-              <div role="status" className="note">
-                <span className="note-text">
-                  This profile has only {perTrackSamples} samples, so the numbers are statistically
-                  noisy. Run it longer, or sample faster with --interval 100.
-                </span>
-              </div>
-            ) : null}
-            {summary.warnings.map((w) => (
-              <div key={w} role="status" className="note">
-                <span className="note-text">{w}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
         <Overview />
-        <div className="app-grid">
-          <div className="app-col">
-            <MainView />
-            <DetailsDrawer />
-          </div>
-          <aside
-            aria-label="Source"
-            className={`app-aside${state.sourceCollapsed ? ' is-collapsed' : ''}`}
-          >
-            <SourcePanel />
-          </aside>
-        </div>
+        <Workspace />
       </main>
       <div aria-live="polite" className="sr-only" role="status">
-        {selection.name ? `Selected ${selection.name}` : ''}
+        {showing ?? (selection.name ? `Selected ${selection.name}` : '')}
       </div>
       {state.shortcutsOpen ? (
         <ShortcutSheet onClose={() => dispatch({ type: 'set-shortcuts', open: false })} />

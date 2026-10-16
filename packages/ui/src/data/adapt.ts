@@ -1,6 +1,9 @@
 import {
   Origin,
   callGraph,
+  describeTasks,
+  findNode,
+  hotPaths,
   flameLayout,
   functionRows,
   functionSource,
@@ -10,8 +13,8 @@ import {
   waterfallForRange,
   waterfallForTask,
 } from '@pacesjs/engine';
-import type { ExecutionModel, FlameLayout, ModelDiff, Track } from '@pacesjs/engine';
-import { locationOf } from './scope';
+import type { ExecutionModel, FlameLayout, ModelDiff, OriginId, Track } from '@pacesjs/engine';
+import { locationOf, trackOrder } from './scope';
 import type { Scoped } from './scope';
 import type {
   CallGraphData,
@@ -20,7 +23,10 @@ import type {
   Details,
   FlameData,
   FlameOptions,
+  FileOutline,
   FnRow,
+  HiddenOrigin,
+  HotPathRow,
   FunctionsResult,
   LaneData,
   RelatedRow,
@@ -39,18 +45,16 @@ const MIN_SANDWICH_WIDTH = 0.004;
 const taskLabelOf = (model: ExecutionModel, track: Track, i: number): string =>
   model.strings[track.tasks.label[i] ?? 0] || 'task';
 
-export function taskOptions(model: ExecutionModel, track: Track, limit = 25): TaskOption[] {
-  const { tasks } = track;
-  const dur = (i: number): number => (tasks.end[i] ?? 0) - (tasks.start[i] ?? 0);
-  const idx = Array.from({ length: tasks.length }, (_, i) => i).sort(
-    (a, b) => dur(b) - dur(a) || a - b,
-  );
-  return idx.slice(0, limit).map((i, rank) => ({
-    index: i,
-    label: taskLabelOf(model, track, i),
-    startUs: tasks.start[i] ?? 0,
-    durationUs: dur(i),
-    longest: rank === 0,
+/** The task picker's rows: grouped by what started them, the entry point first. */
+export function taskOptions(model: ExecutionModel, trackIndex: number): TaskOption[] {
+  return describeTasks(model, trackIndex).map((d) => ({
+    index: d.index,
+    group: d.group,
+    label: d.label,
+    startUs: d.startUs,
+    durationUs: d.durationUs,
+    busyUs: d.busyUs,
+    longest: d.longest,
   }));
 }
 
@@ -73,6 +77,9 @@ export interface WaterfallRequest {
   /** Task index; -1 means the longest task, or the range when one is given. */
   task: number;
   range: readonly [number, number] | null;
+  /** Sibling order and the shortest call to keep: the engine applies both. */
+  sort: 'time' | 'duration' | 'share';
+  minDurUs: number;
 }
 
 /**
@@ -92,16 +99,18 @@ export function waterfallData(
       ? req.task
       : longestTask(track);
   if (!useRange && task < 0) return null;
+  const opts = { sort: req.sort, minDurationUs: req.minDurUs };
   const wf =
     useRange && req.range
-      ? waterfallForRange(model, s.view, req.range[0], req.range[1])
-      : waterfallForTask(model, s.view, task);
+      ? waterfallForRange(model, s.view, req.range[0], req.range[1], opts)
+      : waterfallForTask(model, s.view, task, opts);
   const t0 = wf.start;
   const spanUs = Math.max(1, wf.end - wf.start);
   const label =
     useRange && req.range
       ? `Range ${(req.range[0] / 1e6).toFixed(1)}–${(req.range[1] / 1e6).toFixed(1)} s`
-      : taskLabelOf(model, track, task);
+      : (describeTasks(model, s.trackIndex).find((d) => d.index === task)?.label ??
+        taskLabelOf(model, track, task));
   const rows: WaterfallRow[] = [
     {
       id: 0,
@@ -157,13 +166,34 @@ export function waterfallData(
 
 // ---- Flame graph ----
 
+/**
+ * The view node a chain of function ids leads to: the longest prefix that exists in this view
+ * (collapsed packages and merged plumbing can remove frames of a hot path). 0 when none does.
+ */
+export function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
+  for (let n = fns.length; n > 0; n--) {
+    const path = fns.slice(0, n).map((f) => s.inn(f));
+    if (path.every((f) => f >= 0)) {
+      const node = findNode(s.view.tree, path);
+      if (node > 0) return node;
+    }
+  }
+  return 0;
+}
+
 export function flameData(
   model: ExecutionModel,
   s: Scoped,
   opts: FlameOptions,
   diff: ModelDiff | null,
 ): FlameData {
-  const zoomLast = opts.zoom.length > 0 ? (opts.zoom[opts.zoom.length - 1] as number) : 0;
+  const pathNode = opts.zoomPath.length > 0 ? zoomNodeOfPath(s, opts.zoomPath) : 0;
+  const zoomLast =
+    pathNode > 0
+      ? pathNode
+      : opts.zoom.length > 0
+        ? (opts.zoom[opts.zoom.length - 1] as number)
+        : 0;
   const layout: FlameLayout = flameLayout(model, s.view, {
     sort: opts.sort === 'alpha' ? 'alphabetical' : 'left-heavy',
     colorBy: diff ? 'diff' : opts.color,
@@ -230,11 +260,19 @@ export function baseTimeUs(s: Scoped, range: readonly [number, number] | null): 
   return Math.max(1, range ? range[1] - range[0] : s.track.durationUs);
 }
 
+export interface FunctionFilter {
+  /** Keep only functions of these origins. */
+  origins?: number[];
+  /** Keep only functions of this package (its collapsed row included). */
+  pkg?: string;
+}
+
 export function functionsTable(
   model: ExecutionModel,
   s: Scoped,
   range: readonly [number, number] | null,
   filter: string,
+  scope: FunctionFilter = {},
 ): FunctionsResult {
   const base = baseTimeUs(s, range);
   const q = filter.trim();
@@ -253,8 +291,12 @@ export function functionsTable(
       loc: locationOf(info),
     };
   };
-  const all = functionRows(model, s.view);
-  const rows = q ? functionRows(model, s.view, { search: q }) : all;
+  const narrow = {
+    ...(scope.origins ? { origins: scope.origins as OriginId[] } : {}),
+    ...(scope.pkg ? { pkg: scope.pkg } : {}),
+  };
+  const all = functionRows(model, s.view, narrow);
+  const rows = q ? functionRows(model, s.view, { ...narrow, search: q }) : all;
   return { rows: rows.map(toRow), totalFns: all.length, baseUs: base };
 }
 
@@ -491,6 +533,57 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
   };
 }
 
+/** Functions that ran in the same file as `fn`, in line order. */
+export function fileOutline(model: ExecutionModel, s: Scoped, fn: number): FileOutline | null {
+  const engineFn = s.inn(fn);
+  if (engineFn < 0 || engineFn >= model.functions.length) return null;
+  const file = s.info(fn).file;
+  if (!file) return null;
+  const items = functionRows(model, s.view, { includeIdle: true })
+    .filter((r) => r.file === file && r.fn < model.functions.length)
+    .map((r) => ({
+      fn: r.fn,
+      name: r.name || '(anonymous)',
+      line: r.line,
+      selfUs: r.self,
+      totalUs: r.total,
+      origin: r.origin,
+    }))
+    .sort((a, b) => a.line - b.line || a.name.localeCompare(b.name) || a.fn - b.fn);
+  return { path: file, items };
+}
+
+// ---- Hot paths and hidden time ----
+
+export function hotPathRows(model: ExecutionModel, s: Scoped, limit: number): HotPathRow[] {
+  return hotPaths(model, s.trackIndex, { limit }).map((p) => {
+    const last = p.locations[p.locations.length - 1];
+    return {
+      fns: p.fns,
+      names: p.locations.map((l) => l.name || '(anonymous)'),
+      loc: last ? (last.line > 0 ? `${last.file}:${last.line}` : last.file) : '',
+      selfUs: p.selfUs,
+      totalUs: p.totalUs,
+      share: p.share,
+    };
+  });
+}
+
+/** Self time of each origin the filter hides, read from the view without the filter. */
+export function hiddenTime(
+  model: ExecutionModel,
+  unfiltered: Scoped,
+  origins: number[],
+): HiddenOrigin[] {
+  return origins.map((origin) => ({
+    origin,
+    selfUs: functionRows(model, unfiltered.view, {
+      origins: [origin as OriginId],
+      includeIdle: true,
+    }).reduce((sum, r) => sum + r.self, 0),
+  }));
+}
+
 // ---- Overview lanes ----
 
 /** Track labels look like "main · pid 4182": the part before the dot is the lane title. */
@@ -545,7 +638,8 @@ export function overviewData(
   bins = 240,
 ): { durationUs: number; bins: number; lanes: LaneData[] } {
   const durationUs = Math.max(model.meta.durationUs, ...model.tracks.map((t) => t.durationUs), 1);
-  const lanes = model.tracks.map((track, index): LaneData => {
+  const lanes = trackOrder(model).map((index): LaneData => {
+    const track = model.tracks[index] as Track;
     const lane = timelineLane(model, index, { buckets: bins, start: 0, end: durationUs });
     const n = track.tasks.length;
     const taskStart = new Float64Array(n);
@@ -575,6 +669,7 @@ export function overviewData(
       id: track.id,
       label: text.title,
       meta: text.meta,
+      support: track.role === 'support',
       durationUs,
       cpu: lane.cpu,
       taskStart,

@@ -1,6 +1,4 @@
 import { createInterface } from 'node:readline';
-import type { AgentSummary } from './engine.js';
-import { findingsOf } from './summary.js';
 
 interface Rpc {
   jsonrpc: '2.0';
@@ -9,33 +7,22 @@ interface Rpc {
   params?: Record<string, unknown>;
 }
 
-const SUPPORTED = ['2025-06-18', '2025-03-26', '2024-11-05'];
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  /** Returns JSON-serializable data; throws an Error with an actionable message for bad input. */
+  run(args: Record<string, unknown>): unknown;
+}
 
-const TOOLS = [
-  {
-    name: 'summary',
-    description:
-      'The full agent summary of this paces profile: findings with evidence and the numbers behind them.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'findings',
-    description:
-      'Only the findings of this paces profile, most important first. Optionally filter by severity.',
-    inputSchema: {
-      type: 'object',
-      properties: { severity: { type: 'string', enum: ['high', 'medium', 'low'] } },
-      additionalProperties: false,
-    },
-  },
-];
+const SUPPORTED = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 function text(value: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
 }
 
 /** Handles one JSON-RPC message; returns the reply, or undefined for notifications. */
-export function handleMcpMessage(msg: Rpc, summary: () => AgentSummary): object | undefined {
+export function handleMcpMessage(msg: Rpc, tools: McpTool[]): object | undefined {
   const reply = (result: unknown): object => ({ jsonrpc: '2.0', id: msg.id ?? null, result });
   const error = (code: number, message: string): object => ({
     jsonrpc: '2.0',
@@ -56,23 +43,25 @@ export function handleMcpMessage(msg: Rpc, summary: () => AgentSummary): object 
     case 'ping':
       return reply({});
     case 'tools/list':
-      return reply({ tools: TOOLS });
+      return reply({
+        tools: tools.map(({ name, description, inputSchema }) => ({
+          name,
+          description,
+          inputSchema,
+        })),
+      });
     case 'tools/call': {
-      const name = msg.params?.name;
-      const args = (msg.params?.arguments ?? {}) as { severity?: string };
+      const tool = tools.find((t) => t.name === msg.params?.name);
+      if (!tool) return error(-32602, `Unknown tool: ${String(msg.params?.name)}`);
+      const args = (msg.params?.arguments ?? {}) as Record<string, unknown>;
       try {
-        if (name === 'summary') return reply(text(summary()));
-        if (name === 'findings') {
-          const all = findingsOf(summary());
-          return reply(text(args.severity ? all.filter((f) => f.severity === args.severity) : all));
-        }
+        return reply(text(tool.run(args)));
       } catch (e) {
         return reply({
           isError: true,
           content: [{ type: 'text', text: e instanceof Error ? e.message : String(e) }],
         });
       }
-      return error(-32602, `Unknown tool: ${String(name)}`);
     }
     default:
       return error(-32601, `Method not found: ${String(msg.method)}`);
@@ -83,7 +72,7 @@ export function handleMcpMessage(msg: Rpc, summary: () => AgentSummary): object 
 export function serveMcp(
   input: NodeJS.ReadableStream,
   output: NodeJS.WritableStream,
-  summary: () => AgentSummary,
+  tools: McpTool[],
 ): Promise<void> {
   const rl = createInterface({ input });
   const write = (m: object): void => {
@@ -98,7 +87,7 @@ export function serveMcp(
       write({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
       return;
     }
-    const out = handleMcpMessage(msg, summary);
+    const out = handleMcpMessage(msg, tools);
     if (out) write(out);
   });
   return new Promise((resolve) => rl.once('close', resolve));

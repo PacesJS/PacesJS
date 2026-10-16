@@ -30,6 +30,9 @@ describe('url hash', () => {
         ...DEFAULT_OPTIONS,
         critical: false,
         pathOnly: true,
+        wfSort: 'duration',
+        minDurUs: 5000,
+        reveal: [101, 102],
         sort: 'alpha',
         zoom: [1, 5, 9],
         task: 4,
@@ -43,6 +46,7 @@ describe('url hash', () => {
   const selections: Selection[] = [
     { kind: 'fn', fn: 12 },
     { kind: 'node', track: 'main', path: [4, 5, 6] },
+    { kind: 'node', track: 'main', path: [4, 5, 6], row: 12 },
     { kind: 'task', track: 'main', task: 0 },
     { kind: 'range', from: 5, to: 99 },
   ];

@@ -38,6 +38,19 @@ describe('capture <-> files', () => {
 });
 
 describe('writeSession / readSession', () => {
+  it('round-trips argv and cwd of each track', () => {
+    const capture = fixture('hot-regex');
+    const first = capture.tracks[0];
+    if (!first) throw new Error('fixture has no track');
+    first.info.argv = ['node', '/p/app.js', '--flag'];
+    first.info.cwd = '/p';
+    const back = readSession(writeSession(capture, { engineVersion: '1.0.0' }));
+    expect(back.capture.tracks[0]?.info).toMatchObject({
+      argv: ['node', '/p/app.js', '--flag'],
+      cwd: '/p',
+    });
+  });
+
   const engineVersion = '1.2.3';
 
   it('round-trips the capture and records the manifest fields', () => {

@@ -1,8 +1,9 @@
 import type { RefObject } from 'react';
 import { useApp } from '../app/context';
 import { canBack, canForward } from '../state/history';
-import { fmtRun, fmtSamples } from '../util/format';
+import { displayEntry, fmtRun, fmtSamples } from '../util/format';
 import { Icon } from './Icon';
+import { NotesChip } from './NotesChip';
 import { TransformBar } from './TransformBar';
 
 interface HeaderProps {
@@ -20,7 +21,12 @@ const ENDED_BY: Record<string, string> = {
 export function Header({ searchRef, sessionPath }: HeaderProps) {
   const { summary, state, snap, dispatch, onSearchEnter } = useHeader();
   const command = summary.command.join(' ');
-  const perTrack = Math.max(0, ...summary.tracks.map((t) => t.samples));
+  const perTrack = Math.max(
+    0,
+    ...summary.tracks.filter((t) => t.role === 'target').map((t) => t.samples),
+  );
+  const trackId = snap.track === 'all' ? summary.primaryTrack : snap.track;
+  const track = summary.tracks.find((t) => t.id === trackId);
   const intervalMs = summary.intervalUs / 1000;
   const precisionMs = summary.precisionUs / 1000;
   const fmtMsPlain = (n: number): string => `${Number.isInteger(n) ? n : n.toFixed(1)} ms`;
@@ -74,27 +80,44 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
             <dt>Ended by</dt>
             <dd>{ENDED_BY[summary.endedBy] ?? summary.endedBy}</dd>
           </div>
+          {summary.target.entry ? (
+            <div className="header-stat">
+              <dt>Entry</dt>
+              <dd className="header-entry" title={summary.target.entry}>
+                {displayEntry(summary.target.entry)}
+              </dd>
+            </div>
+          ) : null}
         </dl>
         <span className="precision-badge" title="Sampled profile: timings are estimates">
           <Icon name="clock" size={14} />
           Sampled · {fmtMsPlain(intervalMs)} · ±{fmtMsPlain(precisionMs)}
         </span>
+        <NotesChip />
         <div className="header-spacer" />
         <div className="field">
           <label htmlFor="track-pick">Tracks</label>
           <select
             id="track-pick"
             className="select"
-            value={snap.track}
+            value={trackId}
             onChange={(e) => dispatch({ type: 'go', patch: { track: e.target.value } })}
           >
-            <option value="all">All {summary.tracks.length} tracks</option>
             {summary.tracks.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.label}
               </option>
             ))}
           </select>
+          {track?.role === 'support' ? (
+            <span
+              className="support-note"
+              title="npx/npm wrapper process: it launches the target and does little work itself"
+            >
+              <Icon name="info" size={14} />
+              supporting
+            </span>
+          ) : null}
         </div>
         <div className="search">
           <label htmlFor="search" className="sr-only">

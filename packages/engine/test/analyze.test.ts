@@ -34,7 +34,15 @@ describe('analyze', () => {
     const m = analyze(bare);
     expect(m.tracks.length).toBe(2);
     expect(m.tracks[1]?.samples.length).toBe(0);
-    expect(m.meta.warnings).toEqual(['Track w1 has no CPU profile; it is shown without samples.']);
+    expect(m.meta.warnings).toEqual([
+      {
+        kind: 'no-profile',
+        severity: 'warn',
+        summary: '1 track has no CPU profile; shown without samples.',
+        count: 1,
+        details: ['w1'],
+      },
+    ]);
   });
 
   it('handles a capture with no tracks', () => {

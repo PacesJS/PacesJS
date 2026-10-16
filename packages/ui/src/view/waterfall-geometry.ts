@@ -12,9 +12,16 @@ export const WF = {
 } as const;
 
 /** Left and right edge of the bar column inside a row container of the given width. */
-export function barColumn(containerWidth: number): { x0: number; x1: number } {
-  const x0 = WF.pad + WF.nameCol + WF.gap;
-  const x1 = containerWidth - WF.pad - WF.shareCol - WF.gap - WF.timeCol - WF.gap;
+export function barColumn(
+  containerWidth: number,
+  cols: { call: number; time: number; share: number } = {
+    call: WF.nameCol,
+    time: WF.timeCol,
+    share: WF.shareCol,
+  },
+): { x0: number; x1: number } {
+  const x0 = WF.pad + cols.call + WF.gap;
+  const x1 = containerWidth - WF.pad - cols.share - WF.gap - cols.time - WF.gap;
   return { x0, x1: Math.max(x0 + 1, x1) };
 }
 

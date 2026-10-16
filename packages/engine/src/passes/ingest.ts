@@ -179,7 +179,7 @@ function ingestTrack(
   };
 
   if (!profile || profile.nodes.length === 0) {
-    ctx.warnings.push(`Track ${track.info.id} has no CPU profile; it is shown without samples.`);
+    ctx.warnings.push({ kind: 'no-profile', severity: 'warn', detail: track.info.id });
     const root = frameFor('(root)||-1|-1', '(root)', '', -1, -1);
     return {
       deltas: [],

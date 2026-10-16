@@ -164,3 +164,19 @@ export function useElementWidth(el: HTMLElement | null): number {
   }, [el]);
   return el ? w : 0;
 }
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+
+/** Text width in CSS pixels for a font; falls back to an estimate where canvas is missing (jsdom). */
+export function measureText(text: string, font: string): number {
+  if (measureCtx === undefined) {
+    try {
+      measureCtx = document.createElement('canvas').getContext('2d');
+    } catch {
+      measureCtx = null;
+    }
+  }
+  if (!measureCtx) return text.length * 7;
+  measureCtx.font = font;
+  return measureCtx.measureText(text).width;
+}

@@ -12,7 +12,7 @@ for (const scheme of ['light', 'dark'] as const) {
     test.use({ colorScheme: scheme, viewport: { width: 1440, height: 900 } });
 
     test('source panel and details drawer with a function selected', async ({ app }) => {
-      await app.getByRole('button', { name: 'Show me: Hot function' }).first().click();
+      // The session opens on the top finding (a hot function), so its source is already docked.
       await expect(
         app.getByRole('region', { name: 'Source' }).getByRole('heading', { name: 'lineTotal' }),
       ).toBeVisible();

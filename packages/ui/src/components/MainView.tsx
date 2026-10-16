@@ -2,8 +2,10 @@ import { useApp } from '../app/context';
 import { VIEW_LABELS, VIEW_ORDER } from '../state/types';
 import type { ViewId } from '../state/types';
 import { CallGraph } from './CallGraph';
+import { FilterBar } from './FilterBar';
 import { FlameGraph } from './FlameGraph';
 import { FunctionsTable } from './FunctionsTable';
+import { SourceView } from './SourceView';
 import { Waterfall } from './Waterfall';
 
 function ActiveView({ view }: { view: ViewId }) {
@@ -16,6 +18,8 @@ function ActiveView({ view }: { view: ViewId }) {
       return <CallGraph />;
     case 'functions':
       return <FunctionsTable />;
+    case 'source':
+      return <SourceView />;
   }
 }
 
@@ -38,6 +42,7 @@ export function MainView() {
           </button>
         ))}
       </nav>
+      {snap.view === 'source' ? null : <FilterBar />}
       <ActiveView view={snap.view} />
     </section>
   );

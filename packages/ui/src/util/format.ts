@@ -51,3 +51,13 @@ export function fmtRange(fromUs: number, toUs: number): string {
 export function fmtSamples(n: number): string {
   return `~${Math.round(n).toLocaleString('en-US')}`;
 }
+
+/**
+ * Shorten an entry path for display: `.../node_modules/.pnpm/x@1/node_modules/x/bin/x.js` becomes
+ * `x/bin/x.js`; other paths are unchanged.
+ */
+export function displayEntry(path: string): string {
+  const marker = 'node_modules/';
+  const at = path.lastIndexOf(marker);
+  return at < 0 ? path : path.slice(at + marker.length);
+}

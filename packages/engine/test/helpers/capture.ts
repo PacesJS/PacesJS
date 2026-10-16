@@ -13,6 +13,8 @@ export const FIXTURES = [
   'late-require',
   'rxjs-chain',
   'worker-imbalance',
+  'eslint-cli',
+  'eslint-cli-wrapped',
 ] as const;
 export type FixtureName = (typeof FIXTURES)[number];
 

@@ -26,6 +26,7 @@ const VIEW_KEYS: Record<string, ViewId> = {
   '2': 'flame',
   '3': 'callgraph',
   '4': 'functions',
+  '5': 'source',
 };
 
 const LETTER_ACTIONS: Record<string, KeyAction> = {
@@ -49,7 +50,7 @@ export interface KeyShortcut {
 }
 
 export const SHORTCUTS: readonly KeyShortcut[] = [
-  { keys: '1 2 3 4', label: 'Waterfall, Flame graph, Call graph, Functions' },
+  { keys: '1 2 3 4 5', label: 'Waterfall, Flame graph, Call graph, Functions, Source' },
   { keys: '/', label: 'Search functions, files and packages' },
   { keys: 'f', label: 'Focus on the selected subtree' },
   { keys: 'm', label: 'Merge the selected function into its callers' },

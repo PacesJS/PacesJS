@@ -8,6 +8,7 @@ describe('keymap', () => {
     ['2', { type: 'view', view: 'flame' }],
     ['3', { type: 'view', view: 'callgraph' }],
     ['4', { type: 'view', view: 'functions' }],
+    ['5', { type: 'view', view: 'source' }],
     ['/', { type: 'focus-search' }],
     ['f', { type: 'focus-subtree' }],
     ['m', { type: 'merge' }],

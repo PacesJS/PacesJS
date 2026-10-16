@@ -1,18 +1,22 @@
 // Pass 9: rule-based findings. Each rule is a pure function of the finished model and the
 // thresholds; the thresholds are echoed in the finding's `rule` text so users can see why it fired.
 
+import { DEFAULT_SUPPRESS_FOR_CLI } from '../config.js';
 import type { Thresholds } from '../config.js';
 import { Origin, TaskKind } from '../model.js';
 import type { ExecutionModel, Finding, FindingKind, FnId, Severity, Track } from '../model.js';
+import { hotPaths } from '../query/paths.js';
 import { formatDuration, formatPercent, plural } from '../util/format.js';
+import { displayPath } from '../util/paths.js';
 import type { PassContext } from './types.js';
 
-type Rule = (model: ExecutionModel, th: Thresholds) => Finding[];
+type Rule = (model: ExecutionModel, th: Thresholds, ctx: PassContext) => Finding[];
 
 const KIND_ORDER: FindingKind[] = [
   'event-loop-blocked',
   'sync-io',
   'hot-function',
+  'hot-path',
   'hot-dependency',
   'gc-pressure',
   'async-overhead',
@@ -30,6 +34,11 @@ const text = (m: ExecutionModel, id: number): string => m.strings[id] ?? '';
 const fnName = (m: ExecutionModel, fn: FnId): string =>
   text(m, m.functions.name[fn] ?? 0) || '(anonymous)';
 const fnFile = (m: ExecutionModel, fn: FnId): string => text(m, m.functions.file[fn] ?? 0);
+/** `name (file:line)`: enough to open the function. */
+const place = (m: ExecutionModel, fn: FnId): string =>
+  `${displayPath(fnFile(m, fn)) || 'unknown'}:${m.functions.line[fn] ?? 0}`;
+const where = (m: ExecutionModel, fn: FnId): string => `${fnName(m, fn)} (${place(m, fn)})`;
+const isTargetTrack = (m: ExecutionModel, ti: number): boolean => m.tracks[ti]?.role === 'target';
 const originOf = (m: ExecutionModel, fn: FnId): number => m.functions.origin[fn] ?? Origin.User;
 
 function lowerBound(a: Float64Array, x: number): number {
@@ -57,14 +66,15 @@ function isSteadyTask(track: Track, k: number): boolean {
 /** Busy time (microseconds) of all tasks outside startup, for every track. */
 function steadyBusy(m: ExecutionModel): number {
   let total = 0;
-  for (const t of m.tracks) {
+  m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     for (let k = 0; k < t.tasks.length; k++) if (isSteadyTask(t, k)) total += t.tasks.busy[k] ?? 0;
-  }
+  });
   return total;
 }
 
 function totalBusy(m: ExecutionModel): number {
-  return m.tracks.reduce((n, t) => n + t.busyUs, 0);
+  return m.tracks.reduce((n, t, ti) => n + (isTargetTrack(m, ti) ? t.busyUs : 0), 0);
 }
 
 function severityBy(value: number, high: number, medium: number): Severity {
@@ -126,6 +136,7 @@ const eventLoopBlocked: Rule = (m, th) => {
   const limit = th.longTaskMs * 1000;
   const long: Array<{ track: number; task: number; dur: number }> = [];
   m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     for (let k = 0; k < t.tasks.length; k++) {
       const dur = (t.tasks.end[k] ?? 0) - (t.tasks.start[k] ?? 0);
       if (isSteadyTask(t, k) && dur > limit) long.push({ track: ti, task: k, dur });
@@ -137,15 +148,16 @@ const eventLoopBlocked: Rule = (m, th) => {
   const track = worst ? m.tracks[worst.track] : undefined;
   if (!worst || !track) return [];
   const sum = long.reduce((n, x) => n + x.dur, 0);
-  const wall = m.tracks.reduce((n, t) => n + t.durationUs, 0) || 1;
+  const wall = m.tracks.reduce((n, t, ti) => n + (isTargetTrack(m, ti) ? t.durationUs : 0), 0) || 1;
   const top = topFnInTask(m, track, worst.task, (fn) => m.functions.plumbing[fn] !== 1);
+  const culprit = top === undefined ? '' : ` Most of it ran in ${where(m, top)}.`;
   return [
     {
       id: `event-loop-blocked:${track.id}`,
       kind: 'event-loop-blocked',
       severity: severityBy(worst.dur, 250_000, 100_000),
       title: 'Event loop blocked',
-      summary: `${long.length} ${plural(long.length, 'task', 'tasks')} ran longer than ${th.longTaskMs} ms; the worst held the event loop for ${formatDuration(worst.dur)}.`,
+      summary: `${long.length} ${plural(long.length, 'task', 'tasks')} ran longer than ${th.longTaskMs} ms; the worst held the event loop for ${formatDuration(worst.dur)}.${culprit}`,
       rule: `Any task longer than ${th.longTaskMs} ms, not counting startup (main) tasks.`,
       impact: Math.min(1, sum / wall),
       showMe: {
@@ -171,6 +183,7 @@ const syncIo: Rule = (m, th) => {
   const byFn = new Map<FnId, Hit>();
   let denominator = 0;
   m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     const tree = t.callTree;
     // Outermost synchronous API frame above each node, skipping module loading (reported on its own).
     const anchor = new Int32Array(tree.length).fill(-1);
@@ -225,7 +238,7 @@ const syncIo: Rule = (m, th) => {
       kind: 'sync-io',
       severity: severityBy(share, 0.25, 0.1),
       title: 'Synchronous I/O on a hot path',
-      summary: `${api} runs synchronously inside request and timer tasks: ${formatDuration(total)} in total (${formatPercent(share)} of their time).`,
+      summary: `${api} runs synchronously inside request and timer tasks: ${formatDuration(total)} in total (${formatPercent(share)} of their time)${caller === undefined ? '' : `, called from ${where(m, caller)}`}.`,
       rule: `fs, child_process, zlib or crypto *Sync call inside a request or timer task, at least ${th.syncIoMinMs} ms in total.`,
       impact: Math.min(1, share),
       showMe: {
@@ -245,6 +258,7 @@ const syncIo: Rule = (m, th) => {
 function effectiveUserSelf(m: ExecutionModel): Map<FnId, { us: number; track: number }> {
   const perTrack = new Map<FnId, number[]>();
   m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     const tree = t.callTree;
     const target = new Int32Array(tree.length).fill(-1);
     for (let n = 1; n < tree.length; n++) {
@@ -289,7 +303,7 @@ const hotFunction: Rule = (m, th) => {
         kind: 'hot-function',
         severity: severityBy(share, 0.4, 0.2),
         title: 'Hot function',
-        summary: `${fnName(m, fn)} takes ${formatPercent(share)} of all CPU time (${formatDuration(v.us)} of its own work).`,
+        summary: `${where(m, fn)} takes ${formatPercent(share)} of all CPU time (${formatDuration(v.us)} of its own work).`,
         rule: `A user function above ${formatPercent(th.hotFunctionShare)} of busy time; native frames it calls (regex, builtins) count as its own.`,
         impact: Math.min(1, share),
         showMe: {
@@ -306,19 +320,27 @@ const hotFunction: Rule = (m, th) => {
 };
 
 const hotDependency: Rule = (m, th) => {
-  const base = steadyBusy(m);
+  // A server's startup is not its steady state; a command has nothing but startup.
+  const server = m.meta.runKind === 'server';
+  const base = server
+    ? steadyBusy(m)
+    : m.tracks.reduce((n, t, ti) => n + (isTargetTrack(m, ti) ? t.busyUs : 0), 0);
   if (base / m.meta.precisionUs < th.minSamples) return [];
+  // The target is what is being profiled, so its own package is never a finding.
+  const targetPkgs = new Set(m.target.packages.map((name) => m.strings.indexOf(name)));
   const byPkg = new Map<number, { us: number; top: Map<FnId, number>; track: number }>();
   m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     const tree = t.callTree;
     // Package of each node's own frame; plumbing frames do not count as the package's work.
     const own = new Uint32Array(tree.length);
     for (let n = 1; n < tree.length; n++) {
       const fn = tree.fn[n] ?? 0;
-      own[n] = m.functions.plumbing[fn] === 1 ? 0 : (m.functions.pkg[fn] ?? 0);
+      const pkg = m.functions.plumbing[fn] === 1 ? 0 : (m.functions.pkg[fn] ?? 0);
+      own[n] = targetPkgs.has(pkg) ? 0 : pkg;
     }
     for (let k = 0; k < t.tasks.length; k++) {
-      if (!isSteadyTask(t, k)) continue;
+      if (server && !isSteadyTask(t, k)) continue;
       const [a, b] = taskRange(t, k);
       for (let i = a; i < b; i++) {
         const leaf = t.samples.node[i] ?? 0;
@@ -330,8 +352,9 @@ const hotDependency: Rule = (m, th) => {
           seen.push(p);
           const entry = byPkg.get(p) ?? { us: 0, top: new Map(), track: ti };
           entry.us += dur;
-          const leafFn = tree.fn[leaf] ?? 0;
-          entry.top.set(leafFn, (entry.top.get(leafFn) ?? 0) + dur);
+          // The deepest function of the package on this stack, not the native frame under it.
+          const own1 = tree.fn[n] ?? 0;
+          entry.top.set(own1, (entry.top.get(own1) ?? 0) + dur);
           byPkg.set(p, entry);
         }
       }
@@ -346,13 +369,14 @@ const hotDependency: Rule = (m, th) => {
       const top = [...v.top.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
       const name = text(m, pkg);
       const track = m.tracks[v.track];
+      const hottest = top === undefined ? '' : `, mostly in ${where(m, top)}`;
       return {
         id: `hot-dependency:${name}`,
         kind: 'hot-dependency',
         severity: severityBy(share, 0.5, 0.35),
         title: 'Hot dependency',
-        summary: `${name} accounts for ${formatPercent(share)} of the time outside startup (${formatDuration(v.us)}).`,
-        rule: `An npm package above ${formatPercent(th.hotDependencyShare)} of busy time outside startup, not counting its plumbing frames.`,
+        summary: `${name} accounts for ${formatPercent(share)} of the ${server ? 'time outside startup' : 'busy time'} (${formatDuration(v.us)})${hottest}.`,
+        rule: `An npm package above ${formatPercent(th.hotDependencyShare)} of busy time${server ? ' outside startup' : ''}, not counting its plumbing frames or the target package itself.`,
         impact: Math.min(1, share),
         showMe: {
           view: 'callgraph',
@@ -367,7 +391,8 @@ const hotDependency: Rule = (m, th) => {
 
 const gcPressure: Rule = (m, th) => {
   let best: { track: Track; share: number; pause: number; at: number; total: number } | undefined;
-  for (const t of m.tracks) {
+  for (const [ti, t] of m.tracks.entries()) {
+    if (!isTargetTrack(m, ti)) continue;
     const gc = t.events.gc;
     if (gc.time.length === 0 || t.durationUs <= 0) continue;
     let total = 0;
@@ -429,6 +454,7 @@ const asyncOverhead: Rule = (m, th) => {
   const acc = new Map<FnId, number>();
   let trackIndex = 0;
   m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     for (let k = 0; k < t.tasks.length; k++) {
       if (t.tasks.kind[k] !== worst?.kind) continue;
       const [a, b] = taskRange(t, k);
@@ -476,6 +502,7 @@ const heavySerialization: Rule = (m, th) => {
   let bestUs = 0;
   const fns = new Set<FnId>();
   m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     const tree = t.callTree;
     const own = new Int32Array(tree.length).fill(-1);
     let trackUs = 0;
@@ -531,6 +558,7 @@ const lateModuleLoading: Rule = (m, th) => {
   let total = 0;
   let denominator = 0;
   m.tracks.forEach((t, ti) => {
+    if (!isTargetTrack(m, ti)) return;
     const tree = t.callTree;
     // Outermost frame of the module loader on each node's path.
     const loader = new Int32Array(tree.length).fill(-1);
@@ -574,7 +602,7 @@ const lateModuleLoading: Rule = (m, th) => {
       kind: 'late-module-loading',
       severity: severityBy(share, 0.3, 0.1),
       title: 'Late module loading',
-      summary: `Modules are loaded while serving requests: ${formatDuration(total)} in total (${formatPercent(share)} of request time).`,
+      summary: `Modules are loaded while serving requests: ${formatDuration(total)} in total (${formatPercent(share)} of request time), the largest being ${where(m, hit.fn)}.`,
       rule: `require or import() inside a request task, after startup, at least ${th.lateLoadMinMs} ms in total.`,
       impact: Math.min(1, share),
       showMe: {
@@ -592,7 +620,8 @@ const lateModuleLoading: Rule = (m, th) => {
 const eventLoopLag: Rule = (m, th) => {
   const limit = th.loopLagP99Ms * 1000;
   let worst: { track: Track; p99: number; at: number } | undefined;
-  for (const t of m.tracks) {
+  for (const [ti, t] of m.tracks.entries()) {
+    if (!isTargetTrack(m, ti)) continue;
     const loop = t.events.loop;
     for (let i = 0; i < loop.time.length; i++) {
       const p99 = loop.p99[i] ?? 0;
@@ -623,10 +652,48 @@ const eventLoopLag: Rule = (m, th) => {
   ];
 };
 
+const hotPath: Rule = (m, th) => {
+  // On a server hot-function already names the culprit; chains matter for commands and scripts.
+  if (m.meta.runKind === 'server') return [];
+  const track = m.tracks[m.primaryTrack];
+  if (!track) return [];
+  // Loading modules is reported as startup work; the finding is about what the target computes.
+  const top = hotPaths(m, m.primaryTrack, {
+    limit: 5,
+    minShare: th.hotPathShare,
+    origin: Origin.User,
+  }).find((p) => m.functions.loader[p.fns[p.fns.length - 1] ?? 0] !== 1);
+  if (!top || top.fns.length < 2 || top.totalUs / m.meta.precisionUs < th.minSamples) return [];
+  const last = top.fns[top.fns.length - 1] ?? 0;
+  const tail = top.fns.slice(-4);
+  const chain = tail.map((fn) => fnName(m, fn)).join(' → ');
+  const lead = top.fns.length > tail.length ? '… → ' : '';
+  return [
+    {
+      id: `hot-path:${track.id}:${last}`,
+      kind: 'hot-path',
+      severity: severityBy(top.share, 0.5, 0.3),
+      title: 'Hot path',
+      summary: `${lead}${chain} (${place(m, last)}): ${formatDuration(top.totalUs)} total, ${formatPercent(top.share)} of busy time.`,
+      rule: `The deepest call chain in the target's own code that still carries ${formatPercent(th.hotPathShare)} of busy time; plumbing and dependency frames fold into their caller.`,
+      impact: Math.min(1, top.share),
+      showMe: {
+        view: 'flame',
+        track: track.id,
+        fn: last,
+        options: { zoomPath: top.fns.join(',') },
+      },
+      evidence: tail,
+      track: track.id,
+    },
+  ];
+};
+
 const RULES: Rule[] = [
   eventLoopBlocked,
   syncIo,
   hotFunction,
+  hotPath,
   hotDependency,
   gcPressure,
   asyncOverhead,
@@ -636,7 +703,11 @@ const RULES: Rule[] = [
 ];
 
 export function findIssues(model: ExecutionModel, ctx: PassContext): Finding[] {
-  const all = RULES.flatMap((rule) => rule(model, ctx.thresholds));
+  const suppressed =
+    model.meta.runKind === 'server' ? [] : (ctx.options.suppressForCli ?? DEFAULT_SUPPRESS_FOR_CLI);
+  const all = RULES.flatMap((rule) => rule(model, ctx.thresholds, ctx)).filter(
+    (f) => !suppressed.includes(f.kind),
+  );
   return all.sort(
     (a, b) =>
       SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||

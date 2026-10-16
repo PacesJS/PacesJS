@@ -9,6 +9,7 @@ export interface Flags {
   include: string[];
   exclude: string[];
   json: boolean;
+  focus: string[];
 }
 
 export type Parsed =
@@ -45,6 +46,7 @@ Flags (before --)
   --no-open              print the URL instead of opening a window
   --include <glob>       only profile matching processes (repeatable)
   --exclude <glob>       skip matching processes (repeatable)
+  --focus <pkg|glob>     rank this package or path first in findings and summaries (repeatable)
 `;
 
 const VALUE_FLAGS = new Set([
@@ -54,6 +56,7 @@ const VALUE_FLAGS = new Set([
   '--out',
   '--include',
   '--exclude',
+  '--focus',
 ]);
 const BOOL_FLAGS = new Set(['--async', '--embed-sources', '--no-open', '--json']);
 const COMMANDS = new Set(['open', 'diff', 'import', 'summary', 'mcp']);
@@ -78,6 +81,7 @@ export function parseArgs(argv: string[]): Parsed {
     include: [],
     exclude: [],
     json: false,
+    focus: [],
   };
   const positional: string[] = [];
   let help = false;
@@ -119,6 +123,7 @@ export function parseArgs(argv: string[]): Parsed {
     else if (name === '--start-on') flags.startOn = value;
     else if (name === '--out') flags.out = value;
     else if (name === '--include') flags.include.push(value);
+    else if (name === '--focus') flags.focus.push(value);
     else flags.exclude.push(value);
   }
 

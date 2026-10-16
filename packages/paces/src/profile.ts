@@ -181,7 +181,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
     cwd,
     env,
     stdio: 'inherit',
-    shell: plan.shell,
+    windowsVerbatimArguments: plan.verbatim,
     windowsHide: false,
   });
   const spawnFailed = new Promise<never>((_, reject) =>

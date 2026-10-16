@@ -29,6 +29,9 @@ export const QUERY_NAMES: readonly QueryName[] = [
   'sandwich',
   'callGraph',
   'source',
+  'outline',
+  'hotPaths',
+  'hidden',
   'describe',
   'packageOf',
 ];

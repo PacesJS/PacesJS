@@ -45,39 +45,77 @@ interface Workers {
   baseUrl: string;
   /** Zoo capture the dev host serves as the baseline session (differential mode); null for none. */
   baselineFixture: string | null;
+  /** Start (once per worker) a preview server for another capture and return its URL. */
+  serve(fixture: string, baseline?: string): Promise<string>;
+}
+
+interface Preview {
+  url: string;
+  stop(): void;
+}
+
+async function startPreview(env: Record<string, string>): Promise<Preview> {
+  if (!existsSync(resolve(UI_DIR, 'dist/index.html'))) {
+    throw new Error('The UI is not built. Run `pnpm --filter @pacesjs/ui build` first.');
+  }
+  const port = await freePort();
+  const child = spawn(
+    process.execPath,
+    [VITE_BIN, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    {
+      cwd: UI_DIR,
+      stdio: 'ignore',
+      env: { ...process.env, VITE_CONFIG_NATIVE_IGNORE_WARNING: 'true', ...env },
+    },
+  );
+  const url = `http://127.0.0.1:${port}`;
+  try {
+    await waitForServer(`${url}/api/session`, child);
+  } catch (e) {
+    child.kill();
+    throw e;
+  }
+  return { url, stop: () => child.kill() };
 }
 
 /**
- * Serves the built UI plus the dev host API (ORDERS-SERVER fixture) with `vite preview`.
- * Build first: `pnpm --filter @pacesjs/ui build`.
+ * Serves the built UI plus the dev host API (ORDERS-SERVER fixture by default) with
+ * `vite preview`. Build first: `pnpm --filter @pacesjs/ui build`.
  */
 export const test = base.extend<{ app: Page }, Workers>({
   baselineFixture: [null, { option: true, scope: 'worker' }],
   baseUrl: [
     async ({ baselineFixture }, use) => {
-      if (!existsSync(resolve(UI_DIR, 'dist/index.html'))) {
-        throw new Error('The UI is not built. Run `pnpm --filter @pacesjs/ui build` first.');
-      }
-      const PORT = await freePort();
-      const child = spawn(
-        process.execPath,
-        [VITE_BIN, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'],
-        {
-          cwd: UI_DIR,
-          stdio: 'ignore',
-          env: {
-            ...process.env,
-            VITE_CONFIG_NATIVE_IGNORE_WARNING: 'true',
-            ...(baselineFixture ? { PACES_DEV_BASELINE: baselineFixture } : {}),
-          },
-        },
+      const preview = await startPreview(
+        baselineFixture ? { PACES_DEV_BASELINE: baselineFixture } : {},
       );
-      const baseUrl = `http://127.0.0.1:${PORT}`;
       try {
-        await waitForServer(`${baseUrl}/api/session`, child);
-        await use(baseUrl);
+        await use(preview.url);
       } finally {
-        child.kill();
+        preview.stop();
+      }
+    },
+    { scope: 'worker', auto: false },
+  ],
+  serve: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      const running = new Map<string, Preview>();
+      try {
+        await use(async (fixture, baseline) => {
+          const key = `${fixture}|${baseline ?? ''}`;
+          let preview = running.get(key);
+          if (!preview) {
+            preview = await startPreview({
+              PACES_DEV_FIXTURE: fixture,
+              ...(baseline ? { PACES_DEV_BASELINE: baseline } : {}),
+            });
+            running.set(key, preview);
+          }
+          return preview.url;
+        });
+      } finally {
+        for (const p of running.values()) p.stop();
       }
     },
     { scope: 'worker', auto: false },
@@ -97,6 +135,20 @@ export const test = base.extend<{ app: Page }, Workers>({
 });
 
 export { expect };
+
+/** Open the UI on another zoo capture and wait for the findings. */
+export async function openFixture(
+  page: Page,
+  serve: (fixture: string, baseline?: string) => Promise<string>,
+  fixture: string,
+): Promise<void> {
+  await page.goto(`${await serve(fixture)}/`);
+  await expect(page.getByRole('heading', { name: 'Findings' })).toBeVisible();
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+  );
+}
 
 /** Wait until the overview lanes and the active view have finished loading. */
 export async function settled(page: Page): Promise<void> {

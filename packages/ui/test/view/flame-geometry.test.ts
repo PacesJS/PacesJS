@@ -9,8 +9,14 @@ const scope = {
   track: model.tracks[0]?.id ?? '',
   transforms: [...DEFAULT_TRANSFORMS],
   range: null,
+  hide: [],
 };
-const data = createQueries(model).flame(scope, { sort: 'heavy', color: 'origin', zoom: [] });
+const data = createQueries(model).flame(scope, {
+  sort: 'heavy',
+  color: 'origin',
+  zoom: [],
+  zoomPath: [],
+});
 const labelOf = (): { name: string; loc: string } => ({
   name: 'getOrders',
   loc: 'src/routes/orders.ts:18',

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, settled, test } from './fixtures';
+import { expect, openFixture, settled, test } from './fixtures';
 
 const view = (page: Page, name: RegExp) =>
   page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name });
@@ -40,7 +40,7 @@ test.describe('paces UI on the orders-server fixture', () => {
     await app.getByRole('button', { name: 'Show me: Event loop blocked' }).click();
     await settled(app);
     const rows = app.getByRole('table', { name: 'Waterfall rows' }).getByRole('row');
-    await expect(rows.first()).toHaveAttribute('aria-label', /^GET \/orders,/);
+    await expect(rows.first()).toHaveAttribute('aria-label', /^request · GET \/orders,/);
     await expect(rows.nth(1)).toHaveAttribute('aria-label', /^getOrders,/);
     const all = await rows.count();
     await app.keyboard.press('p');
@@ -141,6 +141,25 @@ test.describe('paces UI on the orders-server fixture', () => {
     ).toBeVisible();
   });
 
+  test('dropdowns close on a click away, on Escape and when another opens', async ({ app }) => {
+    const add = app.getByRole('button', { name: 'Add transform' });
+    await add.click();
+    const menu = app.getByRole('menu', { name: 'Add transform' });
+    await expect(menu).toBeVisible();
+    await app.getByRole('heading', { name: 'Findings' }).click();
+    await expect(menu).toHaveCount(0);
+    await add.click();
+    await expect(menu).toBeVisible();
+    await app.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(add).toBeFocused();
+    await add.click();
+    const enabled = app.locator('[role="menuitem"]:not([disabled])');
+    await expect(enabled.first()).toBeFocused();
+    await app.keyboard.press('ArrowDown');
+    await expect(enabled.nth(1)).toBeFocused();
+  });
+
   test('walks back and forward through history with Alt+arrows', async ({ app }) => {
     await app.keyboard.press('2');
     await app.keyboard.press('3');
@@ -223,5 +242,89 @@ test.describe('paces UI on the orders-server fixture', () => {
     await app.reload();
     await settled(app);
     expect(external).toEqual([]);
+  });
+
+  test('the source dock resizes by dragging its handle and keeps the size after a reload', async ({
+    app,
+  }) => {
+    await settled(app);
+    const handle = app.getByRole('separator', { name: 'Resize source dock' });
+    const dock = app.getByRole('complementary', { name: 'Source dock' });
+    const before = (await dock.boundingBox())?.width ?? 0;
+    await handle.scrollIntoViewIfNeeded();
+    const box = await handle.boundingBox();
+    if (!box) throw new Error('dock handle has no box');
+    const y = Math.max(box.y, 0) + 40;
+    await app.mouse.move(box.x + box.width / 2, y);
+    await app.mouse.down();
+    await app.mouse.move(box.x - 200, y, { steps: 6 });
+    await app.mouse.up();
+    await expect
+      .poll(async () => (await dock.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(before + 100);
+    const after = (await dock.boundingBox())?.width ?? 0;
+    await app.reload();
+    await settled(app);
+    await expect
+      .poll(async () => Math.abs(((await dock.boundingBox())?.width ?? 0) - after))
+      .toBeLessThan(4);
+  });
+
+  test('the dock moves below the views and the Source tab shows the whole file', async ({
+    app,
+  }) => {
+    await settled(app);
+    await app.getByRole('button', { name: 'Dock below' }).click();
+    await expect(app.getByRole('separator', { name: 'Resize source dock' })).toHaveAttribute(
+      'aria-orientation',
+      'horizontal',
+    );
+    await app.getByRole('button', { name: 'Open the full Source view' }).click();
+    await expect(view(app, /^Source/)).toHaveAttribute('aria-current', 'page');
+    await expect(app.getByRole('navigation', { name: 'Functions in this file' })).toBeVisible();
+    await expect(app.getByRole('list', { name: 'Source lines with self time' })).toBeVisible();
+  });
+
+  test('Show filter hides an origin and says what it hides', async ({ app }) => {
+    await settled(app);
+    await app.getByRole('button', { name: /Native/ }).click();
+    await expect(app.getByRole('button', { name: /Native/ })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await expect(app.getByRole('status').filter({ hasText: /hiding Native/ })).toBeVisible();
+    await expect(app).toHaveURL(/hide%3A4|hide:4/);
+    await app.getByRole('button', { name: 'Show all', exact: true }).click();
+    await expect(app.getByRole('button', { name: /Native/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+});
+
+test.describe('eslint session: target and supporting tracks, notes', () => {
+  test('opens on the target process, lists supporting ones and keeps notes in one chip', async ({
+    page,
+    serve,
+  }) => {
+    await openFixture(page, serve, 'eslint-cli-wrapped');
+    await settled(page);
+    const picker = page.getByLabel('Tracks');
+    await expect(picker.locator('option:checked')).toHaveText(/^eslint · pid/);
+    await expect(page.getByText('eslint/bin/eslint.js').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /note/ })).toHaveCount(1);
+    await page.getByRole('button', { name: /note/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Notes about this profile' })).toBeVisible();
+    await page.getByRole('heading', { name: 'Findings' }).click();
+    await expect(page.getByRole('dialog', { name: 'Notes about this profile' })).toHaveCount(0);
+  });
+
+  test('groups the task picker with the program entry point first', async ({ page, serve }) => {
+    await openFixture(page, serve, 'eslint-cli-wrapped');
+    await page.keyboard.press('1');
+    await settled(page);
+    const groups = page.locator('#task-pick optgroup');
+    await expect(groups.first()).toHaveAttribute('label', 'Entry');
+    await expect(page.locator('#task-pick option').first()).toContainText('program entry point');
   });
 });

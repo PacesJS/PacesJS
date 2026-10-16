@@ -2,6 +2,7 @@
 // with the "merge plumbing" transform and always lets the user unfold.
 
 import { Origin } from '../model.js';
+import { isPacesInstrumentation } from '../util/paths.js';
 import type { Classification } from './classification.js';
 import type { MappedFunctions } from './source-maps.js';
 import type { PassContext } from './types.js';
@@ -56,7 +57,7 @@ export function detectPlumbing(
     try {
       user.push(new RegExp(source));
     } catch {
-      ctx.warnings.push(`Ignored plumbing pattern ${source}: not a valid regular expression.`);
+      ctx.warnings.push({ kind: 'invalid-pattern', severity: 'warn', detail: source });
     }
   }
   const plumbing = new Uint8Array(functions.length);
@@ -65,10 +66,10 @@ export function detectPlumbing(
     const file = strings[functions.file[f] ?? 0] ?? '';
     const origin = classification.origin[f] ?? Origin.User;
     let mark = false;
-    if (origin === Origin.Node)
+    if (isPacesInstrumentation(file)) mark = true;
+    else if (origin === Origin.Node)
       mark = NODE_DISPATCH_FILES.has(file) || NODE_DISPATCH_NAMES.has(name);
     else if (origin === Origin.Native) mark = NODE_DISPATCH_NAMES.has(name);
-    else if (origin === Origin.Framework && file.includes('collector-node')) mark = true;
     else if (origin !== Origin.Idle && origin !== Origin.Gc) {
       mark =
         HELPER_NAME.test(name) ||

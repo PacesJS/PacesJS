@@ -5,11 +5,29 @@ import type { Samples, EventTable } from '../model.js';
 import type { RawCapture, ScriptInfo, TrackInfo } from '../raw.js';
 import type { StringTable } from '../util/strings.js';
 
+/** One occurrence of something worth a warning; `analyze` folds drafts into one `ModelWarning` per kind. */
+export interface WarningDraft {
+  kind: string;
+  severity: 'info' | 'warn';
+  /** What it was about: a file path, a pattern, a track id. */
+  detail: string;
+}
+
+/** Which functions are first-party because they belong to the profiled program. */
+export interface TargetSpec {
+  /** npm package names whose functions are user code. */
+  packages: Set<string>;
+  /** Path globs (as regular expressions) tested against the stored file path. */
+  globs: RegExp[];
+}
+
 export interface PassContext {
   thresholds: Thresholds;
   options: AnalyzeOptions;
   strings: StringTable;
-  warnings: string[];
+  warnings: WarningDraft[];
+  /** Set once the target is known; passes before that (ingest, source maps) leave it undefined. */
+  target?: TargetSpec;
 }
 
 /** Distinct (name, url, line, column) tuples across all tracks, before source mapping. */

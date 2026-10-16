@@ -8,6 +8,7 @@ import { FLAME, flameHeight, flameRects, hitRect } from '../view/flame-geometry'
 import type { FlameRect } from '../view/flame-geometry';
 import { Hint } from './Hint';
 import { Legend } from './Legend';
+import { PopoverSurface } from './Popover';
 
 interface MenuState {
   x: number;
@@ -17,10 +18,10 @@ interface MenuState {
 
 export function FlameGraph() {
   const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, state } = useApp();
-  const { sort, color, layout, zoom } = snap.options;
+  const { sort, color, layout, zoom, zoomPath } = snap.options;
   const q = useAsync(
-    () => client.flame(scope, { sort, color, zoom }),
-    `flame:${scopeKey}:${sort}:${color}:${zoom.join('.')}`,
+    () => client.flame(scope, { sort, color, zoom, zoomPath }),
+    `flame:${scopeKey}:${sort}:${color}:${zoom.join('.')}:${zoomPath.join('.')}`,
   );
   const data = q.data;
   const pal = usePalette();
@@ -119,7 +120,7 @@ export function FlameGraph() {
     dispatch({
       type: 'go',
       patch: { selection: { kind: 'fn', fn: data.fn[index] ?? 0 } },
-      options: { zoom: [...zoom, node] },
+      options: { zoom: [...zoom, node], zoomPath: [] },
     });
   };
 
@@ -219,7 +220,7 @@ export function FlameGraph() {
           <button
             type="button"
             className="flame-crumb"
-            onClick={() => dispatch({ type: 'options', options: { zoom: [] } })}
+            onClick={() => dispatch({ type: 'options', options: { zoom: [], zoomPath: [] } })}
           >
             {crumbBase}
           </button>
@@ -228,12 +229,22 @@ export function FlameGraph() {
               key={c.node}
               type="button"
               className="flame-crumb"
-              onClick={() => dispatch({ type: 'options', options: { zoom: zoom.slice(0, i + 1) } })}
+              onClick={() =>
+                dispatch({
+                  type: 'options',
+                  options: {
+                    zoom: data.crumbs.slice(0, i + 1).map((x) => x.node),
+                    zoomPath: [],
+                  },
+                })
+              }
             >
               {c.name}
             </button>
           ))}
-          {zoom.length === 0 ? <span className="muted">Click a frame to zoom into it</span> : null}
+          {data.crumbs.length === 0 ? (
+            <span className="muted">Click a frame to zoom into it</span>
+          ) : null}
         </nav>
         <p className="axis-caption">
           width = share of samples · order = {sort === 'alpha' ? 'alphabetical' : 'heaviest first'},
@@ -347,9 +358,11 @@ export function FlameGraph() {
               </div>
             ) : null}
             {menu ? (
-              <div
-                className="menu"
+              <PopoverSurface
+                id="flame-context-menu"
                 role="menu"
+                label="Frame actions"
+                onClose={() => setMenu(null)}
                 style={{ left: menu.x, top: menu.y, minWidth: 200 }}
               >
                 <button
@@ -405,7 +418,7 @@ export function FlameGraph() {
                 >
                   Select
                 </button>
-              </div>
+              </PopoverSurface>
             ) : null}
           </div>
           <div className="flame-axis" aria-hidden="true">

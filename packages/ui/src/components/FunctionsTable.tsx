@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import type { FnRow } from '../data/types';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
 import { Hint } from './Hint';
+import { HotPaths } from './HotPaths';
 import { Legend } from './Legend';
 import { Sandwich } from './Sandwich';
 import { Switch } from './Switch';
@@ -54,10 +55,15 @@ export function sortRows(rows: FnRow[], key: SortKey, dir: 'asc' | 'desc'): FnRo
 const OTHER_CAP = 25;
 
 export function FunctionsTable() {
-  const { client, scope, scopeKey, snap, dispatch, state, selection, hoverFn } = useApp();
+  const { client, scope, scopeKey, snap, dispatch, state, selection, hoverFn, summary } = useApp();
+  const { fnPkg, targetOnly } = snap.options;
   const q = useAsync(
-    () => client.functions(scope, state.search),
-    `functions:${scopeKey}:${state.search}`,
+    () =>
+      client.functions(scope, state.search, {
+        ...(targetOnly ? { origins: [0] } : {}),
+        ...(fnPkg ? { pkg: fnPkg } : {}),
+      }),
+    `functions:${scopeKey}:${state.search}:${targetOnly}:${fnPkg}`,
   );
   const [userFirst, setUserFirst] = useState(true);
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
@@ -65,7 +71,19 @@ export function FunctionsTable() {
     dir: 'desc',
   });
   const [showAll, setShowAll] = useState(false);
+  const selectedRef = useRef<HTMLDivElement | null>(null);
   const data = q.data;
+  const selectedFn = selection.fn;
+  // Bring the selected row into view when the selection changes (Show me, other views), but do
+  // not scroll the page on the first paint: opening a session starts at the top.
+  const shownFn = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (!data) return;
+    if (shownFn.current !== undefined && shownFn.current !== selectedFn) {
+      selectedRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+    shownFn.current = selectedFn;
+  }, [selectedFn, data]);
   const rows = useMemo(() => (data ? sortRows(data.rows, sort.key, sort.dir) : []), [data, sort]);
   if (q.error)
     return (
@@ -82,7 +100,14 @@ export function FunctionsTable() {
 
   const mine = userFirst ? rows.filter((r) => r.origin === 0) : rows;
   const others = userFirst ? rows.filter((r) => r.origin !== 0) : [];
-  const shownOthers = showAll ? others : others.slice(0, OTHER_CAP);
+  const capped = others.slice(0, OTHER_CAP);
+  const pinned = others.find((r) => r.fn === selection.fn);
+  // The selected function stays visible even when it is below the cap.
+  const shownOthers = showAll
+    ? others
+    : pinned && !capped.includes(pinned)
+      ? [...capped, pinned]
+      : capped;
   const maxSelf = Math.max(1, ...rows.map((r) => r.selfUs));
   const selectedRow = rows.find((r) => r.fn === selection.fn) ?? null;
   const sortLabel = COLUMNS.find((c) => c.key === sort.key)?.label.toLowerCase() ?? 'self';
@@ -96,6 +121,7 @@ export function FunctionsTable() {
     return (
       <div
         key={r.fn}
+        ref={selected ? selectedRef : undefined}
         role="row"
         aria-selected={selected}
         tabIndex={0}
@@ -185,6 +211,28 @@ export function FunctionsTable() {
         <Switch checked={userFirst} onChange={setUserFirst}>
           Your code first
         </Switch>
+        <Switch
+          checked={targetOnly}
+          onChange={(v) => dispatch({ type: 'options', options: { targetOnly: v } })}
+        >
+          Target only
+        </Switch>
+        <div className="field">
+          <label htmlFor="fn-pkg">Package</label>
+          <select
+            id="fn-pkg"
+            className="select"
+            value={fnPkg}
+            onChange={(e) => dispatch({ type: 'options', options: { fnPkg: e.target.value } })}
+          >
+            <option value="">All packages</option>
+            {summary.packages.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
         <span className="fn-status" role="status">
           {data.totalFns} functions · sorted by {sortLabel} ·{' '}
           {sort.dir === 'desc' ? 'high to low' : 'low to high'}
@@ -192,6 +240,7 @@ export function FunctionsTable() {
         </span>
       </div>
       <Legend />
+      <HotPaths />
       <Hint id="hint-functions">
         Each row is one function, with its own time (self) and the time of everything it called
         (total). Select a row to see its callers and callees below.

@@ -46,6 +46,7 @@ export function readCaptureDir(dir: string, meta: CaptureMeta): RawCapture {
       pid: info.pid,
       threadId: info.threadId,
       ...(info.parent ? { parent: info.parent } : {}),
+      ...(info.argv.length > 0 ? { argv: info.argv, cwd: info.cwd } : {}),
     };
     const profileText = read('cpuprofile');
     const scripts: ScriptInfo[] = JSON.parse(read('scripts') ?? '[]');

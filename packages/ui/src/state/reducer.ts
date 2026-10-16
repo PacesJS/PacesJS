@@ -10,6 +10,8 @@ import {
 } from './history';
 import type { History } from './history';
 import { addTransform, removeTransform, rewindTo } from './transforms';
+import { DEFAULT_PREFS } from './prefs';
+import type { Prefs } from './prefs';
 import type { Selection, Snapshot, Transform, ViewOptions } from './types';
 
 export interface AppState {
@@ -22,10 +24,14 @@ export interface AppState {
   search: string;
   /** Track ids pinned to the top of the overview band. */
   pinned: string[];
+  /** Layout preferences (column widths, dock), persisted through the host. */
+  prefs: Prefs;
+  /** The notes chip was dismissed for this session. */
+  notesDismissed: boolean;
 }
 
 export type AppAction =
-  | { type: 'go'; patch: Partial<Snapshot>; options?: Partial<ViewOptions> }
+  | { type: 'go'; patch: Partial<Snapshot>; options?: Partial<ViewOptions>; search?: string }
   | { type: 'select'; selection: Selection }
   | { type: 'add-transform'; transform: Transform }
   | { type: 'remove-transform'; index: number }
@@ -41,7 +47,9 @@ export type AppAction =
   | { type: 'set-dismissed'; ids: string[] }
   | { type: 'search'; text: string }
   | { type: 'toggle-pin'; track: string }
-  | { type: 'set-pinned'; tracks: string[] };
+  | { type: 'set-pinned'; tracks: string[] }
+  | { type: 'prefs'; prefs: Partial<Prefs> }
+  | { type: 'dismiss-notes' };
 
 export function createState(initial: Snapshot): AppState {
   return {
@@ -52,6 +60,8 @@ export function createState(initial: Snapshot): AppState {
     dismissed: [],
     search: '',
     pinned: [],
+    prefs: DEFAULT_PREFS,
+    notesDismissed: false,
   };
 }
 
@@ -63,7 +73,8 @@ function commit(state: AppState, next: Snapshot): AppState {
   const treeChanged =
     prev.track !== next.track ||
     JSON.stringify(prev.transforms) !== JSON.stringify(next.transforms) ||
-    JSON.stringify(prev.range) !== JSON.stringify(next.range);
+    JSON.stringify(prev.range) !== JSON.stringify(next.range) ||
+    JSON.stringify(prev.options.hide) !== JSON.stringify(next.options.hide);
   const snap =
     treeChanged && next.options.zoom === prev.options.zoom && next.options.zoom.length > 0
       ? { ...next, options: { ...next.options, zoom: [] } }
@@ -74,12 +85,14 @@ function commit(state: AppState, next: Snapshot): AppState {
 export function reducer(state: AppState, action: AppAction): AppState {
   const snap = snapshotOf(state);
   switch (action.type) {
-    case 'go':
-      return commit(state, {
+    case 'go': {
+      const next = commit(state, {
         ...snap,
         ...action.patch,
         options: { ...snap.options, ...action.patch.options, ...action.options },
       });
+      return action.search === undefined ? next : { ...next, search: action.search };
+    }
     case 'select':
       return commit(state, { ...snap, selection: action.selection });
     case 'add-transform':
@@ -126,5 +139,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
       };
     case 'set-pinned':
       return { ...state, pinned: action.tracks };
+    case 'dismiss-notes':
+      return { ...state, notesDismissed: true };
+    case 'prefs':
+      return { ...state, prefs: { ...state.prefs, ...action.prefs } };
   }
 }

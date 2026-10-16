@@ -2,6 +2,14 @@ import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import type { RelatedRow } from '../data/types';
 import { originColor, originInfo } from '../theme/origin';
+import {
+  CLEAR_SELECTION,
+  clearShowMeAction,
+  hasSelection,
+  isShowing,
+  showMeContext,
+  showingText,
+} from '../state/showme';
 import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
 
 function RelatedList({ title, rows }: { title: string; rows: RelatedRow[] }) {
@@ -44,6 +52,31 @@ function RelatedList({ title, rows }: { title: string; rows: RelatedRow[] }) {
   );
 }
 
+/** "Showing: ..." for the active finding, plus the way out: a visible Clear selection chip. */
+function SelectionBar() {
+  const { summary, snap, selection, search, dispatch } = useApp();
+  const ctx = showMeContext(summary);
+  const finding = summary.findings.find((f) => isShowing(f, snap, search, ctx));
+  if (!hasSelection(snap) && !finding) return null;
+  const target =
+    selection.name || (snap.range ? `range ${fmtRange(snap.range[0], snap.range[1])}` : '');
+  return (
+    <div className="selection-bar">
+      <span className="selection-bar-text">
+        {finding ? showingText(finding, target) : `Selected: ${target || 'a time range'}`}
+      </span>
+      <button
+        type="button"
+        className="chip-action"
+        aria-label="Clear selection (Esc)"
+        onClick={() => dispatch(finding ? clearShowMeAction(finding, snap) : CLEAR_SELECTION)}
+      >
+        Clear selection <kbd className="kbd">Esc</kbd>
+      </button>
+    </div>
+  );
+}
+
 /** Numbers for the current selection: self, total, share, calls, origin, callers and callees. */
 export function DetailsDrawer() {
   const { client, host, scope, scopeKey, snap, selection, dispatch, summary } = useApp();
@@ -67,6 +100,7 @@ export function DetailsDrawer() {
     const t = selection.task;
     return (
       <section aria-label="Selection details" className="details card">
+        <SelectionBar />
         <div className="details-head">
           <span
             className="details-dot"
@@ -113,6 +147,7 @@ export function DetailsDrawer() {
     const range = snap.range;
     return (
       <section aria-label="Selection details" className="details card">
+        <SelectionBar />
         <h2 className="section-title">
           {range ? `Range ${fmtRange(range[0], range[1])}` : 'Nothing selected'}
         </h2>
@@ -132,6 +167,7 @@ export function DetailsDrawer() {
 
   return (
     <section aria-label="Selection details" className="details card">
+      <SelectionBar />
       <div className="details-head">
         <span
           className="details-dot"

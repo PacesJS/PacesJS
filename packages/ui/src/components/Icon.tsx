@@ -13,7 +13,11 @@ export type IconName =
   | 'clock'
   | 'chevron-down'
   | 'chevron-right'
-  | 'alert';
+  | 'alert'
+  | 'dock-right'
+  | 'dock-bottom'
+  | 'wrap'
+  | 'maximize';
 
 const PATHS: Record<IconName, string[]> = {
   logo: ['M4 18c3 0 3-6 6-6s3 4 6 4 2-8 4-10'],
@@ -31,6 +35,10 @@ const PATHS: Record<IconName, string[]> = {
   'chevron-down': ['M6 9l6 6 6-6'],
   'chevron-right': ['M9 6l6 6-6 6'],
   alert: ['M12 8v5M12 16h.01'],
+  'dock-right': ['M4 5h16v14H4z', 'M14 5v14'],
+  'dock-bottom': ['M4 5h16v14H4z', 'M4 14h16'],
+  wrap: ['M4 7h16', 'M4 12h13a3 3 0 0 1 0 6h-6', 'M13 15l-3 3 3 3'],
+  maximize: ['M4 9V4h5', 'M20 9V4h-5', 'M4 15v5h5', 'M20 15v5h-5'],
 };
 
 interface IconProps {

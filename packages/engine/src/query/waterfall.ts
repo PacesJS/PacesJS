@@ -6,7 +6,7 @@ import type { ExecutionModel, Samples } from '../model.js';
 import { reconstructSpans } from '../passes/spans.js';
 import { formatDuration } from '../util/format.js';
 import type { TransformedView, Waterfall, WaterfallOptions, WaterfallRow } from './types.js';
-import { withoutInversion } from './view.js';
+import { applyTransforms, withoutInversion } from './view.js';
 
 const MAX_ASYNC_EDGES = 20;
 
@@ -146,6 +146,81 @@ function minimap(
   return busy;
 }
 
+/** The view the rows are built from: call-order, with the requested origins hidden. */
+function viewFor(
+  model: ExecutionModel,
+  view: TransformedView,
+  options: WaterfallOptions,
+): TransformedView {
+  const base = withoutInversion(model, view);
+  if (!options.hideOrigins || options.hideOrigins.length === 0) return base;
+  return applyTransforms(model, base.trackIndex, [
+    ...base.stack,
+    { kind: 'hide-origins', origins: options.hideOrigins },
+  ]);
+}
+
+/**
+ * Applies the depth limit, minimum duration and sibling order. Rows whose parent was dropped are
+ * dropped; ids are renumbered so `id` is always the index in the result.
+ */
+function shapeRows(
+  rows: WaterfallRow[],
+  criticalPath: number[],
+  options: WaterfallOptions,
+): { rows: WaterfallRow[]; criticalPath: number[] } {
+  const sort = options.sort ?? 'time';
+  const depthLimit = options.maxDepth;
+  const minUs = options.minDurationUs ?? 0;
+  if (depthLimit === undefined && minUs <= 0 && sort === 'time') return { rows, criticalPath };
+  const keep = new Uint8Array(rows.length);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r) continue;
+    const parentKept = r.parent < 0 || keep[r.parent] === 1;
+    keep[i] =
+      parentKept && (depthLimit === undefined || r.depth <= depthLimit) && r.durUs >= minUs ? 1 : 0;
+  }
+  let order: number[] = [];
+  for (let i = 0; i < rows.length; i++) if (keep[i] === 1) order.push(i);
+  if (sort !== 'time') {
+    const kids = new Map<number, number[]>();
+    for (const i of order) {
+      const p = rows[i]?.parent ?? -1;
+      const list = kids.get(p);
+      if (list) list.push(i);
+      else kids.set(p, [i]);
+    }
+    const byLength = (a: number, b: number): number =>
+      (rows[b]?.durUs ?? 0) - (rows[a]?.durUs ?? 0) || a - b;
+    const walk: number[] = [];
+    const visit = (parent: number): void => {
+      const list = kids.get(parent) ?? [];
+      // Wait rows hang off the task, not off a call: keep them after the calls, in time order.
+      const calls = list.filter((i) => rows[i]?.kind !== 'wait').sort(byLength);
+      const waits = list.filter((i) => rows[i]?.kind === 'wait');
+      for (const i of [...calls, ...waits]) {
+        walk.push(i);
+        visit(i);
+      }
+    };
+    visit(-1);
+    order = walk;
+  }
+  const newId = new Int32Array(rows.length).fill(-1);
+  order.forEach((old, i) => {
+    newId[old] = i;
+  });
+  const out = order.map((old, i): WaterfallRow => {
+    const r = rows[old] as WaterfallRow;
+    return { ...r, id: i, parent: r.parent < 0 ? -1 : (newId[r.parent] ?? -1) };
+  });
+  return {
+    rows: out,
+    criticalPath: criticalPath.map((id) => newId[id] ?? -1).filter((id) => id >= 0),
+  };
+}
+
 function assemble(
   model: ExecutionModel,
   view: TransformedView,
@@ -196,14 +271,13 @@ function assemble(
     }
   }
   const buckets = options.minimapBuckets ?? 120;
-  const depthLimit = options.maxDepth;
-  const kept = depthLimit === undefined ? rows : rows.filter((r) => r.depth <= depthLimit);
+  const shaped = shapeRows(rows, main.criticalPath, options);
   return {
     start,
     end: outEnd,
     precisionUs: model.meta.precisionUs,
-    rows: kept,
-    criticalPath: main.criticalPath,
+    rows: shaped.rows,
+    criticalPath: shaped.criticalPath,
     minimap: { start, end, busy: minimap(view, origin, start, end, buckets) },
     hasAsyncFlow,
   };
@@ -221,7 +295,7 @@ export function waterfallForTask(
   }
   return assemble(
     model,
-    withoutInversion(model, view),
+    viewFor(model, view, options),
     track.tasks.start[task] ?? 0,
     track.tasks.end[task] ?? 0,
     task,
@@ -236,5 +310,5 @@ export function waterfallForRange(
   end: number,
   options: WaterfallOptions = {},
 ): Waterfall {
-  return assemble(model, withoutInversion(model, view), start, end, -1, options);
+  return assemble(model, viewFor(model, view, options), start, end, -1, options);
 }

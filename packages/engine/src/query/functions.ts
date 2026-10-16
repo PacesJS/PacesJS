@@ -62,6 +62,8 @@ export function functionRows(
     ) {
       continue;
     }
+    if (options.origins && !options.origins.includes(info.origin)) continue;
+    if (options.pkg !== undefined && info.pkg !== options.pkg) continue;
     if (
       needle &&
       !info.name.toLowerCase().includes(needle) &&

@@ -1,22 +1,31 @@
-import { posix, win32 } from 'node:path';
+import { win32 } from 'node:path';
 import { which } from './which.js';
 
 export interface SpawnPlan {
   file: string;
   args: string[];
-  shell: boolean;
+  /** Pass the arguments to CreateProcess as given: the single command line is already quoted. */
+  verbatim: boolean;
 }
 
-/** Quotes one argument for a cmd.exe command line. Best effort: `%VAR%` cannot be escaped reliably. */
-export function quoteCmdArg(arg: string): string {
-  if (arg === '') return '""';
-  if (!/[\s&|<>()^"%!,;=]/.test(arg)) return arg;
-  return `"${arg.replaceAll('"', '\\"')}"`;
+const META = /[()%!^"<>&|]/g;
+
+/**
+ * Quotes one argument for a command line that cmd.exe will parse (the algorithm cross-spawn uses).
+ * `doubleEscape` is for `.cmd` shims, which pass `%*` through cmd a second time.
+ */
+export function quoteCmdArg(arg: string, doubleEscape = false): string {
+  let out = arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1');
+  out = `"${out}"`;
+  out = out.replace(META, '^$&');
+  if (doubleEscape) out = out.replace(META, '^$&');
+  return out;
 }
 
 /**
- * Windows cannot spawn `.cmd` shims (npm, npx, tsx...) without a shell since Node 20.12, and a shell
- * needs a pre-quoted command line. Everything else is spawned directly with arguments untouched.
+ * Windows cannot spawn `.cmd`/`.bat` shims (npm, npx, tsx...) directly, and `shell: true` with an
+ * arguments array is deprecated (DEP0190). Run them through one explicitly quoted `cmd.exe /d /s /c`
+ * line instead. Everything else is spawned directly with arguments untouched.
  */
 export function planSpawn(
   command: string[],
@@ -25,11 +34,17 @@ export function planSpawn(
   exists?: (p: string) => boolean,
 ): SpawnPlan {
   const [file = '', ...args] = command;
-  if (platform !== 'win32') return { file, args, shell: false };
+  if (platform !== 'win32') return { file, args, verbatim: false };
   const resolved = which(file, env, platform, exists) ?? file;
-  const ext = (platform === 'win32' ? win32 : posix).extname(resolved).toLowerCase();
+  const ext = win32.extname(resolved).toLowerCase();
   if (ext === '.cmd' || ext === '.bat') {
-    return { file: quoteCmdArg(resolved), args: args.map(quoteCmdArg), shell: true };
+    const line = [`"${resolved}"`, ...args.map((a) => quoteCmdArg(a, true))].join(' ');
+    // cmd /s strips the outer quotes, so the whole line is wrapped once more.
+    return {
+      file: env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/c', `"${line}"`],
+      verbatim: true,
+    };
   }
-  return { file, args, shell: false };
+  return { file, args, verbatim: false };
 }

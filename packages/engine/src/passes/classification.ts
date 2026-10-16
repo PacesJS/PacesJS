@@ -3,9 +3,9 @@
 import type { OriginName } from '../config.js';
 import { Origin } from '../model.js';
 import type { OriginId } from '../model.js';
-import { packageNameFromPath } from '../util/paths.js';
+import { isPacesInstrumentation, packageNameFromPath } from '../util/paths.js';
 import type { MappedFunctions } from './source-maps.js';
-import type { PassContext } from './types.js';
+import type { PassContext, TargetSpec } from './types.js';
 
 export interface Classification {
   origin: Uint8Array;
@@ -39,8 +39,12 @@ const ORIGIN_BY_NAME: Record<OriginName, OriginId> = {
   native: Origin.Native,
 };
 
-/** The collector's own wrappers run inside the target; they are infrastructure, not user code. */
-const COLLECTOR_PATH = /(^|\/)(collector-node|@pacesjs\/collector-node)\/dist\//;
+/** The program being profiled counts as first-party even when it lives in node_modules. */
+function isTarget(target: TargetSpec | undefined, pkgName: string, file: string): boolean {
+  if (!target) return false;
+  if (pkgName !== '' && target.packages.has(pkgName)) return true;
+  return target.globs.some((re) => re.test(file));
+}
 
 function isFramework(pkg: string): boolean {
   return FRAMEWORK_PACKAGES.has(pkg) || FRAMEWORK_SCOPES.some((s) => pkg.startsWith(s));
@@ -53,11 +57,10 @@ export function classify(functions: MappedFunctions, ctx: PassContext): Classifi
     try {
       overrides.push([new RegExp(pattern), ORIGIN_BY_NAME[name]]);
     } catch {
-      ctx.warnings.push(
-        `Ignored classification pattern ${pattern}: not a valid regular expression.`,
-      );
+      ctx.warnings.push({ kind: 'invalid-pattern', severity: 'warn', detail: pattern });
     }
   }
+  const target = ctx.target;
   const origin = new Uint8Array(functions.length);
   const pkg = new Uint32Array(functions.length);
   for (let f = 0; f < functions.length; f++) {
@@ -65,6 +68,7 @@ export function classify(functions: MappedFunctions, ctx: PassContext): Classifi
     const file = strings[functions.file[f] ?? 0] ?? '';
     const pkgName = packageNameFromPath(file);
     let o: OriginId = Origin.User;
+    let inTarget = false;
     const override = overrides.find(([re]) => re.test(file));
     if (override) o = override[1];
     else if (name === '(idle)') o = Origin.Idle;
@@ -72,10 +76,17 @@ export function classify(functions: MappedFunctions, ctx: PassContext): Classifi
     else if (name === '(program)' || name === '(root)') o = Origin.Native;
     else if (file.startsWith('node:')) o = Origin.Node;
     else if (file === '' && (functions.line[f] ?? 0) === 0) o = Origin.Native;
-    else if (COLLECTOR_PATH.test(file)) o = Origin.Framework;
-    else if (pkgName) o = isFramework(pkgName) ? Origin.Framework : Origin.Dependency;
+    else if (isPacesInstrumentation(file)) o = Origin.Node;
+    else if (isTarget(target, pkgName, file)) {
+      o = Origin.User;
+      inTarget = true;
+    } else if (pkgName) o = isFramework(pkgName) ? Origin.Framework : Origin.Dependency;
     origin[f] = o;
-    pkg[f] = o === Origin.Dependency || o === Origin.Framework ? ctx.strings.intern(pkgName) : 0;
+    // The target package keeps its name so views can still show where its functions live.
+    pkg[f] =
+      o === Origin.Dependency || o === Origin.Framework || (inTarget && o === Origin.User)
+        ? ctx.strings.intern(pkgName)
+        : 0;
   }
   return { origin, pkg };
 }

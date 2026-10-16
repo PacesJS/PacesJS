@@ -1,20 +1,30 @@
-export type ViewId = 'waterfall' | 'flame' | 'callgraph' | 'functions';
+export type ViewId = 'waterfall' | 'flame' | 'callgraph' | 'functions' | 'source';
 
-export const VIEW_ORDER: readonly ViewId[] = ['waterfall', 'flame', 'callgraph', 'functions'];
+export const VIEW_ORDER: readonly ViewId[] = [
+  'waterfall',
+  'flame',
+  'callgraph',
+  'functions',
+  'source',
+];
 
 export const VIEW_LABELS: Record<ViewId, string> = {
   waterfall: 'Waterfall',
   flame: 'Flame graph',
   callgraph: 'Call graph',
   functions: 'Functions',
+  source: 'Source',
 };
 
 /** One selection drives every view: a function, a call node, a span, a task or a time range. */
 export type Selection =
   | { kind: 'none' }
   | { kind: 'fn'; fn: number }
-  /** A call: function ids from the root's child down, in the current track and transform stack. */
-  | { kind: 'node'; track: string; path: number[] }
+  /**
+   * A call: function ids from the root's child down, in the current track and transform stack.
+   * `row` is the waterfall row id when one specific span was picked (a call can run many times).
+   */
+  | { kind: 'node'; track: string; path: number[]; row?: number }
   | { kind: 'task'; track: string; task: number }
   | { kind: 'range'; from: number; to: number };
 
@@ -46,6 +56,18 @@ export interface ViewOptions {
   critical: boolean;
   /** Collapse every waterfall row except the critical chain (`p`). */
   pathOnly: boolean;
+  /** Origins hidden by the Show filter: engine origin ids, empty shows everything. */
+  hide: number[];
+  /** Functions table: keep only this npm package ('' for all). */
+  fnPkg: string;
+  /** Functions table: only the target's own code. */
+  targetOnly: boolean;
+  /** Flame graph: function ids of a call chain to zoom to (hot paths). */
+  zoomPath: number[];
+  /** Waterfall sibling order. */
+  wfSort: 'time' | 'duration' | 'share';
+  /** Waterfall: hide calls shorter than this many microseconds (0 shows all). */
+  minDurUs: number;
   logical: boolean;
   sort: FlameSort;
   color: FlameColor;
@@ -57,6 +79,8 @@ export interface ViewOptions {
   task: number;
   /** Call-graph packages expanded in place. */
   expanded: string[];
+  /** Call-graph functions whose hidden callers and callees were revealed ("+N" chips, Show me). */
+  reveal: number[];
   /** Source line to scroll to (1-based); 0 means the hottest line. */
   line: number;
 }
@@ -74,6 +98,12 @@ export interface Snapshot {
 export const DEFAULT_OPTIONS: ViewOptions = {
   critical: true,
   pathOnly: false,
+  hide: [],
+  fnPkg: '',
+  targetOnly: false,
+  zoomPath: [],
+  wfSort: 'time',
+  minDurUs: 0,
   logical: true,
   sort: 'heavy',
   color: 'origin',
@@ -82,6 +112,7 @@ export const DEFAULT_OPTIONS: ViewOptions = {
   zoom: [],
   task: -1,
   expanded: [],
+  reveal: [],
   line: 0,
 };
 

@@ -27,8 +27,19 @@ export interface SynthOptions {
   sourceMaps?: Record<string, string>;
   projectRoot?: string;
   startedAt?: number;
-  /** Extra tracks (e.g. a worker) built from their own steps. */
-  extraTracks?: Array<{ id: string; steps: Step[] }>;
+  /** `process.argv` of the first track. */
+  argv?: string[];
+  /** Extra tracks (e.g. a worker or a child process) built from their own steps. */
+  extraTracks?: Array<{
+    id: string;
+    steps: Step[];
+    argv?: string[];
+    parent?: string;
+    kind?: 'process' | 'worker';
+    threadId?: number;
+    pid?: number;
+    scripts?: ScriptInfo[];
+  }>;
 }
 
 const DEFAULT_URL = 'file:///project/src/app.js';
@@ -126,7 +137,16 @@ export function synthCapture(steps: Step[], options: SynthOptions = {}): RawCapt
   const total = steps.reduce((n, s) => n + ('idle' in s ? s.idle : s.samples), 0) * interval;
   const startedAt = options.startedAt ?? 1_800_000_000_000;
   const main = buildTrack('p1', steps, interval, options.events ?? [], options.scripts ?? []);
-  const extra = (options.extraTracks ?? []).map((t) => buildTrack(t.id, t.steps, interval, [], []));
+  if (options.argv) main.info.argv = options.argv;
+  const extra = (options.extraTracks ?? []).map((t) => {
+    const track = buildTrack(t.id, t.steps, interval, [], t.scripts ?? []);
+    if (t.argv) track.info.argv = t.argv;
+    if (t.parent) track.info.parent = t.parent;
+    if (t.kind) track.info.kind = t.kind;
+    if (t.threadId !== undefined) track.info.threadId = t.threadId;
+    if (t.pid !== undefined) track.info.pid = t.pid;
+    return track;
+  });
   return {
     meta: {
       command: ['node', 'app.js'],
