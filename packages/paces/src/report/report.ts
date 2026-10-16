@@ -271,9 +271,23 @@ function nextForTree(ctx: ReportContext, rows: TreeRow[], ti: number): string[] 
     rows.filter((r) => r.depth === 1 && !r.synthetic).sort((a, b) => b.totalUs - a.totalUs)[0] ??
     real.filter((r) => r.depth > 0).sort((a, b) => b.totalUs - a.totalUs)[0];
   if (child) out.push(nextCmd(ctx, `--tree --from ${forkOf(ctx, ti, child).id}`));
-  const hot = [...real].sort((a, b) => b.selfUs - a.selfUs)[0];
+  // Source lines only make sense for code that has source: the target's own functions first, then
+  // any function with a source file. Never GC, idle or runtime glue.
+  const bySelf = (a: TreeRow, b: TreeRow): number => b.selfUs - a.selfUs;
+  const hot =
+    [...real].filter((r) => r.origin === 0 && r.selfUs > 0).sort(bySelf)[0] ??
+    [...real].filter((r) => r.file && r.origin !== 5 && r.origin !== 6).sort(bySelf)[0];
   if (hot && hot.selfUs > 0) out.push(nextCmd(ctx, `--lines ${hot.id}`));
-  const pkg = rows.filter((r) => r.synthetic).sort((a, b) => b.totalUs - a.totalUs)[0];
+  // A collapsed package that only passes control through to the target's code (a retry or
+  // scheduling wrapper) is not where the time goes; suggest a package that does work itself.
+  const passesThrough = (r: TreeRow): boolean => {
+    const at = rows.indexOf(r);
+    const next = rows[at + 1];
+    return next !== undefined && next.depth > r.depth && next.origin === 0;
+  };
+  const pkg = rows
+    .filter((r) => r.synthetic && !passesThrough(r))
+    .sort((a, b) => b.totalUs - a.totalUs)[0];
   if (pkg && pkg.share >= 0.05) out.push(nextCmd(ctx, `--pkg ${shellArg(pkg.pkg)}`));
   else if (hot && hot.selfUs > 0) out.push(nextCmd(ctx, `--callers ${hot.id}`));
   return out.slice(0, 3);
@@ -773,19 +787,24 @@ function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
   const caveats = s.caveats.slice(0, 3).map((c) => c.summary);
   if (caveats.length > 0) lines.push(`caveats: ${caveats.join(' | ')}`);
   const next = nextForTree(ctx, res.rows, ti);
+  // The most useful place to read source lines: the hottest function in the target's own code by
+  // self time over the whole run (the rows shown above are only the top of the tree).
   const hottest =
-    s.topSelf.find((f) => f.file !== '' && !f.file.startsWith('node:') && f.origin !== 'native') ??
-    s.topSelf[0];
+    s.topSelf.find((f) => f.origin === 'user' && f.file !== '') ??
+    s.topSelf.find((f) => f.file !== '' && !f.file.startsWith('node:') && f.origin !== 'native');
   const depPkg = pk.find((p) => !p.isTarget);
   if (depPkg && !next.some((n) => n.includes('--pkg'))) {
     next[next.length >= 3 ? 2 : next.length] = nextCmd(ctx, `--pkg ${shellArg(depPkg.name)}`);
   }
-  if (hottest && !next.some((n) => n.includes('--lines'))) {
+  if (hottest) {
     const hotId = resolveSelector(model, ti, hottest.name).matches.find((m) => {
       const l = locate(model, m.fn);
       return l.file === hottest.file && l.line === hottest.line;
     })?.fn;
-    if (hotId !== undefined) next[Math.min(1, next.length)] = nextCmd(ctx, `--lines f${hotId}`);
+    if (hotId !== undefined) {
+      const at = next.findIndex((n) => n.includes('--lines'));
+      next[at >= 0 ? at : Math.min(1, next.length)] = nextCmd(ctx, `--lines f${hotId}`);
+    }
   }
   lines.push('next:', ...next.slice(0, 3));
   return {

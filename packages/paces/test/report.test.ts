@@ -391,3 +391,34 @@ describe('paces guide', () => {
     }
   });
 });
+
+describe('next: suggestions point somewhere useful', () => {
+  it('suggests --lines for the hottest function in the target code, never GC or runtime glue', () => {
+    const text = render(eslint, []).text;
+    const lines = text.slice(text.lastIndexOf('next:')).split('\n');
+    const lineCmd = lines.find((l) => l.includes('--lines '));
+    expect(lineCmd).toBeDefined();
+    const id = /--lines (f\d+)/.exec(lineCmd ?? '')?.[1] ?? '';
+    const fn = Number(id.slice(1));
+    expect(eslint.functions.origin[fn]).toBe(0); // Origin.User: the target's own code
+  });
+
+  it('points --lines at the hottest own function by self time over the whole run, not only the rows shown', () => {
+    const out = render(eslint, []);
+    const summary = (
+      out.json as {
+        summary: { topSelf: Array<{ name: string; file: string; line: number; origin: string }> };
+      }
+    ).summary;
+    const expected = summary.topSelf.find((f) => f.origin === 'user' && f.file !== '');
+    expect(expected).toBeDefined();
+    const id = /--lines (f[0-9]+)/.exec(out.text.slice(out.text.lastIndexOf('next:')))?.[1] ?? '';
+    const lines = render(eslint, ['--lines', id]).text;
+    expect(lines.split(String.fromCharCode(10))[0]).toContain(`lines of ${expected?.name}`);
+  });
+  it('does not suggest a pass-through wrapper package as the package to drill into', () => {
+    const text = render(eslint, []).text;
+    const next = text.slice(text.lastIndexOf('next:'));
+    expect(next).not.toContain('@humanwhocodes/retry');
+  });
+});
