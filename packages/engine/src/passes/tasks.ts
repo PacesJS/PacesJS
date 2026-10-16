@@ -235,7 +235,23 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
   }
 
   return {
-    table: { length, start, end, kind, label, spanStart, spanEnd, busy },
+    table: {
+      length,
+      start,
+      end,
+      kind,
+      label,
+      spanStart,
+      spanEnd,
+      busy,
+      // Filled in by the continuation pass.
+      parentSpan: new Int32Array(length).fill(-1),
+      resumeOf: new Int32Array(length).fill(-1),
+      waitUs: new Float64Array(length),
+      stitch: new Uint8Array(length),
+      resumedFn: new Int32Array(length).fill(-1),
+      runtimeOnly: new Uint8Array(length),
+    },
     sampleStart: Uint32Array.from(startIdx),
     sampleEnd: Uint32Array.from(endIdx),
   };

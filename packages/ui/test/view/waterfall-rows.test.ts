@@ -11,7 +11,9 @@ const scope = {
   range: null,
   hide: [],
 };
-const wf = createQueries(model).waterfall(scope, -1, { sort: 'time', minDurUs: 0 });
+const queries = createQueries(model);
+const longest = queries.tasks(scope).find((t) => t.longest)?.index ?? 0;
+const wf = queries.waterfall(scope, longest, { sort: 'time', minDurUs: 0 });
 const rows = wf?.rows ?? [];
 
 describe('visible waterfall rows', () => {
@@ -20,8 +22,8 @@ describe('visible waterfall rows', () => {
   });
 
   it('hides the rows under a collapsed parent', () => {
-    const parent = rows.findIndex((r) => r.name === 'getOrders');
-    expect(visibleRows(rows, new Set([rows[parent]?.id ?? -1]))).toHaveLength(parent + 1);
+    const entry = rows.findIndex((r) => /server\.js$/.test(r.name));
+    expect(visibleRows(rows, new Set([rows[entry]?.id ?? -1]))).toHaveLength(entry + 1);
   });
 
   it('collapses everything except the critical chain in path-only mode', () => {

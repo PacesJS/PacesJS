@@ -4,7 +4,10 @@ import { serializeModel } from '@pacesjs/engine';
 import type { ExecutionModel } from '@pacesjs/engine';
 import { describe, expect, it } from 'vitest';
 import { App } from '../../src/app/App';
+import { createQueries } from '../../src/data/queries';
 import { memoryHostAdapter } from '../../src/host/memory';
+import { DEFAULT_TRANSFORMS } from '../../src/state/types';
+import { nodeElk } from '../helpers/node-elk';
 import { fixtureModel, ordersModel } from '../helpers/real-model';
 
 const orders = ordersModel();
@@ -24,7 +27,7 @@ function open(
     meta: {},
     sources,
   });
-  render(<App host={host} inProcess />);
+  render(<App host={host} inProcess elk={nodeElk} />);
   return host;
 }
 
@@ -92,7 +95,7 @@ describe('paces screen', () => {
     await ready();
     await userEvent.click(screen.getByRole('button', { name: 'Remove Merge plumbing' }));
     expect(screen.queryByRole('button', { name: 'Rewind to Merge plumbing' })).toBeNull();
-    expect(decodeURIComponent(location.hash)).toContain('t=collapse-deps,drop-idle');
+    expect(decodeURIComponent(location.hash)).toContain('t=stitch,collapse-deps,drop-idle');
   });
 
   it('rewinds the stack when a chip is clicked', async () => {
@@ -327,7 +330,8 @@ describe('waterfall', () => {
     await screen.findByRole('table', { name: 'Waterfall rows' });
     const labels = await waitFor(() => rowsOf().map((r) => r.getAttribute('aria-label') ?? ''));
     expect(labels[0]).toMatch(/^request · GET \/orders,/);
-    expect(labels[1]).toMatch(/^getOrders,/);
+    expect(labels[1]).toMatch(/server\.js,/);
+    expect(labels[2]).toMatch(/^getOrders,/);
   });
 
   it('collapses every row but the critical chain when p is pressed, and expands on a second p', async () => {
@@ -393,7 +397,7 @@ describe('waterfall rows and columns', () => {
 
   it('gives every name cell a title with the full text, so truncated text is still readable', async () => {
     await openWaterfall();
-    const first = within(rowsOf()[1] as HTMLElement).getAllByRole('cell')[0];
+    const first = within(rowsOf()[2] as HTMLElement).getAllByRole('cell')[0];
     expect(first?.getAttribute('title')).toContain('getOrders');
   });
 
@@ -549,7 +553,7 @@ describe('source dock', () => {
     ).toBe('true');
   });
 
-  it('collapses and expands', async () => {
+  it('collapses by hand and expands again from the rail', async () => {
     open();
     await ready();
     await loaded();
@@ -558,41 +562,293 @@ describe('source dock', () => {
     expect(await screen.findByRole('button', { name: 'Collapse source panel' })).toBeTruthy();
   });
 
-  it('opens the full Source view with the whole file and an outline', async () => {
+  it('collapses when nothing is selected and opens when a function is selected', async () => {
+    open();
+    await ready();
+    await loaded();
+    await userEvent.keyboard('{Escape}');
+    expect(await screen.findByRole('button', { name: 'Expand source panel' })).toBeTruthy();
+    expect(screen.queryByRole('separator', { name: 'Resize source dock' })).toBeNull();
+    await userEvent.keyboard('4');
+    await userEvent.click(await screen.findByRole('row', { name: /formatCurrency/ }));
+    expect(await screen.findByRole('button', { name: 'Collapse source panel' })).toBeTruthy();
+    expect(screen.getByRole('separator', { name: 'Resize source dock' })).toBeTruthy();
+  });
+
+  it('keeps a manual collapse when another function is selected', async () => {
+    open();
+    await ready();
+    await loaded();
+    await userEvent.click(await screen.findByRole('button', { name: 'Collapse source panel' }));
+    await userEvent.keyboard('4');
+    await userEvent.click(await screen.findByRole('row', { name: /formatCurrency/ }));
+    expect(screen.getByRole('button', { name: 'Expand source panel' })).toBeTruthy();
+  });
+
+  it('remembers the manual choice for the next session', async () => {
+    const host = open();
+    await ready();
+    await loaded();
+    await userEvent.click(await screen.findByRole('button', { name: 'Collapse source panel' }));
+    await waitFor(async () =>
+      expect(((await host.loadSettings())['uiPrefs'] as { dock: { mode: string } }).dock.mode).toBe(
+        'collapsed',
+      ),
+    );
+  });
+
+  it('has no Source tab and ignores the 5 key', async () => {
+    open();
+    await ready();
+    expect(screen.queryByRole('button', { name: /^Source/ })).toBeNull();
+    await userEvent.keyboard('5');
+    expect(current(/Functions/)).toBe('page');
+  });
+
+  it('maximizes the dock into the whole file with an outline, and Escape closes it', async () => {
     open(orders, undefined, { [MONEY]: { text: moneyText } });
     await ready();
     await loaded();
-    await userEvent.click(await screen.findByRole('button', { name: 'Open the full Source view' }));
-    expect(current(/^Source/)).toBe('page');
-    const outline = await screen.findByRole('navigation', { name: 'Functions in this file' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Maximize the source dock' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Source, maximized' });
+    const outline = await within(dialog).findByRole('navigation', {
+      name: 'Functions in this file',
+    });
     await waitFor(() =>
       expect(within(outline).getByRole('button', { name: /formatCurrency/ })).toBeTruthy(),
     );
-    const lines = await screen.findByRole('list', { name: 'Source lines with self time' });
+    const lines = await within(dialog).findByRole('list', { name: 'Source lines with self time' });
     expect(within(lines).getAllByRole('listitem').length).toBe(30);
-    expect(screen.queryByRole('complementary', { name: 'Source dock' })).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Source, maximized' })).toBeNull();
+    expect(decodeURIComponent(location.hash)).toContain('sel=fn');
   });
 
-  it('opens the Source view with the 5 key', async () => {
-    open();
-    await ready();
-    await userEvent.keyboard('5');
-    expect(current(/^Source/)).toBe('page');
-  });
-
-  it('jumps to another function of the file from the outline', async () => {
+  it('jumps to another function of the file from the maximized outline', async () => {
     open(orders, undefined, { [MONEY]: { text: moneyText } });
     await ready();
-    await userEvent.keyboard('5');
-    const outline = await screen.findByRole('navigation', { name: 'Functions in this file' });
+    await loaded();
+    await userEvent.click(await screen.findByRole('button', { name: 'Maximize the source dock' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Source, maximized' });
+    const outline = await within(dialog).findByRole('navigation', {
+      name: 'Functions in this file',
+    });
     await userEvent.click(await within(outline).findByRole('button', { name: /formatCurrency/ }));
     await waitFor(() =>
       expect(
-        within(screen.getByRole('region', { name: 'Source' })).getByRole('heading', {
+        within(within(dialog).getByRole('region', { name: 'Source' })).getByRole('heading', {
           name: 'formatCurrency',
         }),
       ).toBeTruthy(),
     );
+  });
+});
+
+describe('selection line in the source', () => {
+  const lines = async () =>
+    within(await screen.findByRole('list', { name: 'Source lines with self time' }));
+  const flagged = (list: ReturnType<typeof within>) =>
+    list
+      .getAllByRole('listitem')
+      .filter((li: HTMLElement) => li.getAttribute('aria-current') === 'location');
+
+  it('highlights the definition line, whose text names the function', async () => {
+    open(orders, undefined, { [MONEY]: { text: moneyText } });
+    await ready();
+    await waitFor(async () => expect(flagged(await lines())).toHaveLength(1));
+    expect(flagged(await lines())[0]?.textContent).toContain('lineTotal');
+  });
+
+  it('shows the hottest line only as a gutter bar, never as the highlight', async () => {
+    open(orders, undefined, { [MONEY]: { text: moneyText } });
+    await ready();
+    await waitFor(async () => expect(flagged(await lines())).toHaveLength(1));
+    const list = await lines();
+    const hottest = list
+      .getAllByRole('listitem')
+      .find(
+        (li: HTMLElement) =>
+          /self/.test(li.getAttribute('aria-label') ?? '') &&
+          li.getAttribute('aria-current') !== 'location',
+      );
+    expect(hottest).toBeTruthy();
+    expect(hottest?.className).not.toContain('is-definition');
+  });
+
+  it('jumps to the hottest line on request without moving the highlight', async () => {
+    open(orders, undefined, { [MONEY]: { text: moneyText } });
+    await ready();
+    await lines();
+    await waitFor(async () => expect(flagged(await lines())).toHaveLength(1));
+    await userEvent.click(await screen.findByRole('button', { name: /Jump to hottest line/ }));
+    expect(decodeURIComponent(location.hash)).toMatch(/line:\d+/);
+    expect(flagged(await lines())[0]?.textContent).toContain('lineTotal');
+  });
+});
+
+const BUNDLE = Array.from({ length: 8000 }, () => 'x').join('\n');
+
+describe('functions without line time', () => {
+  const q = createQueries(orders);
+  const scope = {
+    track: orders.tracks[0]?.id ?? '',
+    transforms: [...DEFAULT_TRANSFORMS],
+    range: null,
+    hide: [] as number[],
+  };
+  const wrapper = q
+    .functions(scope, '')
+    .rows.find(
+      (r) =>
+        q.source(scope, r.fn)?.lineSelf.length === 0 &&
+        (q.details(scope, r.fn)?.callees.length ?? 0) > 1,
+    );
+
+  it('says the function itself ran only briefly and lists where its time went', async () => {
+    expect(wrapper).toBeTruthy();
+    history.replaceState(null, '', `#v=functions&tr=${orders.tracks[0]?.id}&sel=fn:${wrapper?.fn}`);
+    open(orders, undefined, { 'zoo/orders-server/dist/server.js': { text: BUNDLE } });
+    await ready();
+    const region = await screen.findByRole('region', { name: 'Source' });
+    expect(await within(region).findByText('Its time is in its callees')).toBeTruthy();
+    expect(
+      within(region).getByText(q.source(scope, wrapper?.fn ?? -1)?.lineReason ?? 'missing', {
+        exact: false,
+      }),
+    ).toBeTruthy();
+    expect(within(region).getByRole('list', { name: 'Time in callees' })).toBeTruthy();
+    expect(within(region).queryByText(/No line-level time recorded/)).toBeNull();
+  });
+
+  it('follows a callee when it is clicked', async () => {
+    history.replaceState(null, '', `#v=functions&tr=${orders.tracks[0]?.id}&sel=fn:${wrapper?.fn}`);
+    open(orders, undefined, { 'zoo/orders-server/dist/server.js': { text: BUNDLE } });
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Time in callees' });
+    await userEvent.click(within(list).getAllByRole('button')[0] as HTMLElement);
+    expect(decodeURIComponent(location.hash)).not.toContain(`sel=fn:${wrapper?.fn}`);
+  });
+});
+
+describe('call graph navigation', () => {
+  const openGraph = async () => {
+    history.replaceState(null, '', `#v=callgraph&tr=${orders.tracks[0]?.id}`);
+    open();
+    await ready();
+    await screen.findByRole('group', { name: /^Call graph with/ });
+  };
+  const level = () => screen.getByLabelText('Zoom level').textContent;
+
+  it('shows the zoom level and steps it with the buttons', async () => {
+    await openGraph();
+    const start = level();
+    await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(level()).not.toBe(start);
+    await userEvent.click(screen.getByRole('button', { name: '100%' }));
+    expect(level()).toBe('100%');
+  });
+
+  it('zooms with the plus and minus keys and resets with 0 when the graph has focus', async () => {
+    await openGraph();
+    await userEvent.click(screen.getByRole('button', { name: '100%' }));
+    const graph = screen.getByRole('group', { name: /^Call graph with/ });
+    graph.focus();
+    await userEvent.keyboard('+');
+    expect(level()).toBe('125%');
+    await userEvent.keyboard('-');
+    await userEvent.keyboard('-');
+    expect(level()).toBe('80%');
+    await userEvent.keyboard('0');
+    expect(level()).toBe('100%');
+  });
+
+  it('says how to navigate', async () => {
+    await openGraph();
+    expect(screen.getByText(/scroll to zoom, drag to pan/)).toBeTruthy();
+  });
+
+  it('offers Fit', async () => {
+    await openGraph();
+    await userEvent.click(screen.getByRole('button', { name: 'Fit' }));
+    expect(level()).toMatch(/^\d+%$/);
+  });
+});
+
+describe('task picker', () => {
+  const openWaterfall = async () => {
+    history.replaceState(null, '', `#v=waterfall&tr=${orders.tracks[0]?.id}`);
+    open();
+    await ready();
+    return screen.findByLabelText('Task') as Promise<HTMLSelectElement>;
+  };
+
+  it('opens on the whole run', async () => {
+    const picker = await openWaterfall();
+    await waitFor(() => expect(picker.selectedOptions[0]?.textContent).toMatch(/^Whole run · /));
+    expect(picker.querySelector('optgroup')?.getAttribute('label')).toBe('Whole run');
+  });
+
+  it('keeps the small tasks folded away behind a count, until asked for', async () => {
+    const picker = await openWaterfall();
+    await waitFor(() => expect(picker.options.length).toBeGreaterThan(2));
+    const label = (): string[] =>
+      Array.from(picker.querySelectorAll('optgroup')).map((g) => g.getAttribute('label') ?? '');
+    expect(label().some((l) => l.startsWith('Small tasks'))).toBe(false);
+    await userEvent.click(await screen.findByRole('button', { name: /Show \d+ small tasks/ }));
+    expect(label().some((l) => /^Small tasks \(\d+\)$/.test(l))).toBe(true);
+  });
+
+  it('labels the entry point and groups requests', async () => {
+    const picker = await openWaterfall();
+    await waitFor(() => expect(picker.options.length).toBeGreaterThan(2));
+    const labels = Array.from(picker.querySelectorAll('optgroup')).map((g) =>
+      g.getAttribute('label'),
+    );
+    expect(labels.slice(0, 3)).toEqual(['Whole run', 'Entry', 'Requests']);
+    expect(picker.textContent).toContain('program entry point');
+  });
+
+  it('picking a task opens that task, and picking the whole run returns to it', async () => {
+    const picker = await openWaterfall();
+    await waitFor(() => expect(picker.options.length).toBeGreaterThan(2));
+    const request = Array.from(picker.options).find((o) =>
+      /GET \/orders/.test(o.textContent ?? ''),
+    );
+    await userEvent.selectOptions(picker, request?.value ?? '');
+    expect(decodeURIComponent(location.hash)).toMatch(/task:\d+/);
+    await userEvent.selectOptions(picker, '-1');
+    expect(decodeURIComponent(location.hash)).not.toMatch(/task:\d+/);
+  });
+});
+
+describe('click-off deselects', () => {
+  it('clears the selection when empty space in the waterfall is clicked', async () => {
+    history.replaceState(null, '', `#v=waterfall&tr=${orders.tracks[0]?.id}&sel=fn:283`);
+    open();
+    await ready();
+    const table = await screen.findByRole('table', { name: 'Waterfall rows' });
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('sel=fn:283'));
+    await userEvent.click(table);
+    await waitFor(() => expect(decodeURIComponent(location.hash)).not.toContain('sel='));
+  });
+
+  it('does not clear when a waterfall row is clicked', async () => {
+    history.replaceState(null, '', `#v=waterfall&tr=${orders.tracks[0]?.id}&sel=fn:283`);
+    open();
+    await ready();
+    const table = await screen.findByRole('table', { name: 'Waterfall rows' });
+    const row = (await within(table).findAllByRole('row'))[1] as HTMLElement;
+    await userEvent.click(row);
+    expect(decodeURIComponent(location.hash)).toContain('sel=node');
+  });
+
+  it('clears the selection when empty space in the flame graph is clicked', async () => {
+    history.replaceState(null, '', `#v=flame&tr=${orders.tracks[0]?.id}&sel=fn:283`);
+    open();
+    await ready();
+    const plot = await screen.findByRole('img', { name: /Icicle graph/ });
+    await userEvent.click(plot);
+    await waitFor(() => expect(decodeURIComponent(location.hash)).not.toContain('sel='));
   });
 });
 

@@ -187,6 +187,6 @@ test.describe('Clear selection chip', () => {
     await drawer.getByRole('button', { name: /Clear selection/ }).click();
     await expect(app.locator('.finding-card.is-active')).toHaveCount(0);
     await expect(drawer.getByRole('button', { name: /Clear selection/ })).toHaveCount(0);
-    await expect(app.getByText('No function selected')).toBeVisible();
+    await expect(app.getByRole('button', { name: 'Expand source panel' })).toBeVisible();
   });
 });

@@ -26,7 +26,12 @@ export interface SourceState {
   selfByLine: Map<number, number>;
   maxSelf: number;
   hottest: number;
-  hotLine: number;
+  /** The line to select and scroll to: the definition, or the line the user jumped to. */
+  targetLine: number;
+  /** The function's definition line. */
+  definitionLine: number;
+  /** Callees by time, for functions whose own time is tiny. */
+  callees: Array<{ fn: number | null; name: string; origin: number; us: number }>;
   chips: CallSiteChip[];
   reason: SourceReason | null;
   loading: boolean;
@@ -78,7 +83,15 @@ export function useSource({ whole }: Options): SourceState {
   );
   const maxSelf = Math.max(0, ...(info?.lineSelf ?? []).map((l) => l.selfUs));
   const hottest = info?.hottestLine ?? 0;
-  const hotLine = snap.options.line > 0 ? snap.options.line : hottest;
+  const definitionLine = info ? info.definitionLine || info.startLine : 0;
+  // The highlight is always the definition; hot lines are only gutter bars. A jump moves the scroll.
+  const targetLine = snap.options.line > 0 ? snap.options.line : definitionLine;
+  const callees = (info?.calleeTime ?? []).map((c) => ({
+    fn: c.fn,
+    name: c.name,
+    origin: c.origin,
+    us: c.totalUs,
+  }));
 
   const chips = useMemo(() => {
     if (!details || allLines.length === 0) return [];
@@ -103,6 +116,10 @@ export function useSource({ whole }: Options): SourceState {
         error: textQ.error,
         mapMissing: info.mapMissing,
         lineCount: info.lineSelf.length,
+        selfUs: details?.selfUs,
+        hasCallees: callees.length > 0,
+        lineStatus: info.lineStatus,
+        lineReason: info.lineReason,
       })
     : null;
 
@@ -116,7 +133,9 @@ export function useSource({ whole }: Options): SourceState {
     selfByLine,
     maxSelf,
     hottest,
-    hotLine,
+    targetLine,
+    definitionLine,
+    callees,
     chips,
     reason,
     loading: infoQ.loading || (path !== '' && textQ.loading),

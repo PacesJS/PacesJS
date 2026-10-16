@@ -22,12 +22,18 @@ export type Transform =
   | { kind: 'merge-plumbing' }
   | { kind: 'drop-idle' }
   /** Merges frames of these origins into their nearest kept caller (self time moves up). Never hides the root. */
-  | { kind: 'hide-origins'; origins: OriginId[] };
+  | { kind: 'hide-origins'; origins: OriginId[] }
+  /**
+   * Grafts the stacks of resumed async functions under the parent path of the call they continue and
+   * roots everything at a function named after the entry script. Only effective as the first step.
+   */
+  | { kind: 'stitch-continuations' };
 
 export type TransformKind = Transform['kind'];
 
-/** The stack the UI opens with: collapse dependencies, merge plumbing, drop idle. */
+/** The stack the UI opens with: stitch continuations, collapse dependencies, merge plumbing, drop idle. */
 export const DEFAULT_TRANSFORMS: readonly Transform[] = [
+  { kind: 'stitch-continuations' },
   { kind: 'collapse-dependencies' },
   { kind: 'merge-plumbing' },
   { kind: 'drop-idle' },
@@ -88,7 +94,11 @@ export interface RelatedIds {
 export interface WaterfallRow {
   /** Index in `Waterfall.rows`. */
   id: number;
-  kind: 'call' | 'wait';
+  /**
+   * `call`: a call; `wait`: idle time (waiting for an async edge, or `awaiting` between two segments of
+   * one call); `summary`: "N small tasks" standing for `summaryTasks`.
+   */
+  kind: 'call' | 'wait' | 'summary';
   fn: ViewFnId;
   /** View-tree node, -1 for wait rows. */
   node: NodeId;
@@ -109,8 +119,12 @@ export interface WaterfallRow {
   hatched: boolean;
   /** Task this row belongs to (the scheduled task for rows reached over an async edge), or -1. */
   task: number;
-  /** Wait rows: human label such as "idle wait ~8 ms". */
+  /** Wait and summary rows: human label such as "idle wait ~8 ms", "awaiting ~7 ms", "3 small tasks · ~2 ms". */
   label: string;
+  /** The call resumes after an await: another segment of the same logical call (whole-run waterfall). */
+  resumed: boolean;
+  /** Summary rows: the tasks (indexes into `Track.tasks`) rolled into the row; open them with `waterfallForTask`. */
+  summaryTasks: number[];
 }
 
 export interface WaterfallMinimap {
@@ -147,6 +161,17 @@ export interface WaterfallOptions {
    * Rows stay in depth-first order and `id` stays the row's index in `rows`.
    */
   sort?: 'time' | 'duration' | 'share';
+}
+
+/** Options of the whole-run waterfall: the task waterfall's, plus what to fold. */
+export interface RunWaterfallOptions extends WaterfallOptions {
+  /**
+   * Tasks with less busy time than this, or that only run runtime frames, become one summary row per gap
+   * instead of rows. Default: the larger of 0.5 ms and 0.1% of the run. 0 turns collapsing off.
+   */
+  collapseTrivialUs?: number;
+  /** The transform stack of the view (default `DEFAULT_TRANSFORMS`). */
+  transforms?: readonly Transform[];
 }
 
 // ---- Flame graph ----
@@ -220,6 +245,8 @@ export interface CallGraphNode {
   recursion: number;
   /** Synthetic collapsed-package node. */
   isPackage: boolean;
+  /** The synthetic root named after the entry script (stitched views): always drawn, at the top. */
+  isEntry: boolean;
 }
 
 export interface CallGraphEdge {
@@ -233,6 +260,8 @@ export interface CallGraphEdge {
   count: number;
   /** Edge closes a cycle (drawn as a back edge). */
   back: boolean;
+  /** Frames between caller and callee that were pruned; > 0 draws dashed, "via N frames". */
+  hiddenFrames: number;
 }
 
 export interface CallGraph {
@@ -305,17 +334,47 @@ export interface CallSite {
   calls: number;
 }
 
+/** A callee of the function with the time under it. Sampled profiles carry no call-site line: `line` is never set. */
+export interface CalleeTime {
+  fn: ViewFnId;
+  name: string;
+  pkg: string;
+  /** Self time of the callee's calls made from this function. */
+  selfUs: number;
+  /** Total time of those calls. */
+  totalUs: number;
+  line?: number;
+}
+
+/** Why the source panel can or cannot show line-level time for a function. */
+export interface LineInfo {
+  /**
+   * `self-lines`: V8 attributed self time to lines. `no-self-time`: the function itself ran little, its time is in
+   * callees. `no-line-data`: it ran, but V8 recorded no line positions (inlined, native, collapsed package).
+   */
+  status: 'self-lines' | 'no-self-time' | 'no-line-data';
+  /** One honest sentence for the UI. */
+  reason: string;
+}
+
 export interface FunctionSourceInfo {
   fn: ViewFnId;
   name: string;
   file: string;
   line: number;
+  /** 1-based line of the function's definition in the original file (0 for collapsed packages). */
+  definitionLine: number;
   selfUs: number;
   totalUs: number;
   /** Lines with self time, ascending by line. */
   lines: LineSelf[];
   hottestLine: number;
+  /** Lines with self time, most time first (at most 8). */
+  hotLines: LineSelf[];
   callSites: CallSite[];
+  /** Callees with the time under this function, largest total first. */
+  calleeTime: CalleeTime[];
+  lineInfo: LineInfo;
   /** Busy fraction of this function per bucket across the track (for the header sparkline). */
   sparkline: Float32Array;
   mapMissing: boolean;
@@ -370,11 +429,12 @@ export interface CallerNode extends FunctionLocation {
 
 // ---- Task list ----
 
-export type TaskGroup = 'Entry' | 'Requests' | 'Timers' | 'I/O' | 'Microtasks' | 'Other';
+export type TaskGroup =
+  'Whole run' | 'Entry' | 'Requests' | 'Timers' | 'I/O' | 'Microtasks' | 'Other' | 'Small tasks';
 
 /** One row of the task picker: what ran, when, and how busy it was. */
 export interface TaskDescriptor {
-  /** Index into `Track.tasks`. */
+  /** Index into `Track.tasks`; -1 for the whole-run row (open it with `waterfallForRun`). */
   index: number;
   group: TaskGroup;
   /** Entry kind plus the first frame of the target's code, e.g. `request · GET /orders`. */
@@ -383,8 +443,10 @@ export interface TaskDescriptor {
   durationUs: number;
   /** Sampled self time without idle. */
   busyUs: number;
-  /** The single longest task of the track. */
+  /** The single longest task of the track (the whole-run row is never it). */
   longest: boolean;
+  /** Little busy time or only runtime frames: listed under 'Small tasks' and folded in the run waterfall. */
+  trivial: boolean;
 }
 
 // ---- Track timeline ----

@@ -278,7 +278,9 @@ export function FlameGraph() {
             onClick={(e) => {
               setMenu(null);
               const r = pick(e as unknown as React.PointerEvent<HTMLDivElement>);
+              // Empty space is not a frame: clicking it clears the selection.
               if (r) zoomInto(r.index);
+              else select({ kind: 'none' });
             }}
             onDoubleClick={() => dispatch({ type: 'set-source-collapsed', collapsed: false })}
             onContextMenu={(e) => {

@@ -53,14 +53,15 @@ describe('app state', () => {
 
 describe('transform stack', () => {
   it('removes one chip without touching the others', () => {
-    expect(removeTransform(DEFAULT_TRANSFORMS, 1).map((t) => t.k)).toEqual([
+    expect(removeTransform(DEFAULT_TRANSFORMS, 2).map((t) => t.k)).toEqual([
+      'stitch',
       'collapse-deps',
       'drop-idle',
     ]);
   });
 
   it('rewinds to a chip by dropping everything after it', () => {
-    expect(rewindTo(DEFAULT_TRANSFORMS, 0).map((t) => t.k)).toEqual(['collapse-deps']);
+    expect(rewindTo(DEFAULT_TRANSFORMS, 1).map((t) => t.k)).toEqual(['stitch', 'collapse-deps']);
   });
 
   it('does not stack duplicates and toggles invert', () => {
@@ -72,6 +73,7 @@ describe('transform stack', () => {
 
   it('labels chips in plain words', () => {
     expect(transformLabel({ k: 'collapse-deps' }, String)).toBe('Collapse dependencies');
+    expect(transformLabel({ k: 'stitch' }, String)).toBe('Stitch continuations (inferred)');
     expect(transformLabel({ k: 'merge-fn', fn: 9 }, () => 'lineTotal')).toBe('Merge lineTotal');
   });
 });

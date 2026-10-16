@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 import { useApp } from '../app/context';
-import { DOCK_LIMITS, DEFAULT_PREFS, clamp, clampDock } from '../state/prefs';
+import { DOCK_LIMITS, DEFAULT_PREFS, clamp, clampDock, dockCollapsed } from '../state/prefs';
 import type { DockPrefs } from '../state/prefs';
 import { DetailsDrawer } from './DetailsDrawer';
 import { MainView } from './MainView';
+import { SourceOverlay } from './SourceOverlay';
 import { SourcePanel } from './SourcePanel';
 
 const KEY_STEP_FRACTION = 0.02;
@@ -97,12 +98,12 @@ function DockHandle({ dock, containerRef, onLive, onCommit }: HandleProps) {
  * resizable and its size is remembered; the Source tab replaces the dock with the full view.
  */
 export function Workspace() {
-  const { state, snap, dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const ref = useRef<HTMLDivElement | null>(null);
   const [live, setLive] = useState<DockPrefs | null>(null);
   const dock = live ?? state.prefs.dock;
-  const collapsed = state.sourceCollapsed;
-  const full = snap.view === 'source';
+  const { selection } = useApp();
+  const collapsed = dockCollapsed(state.prefs.dock.mode, selection.fn !== null);
 
   const style = {
     ['--dock-frac' as string]: dock.widthFraction,
@@ -112,28 +113,25 @@ export function Workspace() {
   return (
     <div
       ref={ref}
-      className={`workspace is-${dock.orientation}${collapsed ? ' is-collapsed' : ''}${full ? ' is-full' : ''}`}
+      className={`workspace is-${dock.orientation}${collapsed ? ' is-collapsed' : ''}`}
       style={style}
     >
       <div className="app-col">
         <MainView />
         <DetailsDrawer />
       </div>
-      {full ? null : (
-        <>
-          {collapsed ? null : (
-            <DockHandle
-              dock={dock}
-              containerRef={ref}
-              onLive={setLive}
-              onCommit={(d) => dispatch({ type: 'prefs', prefs: { dock: d } })}
-            />
-          )}
-          <aside aria-label="Source dock" className={`dock is-${dock.orientation}`}>
-            <SourcePanel />
-          </aside>
-        </>
+      {collapsed ? null : (
+        <DockHandle
+          dock={dock}
+          containerRef={ref}
+          onLive={setLive}
+          onCommit={(d) => dispatch({ type: 'prefs', prefs: { dock: d } })}
+        />
       )}
+      <aside aria-label="Source dock" className={`dock is-${dock.orientation}`}>
+        <SourcePanel />
+      </aside>
+      {state.dockMaximized ? <SourceOverlay /> : null}
     </div>
   );
 }

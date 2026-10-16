@@ -19,6 +19,7 @@ interface RawEdge {
   to: number;
   weight: number;
   count: number;
+  hiddenFrames: number;
 }
 
 /** Contiguous runs of samples per call node: a run starts when the previous sample was elsewhere. */
@@ -71,7 +72,7 @@ export function callGraph(
       else {
         // Nested (indirect recursion) calls add to the count but not the weight, so time is not doubled.
         const key = caller * K + fn;
-        const e = edges.get(key) ?? { from: caller, to: fn, weight: 0, count: 0 };
+        const e = edges.get(key) ?? { from: caller, to: fn, weight: 0, count: 0, hiddenFrames: 0 };
         if (outermost) e.weight += tree.total[i] ?? 0;
         e.count += runs[i] ?? 0;
         edges.set(key, e);
@@ -129,6 +130,15 @@ export function callGraph(
       cumulative += self.get(f) ?? 0;
     }
   }
+  // The entry root is always drawn: it is where every call starts.
+  const entryFn = model.tracks[view.trackIndex]?.rootFn;
+  let entryShown = -1;
+  if (ego === undefined && entryFn !== undefined) {
+    for (let c = 1; c < tree.length; c = tree.subtreeEnd[c] ?? c + 1) {
+      if (tree.fn[c] === entryFn && total.has(entryFn)) entryShown = entryFn;
+    }
+    if (entryShown >= 0) shown.add(entryShown);
+  }
   for (const f of options.expanded ?? []) {
     if (!total.has(f)) continue;
     shown.add(f);
@@ -155,12 +165,46 @@ export function callGraph(
         faded: ego !== undefined && !inHood.has(fn),
         recursion: recursion.get(fn) ?? 0,
         isPackage: fn >= F,
+        isEntry: fn === entryShown,
       };
     });
 
-  const kept = [...edges.values()]
-    .filter((e) => shown.has(e.from) && shown.has(e.to))
-    .sort((a, b) => a.from - b.from || a.to - b.to);
+  // Drawn edges: each kept occurrence hangs off its nearest kept ancestor, so pruned frames in between
+  // become one contracted edge instead of leaving the node without a caller.
+  const drawn = new Map<number, RawEdge>();
+  const nearest = new Int32Array(tree.length).fill(-1);
+  const open2: number[] = [];
+  const act = new Map<number, number>();
+  for (let i = 1; i < tree.length; i++) {
+    while (open2.length > 0 && (tree.subtreeEnd[open2[open2.length - 1] ?? 0] ?? 0) <= i) {
+      const done = tree.fn[open2.pop() ?? 0] ?? 0;
+      act.set(done, (act.get(done) ?? 1) - 1);
+    }
+    const p = tree.parent[i] ?? 0;
+    const fn = tree.fn[i] ?? 0;
+    const parentKept = p > 0 && shown.has(tree.fn[p] ?? 0);
+    const anc = parentKept ? p : p > 0 ? (nearest[p] ?? -1) : -1;
+    nearest[i] = anc;
+    if (shown.has(fn) && anc > 0 && tree.fn[anc] !== fn) {
+      const caller = tree.fn[anc] ?? 0;
+      const key = caller * K + fn;
+      const hidden = (tree.depth[i] ?? 0) - (tree.depth[anc] ?? 0) - 1;
+      const e = drawn.get(key) ?? {
+        from: caller,
+        to: fn,
+        weight: 0,
+        count: 0,
+        hiddenFrames: hidden,
+      };
+      if ((act.get(fn) ?? 0) === 0) e.weight += tree.total[i] ?? 0;
+      e.count += runs[i] ?? 0;
+      e.hiddenFrames = Math.min(e.hiddenFrames, hidden);
+      drawn.set(key, e);
+    }
+    act.set(fn, (act.get(fn) ?? 0) + 1);
+    open2.push(i);
+  }
+  const kept = [...drawn.values()].sort((a, b) => a.from - b.from || a.to - b.to);
 
   // Back edges: DFS from the heaviest callers-free nodes; an edge into a node on the stack closes a cycle.
   const out = new Map<number, RawEdge[]>();
@@ -190,6 +234,7 @@ export function callGraph(
     share: totalUs > 0 ? e.weight / totalUs : 0,
     count: e.count,
     back: back.has(e),
+    hiddenFrames: e.hiddenFrames,
   }));
   return { nodes, edges: graphEdges, hiddenNodes: all.length - shown.size, totalUs };
 }

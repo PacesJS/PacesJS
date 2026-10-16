@@ -1,13 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent, PointerEvent } from 'react';
 import { useApp } from '../app/context';
-import { useAsync, useElementWidth } from '../app/hooks';
+import { useAsync, useElementSize } from '../app/hooks';
 import type { CgNode } from '../data/types';
 import { NODE_H } from '../data/layout';
 import type { PlacedNode } from '../data/layout';
 import { fmtCount, fmtDuration } from '../util/format';
+import {
+  ZOOM_STEP,
+  centerOn,
+  detailAt,
+  fitViewport,
+  focusViewport,
+  isInView,
+  panBy,
+  percent,
+  zoomAt,
+} from '../view/graph-viewport';
+import type { Viewport } from '../view/graph-viewport';
 import { Hint } from './Hint';
 import { Legend } from './Legend';
 import { Switch } from './Switch';
+
+const PAN_KEY_PX = 60;
+const DRAG_PX = 4;
 
 const ORIGIN_VAR = [
   '--c-origin-you',
@@ -22,9 +38,18 @@ const ORIGIN_VAR = [
 export function CallGraph() {
   const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select } = useApp();
   const [all, setAll] = useState(false);
-  const [fit, setFit] = useState(false);
-  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
-  const boxW = useElementWidth(scrollEl);
+  const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
+  const box = useElementSize(boxEl);
+  const [view, setView] = useState<Viewport>({ k: 1, x: 0, y: 0 });
+  const [seen, setSeen] = useState({ layout: '', sel: '', size: '' });
+  // Once the user zooms or pans, a resize no longer re-fits the graph.
+  const [moved, setMoved] = useState(false);
+  const viewRef = useRef(view);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const justDragged = useRef(false);
+  useEffect(() => {
+    viewRef.current = view;
+  });
   const revealIds = snap.options.reveal;
   const reveal = (ids: number[]): void =>
     dispatch({
@@ -46,21 +71,101 @@ export function CallGraph() {
   );
 
   const selBox = selFn === null ? undefined : pos.get(selFn);
+
+  // Place the graph: fit it when a new layout arrives (centred on the selection when there is
+  // one), and pan to the selection when it moves out of sight. State is adjusted while rendering.
+  const layoutKey = res
+    ? `${res.layout.width}x${res.layout.height}:${res.layout.nodes.length}`
+    : '';
+  const sizeKey = `${Math.round(box.w / 24)}x${Math.round(box.h / 24)}`;
+  if (
+    res &&
+    box.w > 0 &&
+    (seen.layout !== layoutKey || seen.sel !== String(selFn) || seen.size !== sizeKey)
+  ) {
+    setSeen({ layout: layoutKey, sel: String(selFn), size: sizeKey });
+    const content = { w: res.layout.width, h: res.layout.height };
+    const fresh = seen.layout !== layoutKey || seen.size === '';
+    const resized = seen.size !== sizeKey && !moved;
+    if (fresh || resized) {
+      setView(selBox ? focusViewport(content, selBox, box) : fitViewport(content, box));
+    } else if (selBox && !isInView(view, selBox, box)) {
+      setView(centerOn(view, selBox, box));
+    }
+  }
+
+  // Wheel and trackpad zoom toward the cursor. A native listener: React's wheel handler is
+  // passive and could not stop the page from scrolling.
   useEffect(() => {
-    // Keep the selected node in view: centre it when it sits outside the scroll box.
-    if (!scrollEl || !selBox) return;
-    const margin = 24;
-    const fits =
-      selBox.x >= scrollEl.scrollLeft + margin &&
-      selBox.x + selBox.w <= scrollEl.scrollLeft + scrollEl.clientWidth - margin &&
-      selBox.y >= scrollEl.scrollTop + margin &&
-      selBox.y + selBox.h <= scrollEl.scrollTop + scrollEl.clientHeight - margin;
-    if (fits) return;
-    scrollEl.scrollTo({
-      left: Math.max(0, selBox.x + selBox.w / 2 - scrollEl.clientWidth / 2),
-      top: Math.max(0, selBox.y + selBox.h / 2 - scrollEl.clientHeight / 2),
-    });
-  }, [scrollEl, selBox]);
+    if (!boxEl) return;
+    const onWheel = (e: WheelEvent): void => {
+      e.preventDefault();
+      const rect = boxEl.getBoundingClientRect();
+      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      setMoved(true);
+      setView(zoomAt(viewRef.current, factor, e.clientX - rect.left, e.clientY - rect.top));
+    };
+    boxEl.addEventListener('wheel', onWheel, { passive: false });
+    return () => boxEl.removeEventListener('wheel', onWheel);
+  }, [boxEl]);
+
+  const zoomBy = (factor: number): void => {
+    setMoved(true);
+    setView(zoomAt(view, factor, box.w / 2, box.h / 2));
+  };
+  const fit = (): void => {
+    setMoved(false);
+    if (res) setView(fitViewport({ w: res.layout.width, h: res.layout.height }, box));
+  };
+  const actual = (): void => {
+    setMoved(true);
+    setView(zoomAt(view, 1 / view.k, box.w / 2, box.h / 2));
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    const move = (dx: number, dy: number): void => {
+      e.preventDefault();
+      setMoved(true);
+      setView(panBy(view, dx, dy));
+    };
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      zoomBy(ZOOM_STEP);
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      zoomBy(1 / ZOOM_STEP);
+    } else if (e.key === '0') {
+      e.preventDefault();
+      actual();
+    } else if (e.key === 'ArrowLeft') move(PAN_KEY_PX, 0);
+    else if (e.key === 'ArrowRight') move(-PAN_KEY_PX, 0);
+    else if (e.key === 'ArrowUp') move(0, PAN_KEY_PX);
+    else if (e.key === 'ArrowDown') move(0, -PAN_KEY_PX);
+  };
+
+  // Dragging pans. The pointer is captured only once it has moved, so plain clicks still reach
+  // the nodes underneath.
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>): void => {
+    if (e.button !== 0) return;
+    drag.current = { x: e.clientX, y: e.clientY, moved: false };
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>): void => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (!d.moved && Math.hypot(dx, dy) < DRAG_PX) return;
+    if (!d.moved) e.currentTarget.setPointerCapture(e.pointerId);
+    d.moved = true;
+    setMoved(true);
+    d.x = e.clientX;
+    d.y = e.clientY;
+    setView(panBy(viewRef.current, dx, dy));
+  };
+  const endDrag = (): void => {
+    justDragged.current = drag.current?.moved === true;
+    drag.current = null;
+  };
 
   if (q.error)
     return (
@@ -76,7 +181,7 @@ export function CallGraph() {
     );
   const { graph, layout } = res;
   const near = res.near ? new Set(res.near) : null;
-  const scale = fit && boxW > 0 && layout.width > boxW ? boxW / layout.width : 1;
+  const detail = detailAt(view.k);
   const byFn = new Map<number, CgNode>(graph.nodes.map((n) => [n.fn, n]));
   const maxTotal = graph.maxTotalUs;
   const selectionHidden = selFn !== null && !byFn.has(selFn);
@@ -105,9 +210,33 @@ export function CallGraph() {
         <button type="button" className="btn" onClick={() => setAll((v) => !v)}>
           {all ? 'Prune' : 'Show all'}
         </button>
-        <button type="button" className="btn" aria-pressed={fit} onClick={() => setFit((v) => !v)}>
-          Fit
-        </button>
+        <div className="cg-zoom" role="group" aria-label="Zoom">
+          <button
+            type="button"
+            className="btn"
+            aria-label="Zoom out"
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+          >
+            −
+          </button>
+          <span className="cg-zoom-level num" aria-label="Zoom level">
+            {percent(view.k)}
+          </span>
+          <button
+            type="button"
+            className="btn"
+            aria-label="Zoom in"
+            onClick={() => zoomBy(ZOOM_STEP)}
+          >
+            +
+          </button>
+          <button type="button" className="btn" onClick={fit}>
+            Fit
+          </button>
+          <button type="button" className="btn" onClick={actual}>
+            100%
+          </button>
+        </div>
         {expanded.map((p) => (
           <button
             key={p}
@@ -126,7 +255,7 @@ export function CallGraph() {
           </button>
         ) : null}
         <p className="axis-caption" style={{ marginLeft: 'auto' }}>
-          callers above callees · each function shown once
+          callers above callees · each function shown once · scroll to zoom, drag to pan
         </p>
       </div>
       <Legend />
@@ -177,16 +306,28 @@ export function CallGraph() {
         Each function appears once, with its whole cost in one box. Callers sit above callees;
         thicker edges carried more time. Select a node to fade everything more than two levels away.
       </Hint>
-      <div className="cg-scroll" ref={setScrollEl}>
-        <div
-          className="cg-plot"
-          role="group"
-          aria-label={`Call graph with ${graph.nodes.length} functions`}
-          style={{ width: layout.width * scale, height: layout.height * scale }}
-        >
+      <div
+        className={`cg-scroll is-${detail}`}
+        ref={setBoxEl}
+        tabIndex={0}
+        role="group"
+        aria-label={`Call graph with ${graph.nodes.length} functions. Scroll to zoom, drag to pan, plus and minus to zoom, 0 for 100%, arrows to pan.`}
+        onKeyDown={onKeyDown}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={(e) => {
+          if (justDragged.current) {
+            justDragged.current = false;
+            e.stopPropagation();
+          }
+        }}
+      >
+        <div className="cg-plot">
           <div
             style={{
-              transform: `scale(${scale})`,
+              transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`,
               transformOrigin: '0 0',
               width: layout.width,
               height: layout.height,
@@ -222,24 +363,9 @@ export function CallGraph() {
                     d={`M${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`}
                     fill="none"
                     strokeWidth={1.5 + (9 * e.timeUs) / graph.maxEdgeUs}
-                    strokeDasharray={e.back ? '5 4' : undefined}
+                    strokeDasharray={e.hiddenFrames > 0 ? '2 5' : e.back ? '5 4' : undefined}
                     strokeLinecap="round"
                     className={`${isEgo ? 'cg-edge-ego' : 'cg-edge'}${faded ? ' cg-fade-edge' : ''}`}
-                  />
-                );
-              })}
-              {graph.loops.map((l) => {
-                const n = nodeBox(l.fn);
-                const x = n.x + n.w;
-                const y = n.y + n.h * 0.3;
-                return (
-                  <path
-                    key={`loop-${l.fn}`}
-                    className="cg-loop"
-                    d={`M${x} ${y} C ${x + 32} ${y - 10}, ${x + 32} ${y + 44}, ${x} ${y + 34}`}
-                    fill="none"
-                    strokeWidth={2}
-                    strokeDasharray="4 3"
                   />
                 );
               })}
@@ -255,7 +381,7 @@ export function CallGraph() {
                 <button
                   key={n.fn}
                   type="button"
-                  className={`cg-node${isSel ? ' is-selected' : ''}${faded ? ' is-faded' : ''}`}
+                  className={`cg-node${isSel ? ' is-selected' : ''}${faded ? ' is-faded' : ''}${n.isEntry ? ' is-entry' : ''}`}
                   aria-label={label(n)}
                   aria-pressed={isSel}
                   style={{
@@ -279,6 +405,14 @@ export function CallGraph() {
                       {n.name}
                     </span>
                     <span className="cg-node-sub">{n.sub}</span>
+                    {n.recursion > 0 ? (
+                      <span
+                        className="cg-recursion"
+                        title={`Recursive: calls itself ${n.recursion} times`}
+                      >
+                        ↻ ×{n.recursion}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="cg-node-bar" aria-hidden="true">
                     <span
@@ -319,18 +453,24 @@ export function CallGraph() {
                   </span>
                 );
               })}
-            {graph.loops.map((l) => {
-              const n = nodeBox(l.fn);
-              return (
-                <span
-                  key={`ll-${l.fn}`}
-                  className="cg-loop-label"
-                  style={{ left: n.x + n.w + 20, top: n.y + n.h * 0.3 + 12 }}
-                >
-                  recursion ×{l.count}
-                </span>
-              );
-            })}
+            {graph.edges
+              .filter((e) => e.hiddenFrames > 0)
+              .map((e) => {
+                const a = nodeBox(e.from);
+                const b = nodeBox(e.to);
+                return (
+                  <span
+                    key={`via-${e.from}-${e.to}`}
+                    className="cg-label cg-via"
+                    style={{
+                      left: (a.x + a.w / 2 + b.x + b.w / 2) / 2,
+                      top: (a.y + a.h + b.y) / 2 + 6,
+                    }}
+                  >
+                    via {e.hiddenFrames} {e.hiddenFrames === 1 ? 'frame' : 'frames'}
+                  </span>
+                );
+              })}
             {graph.nodes.flatMap((n) => {
               const box = nodeBox(n.fn);
               const chips: React.ReactNode[] = [];

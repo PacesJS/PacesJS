@@ -3,7 +3,7 @@ import { createQueries } from '../../src/data/queries';
 import { DEFAULT_TRANSFORMS } from '../../src/state/types';
 import type { Transform } from '../../src/state/types';
 import { nodeElk } from '../helpers/node-elk';
-import { ordersModel } from '../helpers/real-model';
+import { fixtureModel, ordersModel } from '../helpers/real-model';
 
 const model = ordersModel();
 const q = createQueries(model, null, nodeElk);
@@ -143,7 +143,9 @@ describe('flame data', () => {
       zoom: [],
       zoomPath: [chain[0] ?? 0, 999_999],
     });
-    expect(bogus.crumbs).toHaveLength(1);
+    // The entry root counts as the first step; the unknown function is dropped.
+    expect(bogus.crumbs.map((c) => c.name).at(-1)).toBe('getOrders');
+    expect(bogus.crumbs).toHaveLength(2);
   });
 
   it('has no change data without a baseline', () => {
@@ -151,10 +153,12 @@ describe('flame data', () => {
   });
 });
 
-describe('waterfall', () => {
-  const wf = q.waterfall(scope, -1, shape);
+describe('task waterfall', () => {
+  const longest = q.tasks(scope).find((t) => t.longest)?.index ?? 0;
+  const wf = q.waterfall(scope, longest, shape);
 
-  it('opens on the longest task and makes the task itself the root row', () => {
+  it('makes the task itself the root row', () => {
+    expect(wf?.mode).toBe('task');
     expect(wf?.rows[0]).toMatchObject({
       kind: 'task',
       depth: 0,
@@ -164,11 +168,13 @@ describe('waterfall', () => {
     expect(wf?.rows[0]?.end).toBe(wf?.taskUs);
   });
 
-  it('puts the first user frame beneath the task, in execution order', () => {
-    expect(wf?.rows.slice(1, 4).map((r) => `${r.depth}:${r.name}`)).toEqual([
-      '1:getOrders',
-      '2:renderInvoice',
-      '3:loadTemplate',
+  it('roots the task at the entry script, with the user frames beneath it in execution order', () => {
+    expect(wf?.rows[1]).toMatchObject({ depth: 1, parent: 0 });
+    expect(wf?.rows[1]?.name).toMatch(/server\.js$/);
+    expect(wf?.rows.slice(2, 5).map((r) => `${r.depth}:${r.name}`)).toEqual([
+      '2:getOrders',
+      '3:renderInvoice',
+      '4:loadTemplate',
     ]);
   });
 
@@ -180,7 +186,9 @@ describe('waterfall', () => {
 
   it('marks the widest child at each level as the critical path, task first', () => {
     const crit = (wf?.criticalRows ?? []).map((id) => wf?.rows[id]?.name);
-    expect(crit.slice(0, 3)).toEqual(['request · GET /orders', 'getOrders', 'renderInvoice']);
+    expect(crit[0]).toBe('request · GET /orders');
+    expect(crit[1]).toMatch(/server\.js$/);
+    expect(crit).toContain('getOrders');
     expect(wf?.rows.filter((r) => r.critical).map((r) => r.id)).toEqual(wf?.criticalRows);
   });
 
@@ -188,14 +196,8 @@ describe('waterfall', () => {
     expect(wf?.rows.some((r) => r.belowPrecision)).toBe(true);
   });
 
-  it('shows a time range when no task is chosen', () => {
-    const r = q.waterfall({ ...scope, range: [394_000, 594_000] }, -1, shape);
-    expect(r?.taskIndex).toBe(-1);
-    expect(r?.taskLabel).toMatch(/^Range /);
-  });
-
   it('puts the longest sibling first when the engine sorts by duration, children under parents', () => {
-    const sorted = q.waterfall(scope, -1, { sort: 'duration', minDurUs: 0 });
+    const sorted = q.waterfall(scope, longest, { sort: 'duration', minDurUs: 0 });
     const rows = sorted?.rows ?? [];
     const parent = rows.find((r) => rows.filter((k) => k.parent === r.id).length > 2);
     const lengths = rows.filter((r) => r.parent === parent?.id).map((r) => r.end - r.start);
@@ -205,18 +207,96 @@ describe('waterfall', () => {
   });
 
   it('drops calls under the minimum duration with everything beneath them, keeping the task row', () => {
-    const all = q.waterfall(scope, -1, shape)?.rows.length ?? 0;
-    const kept = q.waterfall(scope, -1, { sort: 'time', minDurUs: 30_000 })?.rows ?? [];
+    const all = q.waterfall(scope, longest, shape)?.rows.length ?? 0;
+    const kept = q.waterfall(scope, longest, { sort: 'time', minDurUs: 30_000 })?.rows ?? [];
     expect(kept[0]?.kind).toBe('task');
     expect(kept.length).toBeLessThan(all);
     expect(kept.every((r) => r.kind === 'task' || r.end - r.start >= 30_000)).toBe(true);
   });
+});
 
-  it('groups the task picker by what started the work, longest task flagged', () => {
-    const tasks = q.tasks(scope);
-    expect(tasks[0]?.group).toBe('Entry');
+describe('whole-run waterfall', () => {
+  const run = q.waterfall(scope, -1, shape);
+
+  it('is the default: the whole logical execution rooted at the entry script', () => {
+    expect(run?.mode).toBe('run');
+    expect(run?.rows[0]).toMatchObject({ kind: 'call', depth: 0, parent: -1 });
+    expect(run?.rows[0]?.name).toMatch(/server\.js$/);
+    expect(run?.taskLabel).toMatch(/^Whole run · /);
+  });
+
+  it('covers the run, not one task', () => {
+    const task = q.waterfall(scope, q.tasks(scope).find((t) => t.longest)?.index ?? 0, shape);
+    expect(run?.taskUs).toBeGreaterThan((task?.taskUs ?? 0) * 3);
+  });
+
+  it('folds small tasks into summary rows instead of listing each', () => {
+    const summaries = run?.rows.filter((r) => r.kind === 'summary') ?? [];
+    expect(summaries.length).toBeGreaterThan(0);
+    expect(summaries[0]?.name).toMatch(/small tasks? ·/);
+    expect(summaries[0]?.summaryTasks.length).toBeGreaterThan(0);
+  });
+
+  it('keeps ids as indexes with parents before children', () => {
+    const rows = run?.rows ?? [];
+    expect(rows.map((r) => r.id)).toEqual(rows.map((_, i) => i));
+    expect(rows.slice(1).every((r) => r.parent >= 0 && r.parent < r.id)).toBe(true);
+  });
+
+  it('marks the critical path from the entry root', () => {
+    expect(run?.criticalRows[0]).toBe(0);
+    expect(run?.rows.filter((r) => r.critical).map((r) => r.id)).toEqual(run?.criticalRows);
+  });
+
+  it('shows a time range when no task is chosen and a range is set', () => {
+    const r = q.waterfall({ ...scope, range: [394_000, 594_000] }, -1, shape);
+    expect(r?.mode).toBe('range');
+    expect(r?.taskLabel).toMatch(/^Range /);
+  });
+});
+
+describe('stitched continuations in the whole run', () => {
+  const eslint = fixtureModel('eslint-cli-wrapped');
+  const qe = createQueries(eslint);
+  const sc = {
+    track: eslint.tracks[eslint.primaryTrack]?.id ?? '',
+    transforms: [...DEFAULT_TRANSFORMS],
+    range: null,
+    hide: [] as number[],
+  };
+  const run = qe.waterfall(sc, -1, shape);
+
+  it('marks the segments that resume after an await', () => {
+    expect(run?.rows.some((r) => r.resumed)).toBe(true);
+  });
+
+  it('draws the time spent awaiting as idle rows between segments', () => {
+    const waits = run?.rows.filter((r) => r.kind === 'wait' && /^awaiting/.test(r.name)) ?? [];
+    expect(waits.length).toBeGreaterThan(0);
+  });
+
+  it('roots the run at the eslint entry script', () => {
+    expect(run?.rows[0]?.name).toMatch(/eslint\.js$/);
+  });
+});
+
+describe('task picker', () => {
+  const tasks = q.tasks(scope);
+
+  it('starts with the whole run, then the entry point, then the other groups', () => {
+    expect(tasks[0]).toMatchObject({ group: 'Whole run', index: -1 });
+    expect(tasks[1]?.group).toBe('Entry');
+  });
+
+  it('flags the longest task once and lists requests by label', () => {
     expect(tasks.filter((t) => t.longest)).toHaveLength(1);
     expect(tasks.some((t) => t.group === 'Requests' && t.label.endsWith('GET /orders'))).toBe(true);
+  });
+
+  it('puts trivial tasks under Small tasks', () => {
+    const small = tasks.filter((t) => t.group === 'Small tasks');
+    expect(small.length).toBeGreaterThan(0);
+    expect(small.every((t) => t.trivial)).toBe(true);
   });
 });
 

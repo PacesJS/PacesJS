@@ -15,6 +15,7 @@ export const FIXTURES = [
   'worker-imbalance',
   'eslint-cli',
   'eslint-cli-wrapped',
+  'async-chain',
 ] as const;
 export type FixtureName = (typeof FIXTURES)[number];
 

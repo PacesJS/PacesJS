@@ -117,7 +117,8 @@ export function showMeAction(
       ...(showMe.task !== undefined ? { task: showMe.task } : {}),
       // A range target opens the waterfall on that range, not on a previously picked task.
       ...(showMe.range && showMe.task === undefined ? { task: -1 } : {}),
-      ...(showMe.line !== undefined ? { line: showMe.line } : {}),
+      // The source panel selects the function's definition; a hot line is only a gutter bar.
+      line: 0,
       ...(pkgFn !== undefined ? { reveal: [pkgFn] } : {}),
       zoom: [],
       zoomPath: zoomPathOf(showMe),

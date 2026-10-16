@@ -71,12 +71,30 @@ describe('Show me', () => {
     expect(next.options.task).toBe(5);
   });
 
-  it('scrolls the source to the target line', () => {
+  it('leaves the source on the definition: a hot line is never the scroll target', () => {
     const state = createState(initialSnapshot());
     const action = showMeAction({ view: 'waterfall', fn: 3, line: 43 }, snapshotOf(state), 'main');
     const next = snapshotOf(reducer(state, action));
     expect(next.selection).toEqual({ kind: 'fn', fn: 3 });
-    expect(next.options.line).toBe(43);
+    expect(next.options.line).toBe(0);
+  });
+
+  it('forgets a jump to the hottest line when another function is selected', () => {
+    const start = { ...initialSnapshot(), options: { ...initialSnapshot().options, line: 1667 } };
+    const state = createState(start);
+    const next = snapshotOf(reducer(state, { type: 'select', selection: { kind: 'fn', fn: 9 } }));
+    expect(next.options.line).toBe(0);
+  });
+
+  it('keeps a jump while the same function stays selected', () => {
+    const start = {
+      ...initialSnapshot(),
+      selection: { kind: 'fn', fn: 9 } as const,
+      options: { ...initialSnapshot().options, line: 1667 },
+    };
+    const state = createState(start);
+    const next = snapshotOf(reducer(state, { type: 'options', options: { line: 1700 } }));
+    expect(next.options.line).toBe(1700);
   });
 });
 

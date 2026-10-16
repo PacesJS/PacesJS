@@ -11,6 +11,7 @@ import {
   sandwich,
   timelineLane,
   waterfallForRange,
+  waterfallForRun,
   waterfallForTask,
 } from '@pacesjs/engine';
 import type { ExecutionModel, FlameLayout, ModelDiff, OriginId, Track } from '@pacesjs/engine';
@@ -54,6 +55,7 @@ export function taskOptions(model: ExecutionModel, trackIndex: number): TaskOpti
     startUs: d.startUs,
     durationUs: d.durationUs,
     busyUs: d.busyUs,
+    trivial: d.trivial,
     longest: d.longest,
   }));
 }
@@ -92,22 +94,60 @@ export function waterfallData(
   req: WaterfallRequest,
 ): WaterfallData | null {
   const { track } = s;
-  const useRange = req.task < 0 && req.range !== null;
-  const task = useRange
-    ? -1
-    : req.task >= 0 && req.task < track.tasks.length
-      ? req.task
-      : longestTask(track);
-  if (!useRange && task < 0) return null;
   const opts = { sort: req.sort, minDurationUs: req.minDurUs };
+  const mode: WaterfallData['mode'] =
+    req.task >= 0 && req.task < track.tasks.length ? 'task' : req.range ? 'range' : 'run';
+
+  if (mode === 'run') {
+    // The default: the whole logical execution from the entry script, continuations stitched.
+    const wf = waterfallForRun(model, s.trackIndex, { ...opts, transforms: s.view.stack });
+    const t0 = wf.start;
+    const rows: WaterfallRow[] = wf.rows.map((r) => {
+      const fn = r.kind === 'call' ? s.out(r.fn) : -1;
+      const info = fn >= 0 ? s.info(fn) : null;
+      return {
+        id: r.id,
+        kind: r.kind,
+        fn,
+        path: r.kind === 'call' ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
+        name: info ? info.name || '(anonymous)' : r.label,
+        loc: info ? locationOf(info) : '',
+        origin: info ? info.origin : Origin.Idle,
+        start: r.start - t0,
+        end: r.end - t0,
+        depth: r.depth,
+        parent: r.parent,
+        hasChildren: false,
+        critical: r.critical,
+        belowPrecision: r.hatched,
+        share: r.share,
+        resumed: r.resumed,
+        summaryTasks: r.summaryTasks,
+      };
+    });
+    for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
+    return {
+      mode,
+      taskIndex: -1,
+      trackId: track.id,
+      taskLabel: describeTasks(model, s.trackIndex)[0]?.label ?? 'Whole run',
+      taskUs: Math.max(1, wf.end - wf.start),
+      taskStartUs: t0,
+      rows,
+      criticalRows: wf.criticalPath,
+      hasAsync: wf.hasAsyncFlow,
+    };
+  }
+
+  const task = mode === 'task' ? req.task : -1;
   const wf =
-    useRange && req.range
+    mode === 'range' && req.range
       ? waterfallForRange(model, s.view, req.range[0], req.range[1], opts)
       : waterfallForTask(model, s.view, task, opts);
   const t0 = wf.start;
   const spanUs = Math.max(1, wf.end - wf.start);
   const label =
-    useRange && req.range
+    mode === 'range' && req.range
       ? `Range ${(req.range[0] / 1e6).toFixed(1)}–${(req.range[1] / 1e6).toFixed(1)} s`
       : (describeTasks(model, s.trackIndex).find((d) => d.index === task)?.label ??
         taskLabelOf(model, track, task));
@@ -128,6 +168,8 @@ export function waterfallData(
       critical: wf.rows.length > 0,
       belowPrecision: false,
       share: 1,
+      resumed: false,
+      summaryTasks: [],
     },
   ];
   for (const r of wf.rows) {
@@ -149,11 +191,14 @@ export function waterfallData(
       critical: r.critical,
       belowPrecision: r.hatched,
       share: r.share,
+      resumed: r.resumed,
+      summaryTasks: r.summaryTasks,
     });
   }
   for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
   return {
-    taskIndex: useRange ? -1 : task,
+    mode,
+    taskIndex: task,
     trackId: track.id,
     taskLabel: label,
     taskUs: spanUs,
@@ -171,14 +216,23 @@ export function waterfallData(
  * (collapsed packages and merged plumbing can remove frames of a hot path). 0 when none does.
  */
 export function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
-  for (let n = fns.length; n > 0; n--) {
-    const path = fns.slice(0, n).map((f) => s.inn(f));
-    if (path.every((f) => f >= 0)) {
-      const node = findNode(s.view.tree, path);
-      if (node > 0) return node;
+  const tree = s.view.tree;
+  // A stitched view is rooted at the entry script's function, which hot paths do not include.
+  const entry = tree.length > 1 && tree.parent[1] === 0 ? [tree.fn[1] ?? 0] : [];
+  let best = 0;
+  for (const lead of [[], entry]) {
+    for (let n = fns.length; n > 0; n--) {
+      const path = [...lead, ...fns.slice(0, n).map((f) => s.inn(f))];
+      if (path.every((f) => f >= 0)) {
+        const node = findNode(tree, path);
+        if (node > 0) {
+          if ((tree.depth[node] ?? 0) > (tree.depth[best] ?? 0)) best = node;
+          break;
+        }
+      }
     }
   }
-  return 0;
+  return best;
 }
 
 export function flameData(
@@ -454,23 +508,27 @@ export function callGraphData(
       : info.origin === Origin.User || info.origin === Origin.Dependency
         ? locationOf(info)
         : '';
-    const sub = info.synthetic
-      ? 'package'
-      : loc
-        ? (loc.split('/').pop() ?? loc)
-        : info.origin === Origin.Node
-          ? 'node'
-          : info.origin === Origin.Native
-            ? 'native'
-            : info.origin === Origin.Gc
-              ? 'V8'
-              : '';
+    const sub = n.isEntry
+      ? 'entry point'
+      : info.synthetic
+        ? 'package'
+        : loc
+          ? (loc.split('/').pop() ?? loc)
+          : info.origin === Origin.Node
+            ? 'node'
+            : info.origin === Origin.Native
+              ? 'native'
+              : info.origin === Origin.Gc
+                ? 'V8'
+                : '';
     return {
       fn,
       name: info.name || '(anonymous)',
       sub,
       origin: info.origin,
       isPackage: n.isPackage,
+      isEntry: n.isEntry,
+      recursion: n.recursion,
       selfUs: n.self,
       totalUs: n.total,
       hiddenCallers: n.hiddenCallers,
@@ -487,14 +545,12 @@ export function callGraphData(
       share: e.weight / (byFn.get(from)?.total || 1),
       calls: e.count,
       back: e.back,
+      hiddenFrames: e.hiddenFrames,
     };
   });
   return {
     nodes,
     edges,
-    loops: g.nodes
-      .filter((n) => n.recursion > 0)
-      .map((n) => ({ fn: s.out(n.fn), count: n.recursion })),
     shownFns: g.nodes.length,
     totalFns: g.nodes.length + g.hiddenNodes,
     maxSelfUs: Math.max(1, ...nodes.map((n) => n.selfUs)),
@@ -522,6 +578,7 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     fn,
     path: src.file,
     startLine: src.line,
+    definitionLine: src.definitionLine || src.line,
     lineSelf: src.lines.map((l) => ({ line: l.line, selfUs: l.selfUs })),
     hottestLine: src.hottestLine,
     spark: Array.from(src.sparkline, (v) => v / peak),
@@ -530,6 +587,18 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     mapMissing: src.mapMissing,
     mapped: model.functions.mapped[engineFn] === 1,
     loc: src.file ? (src.line > 0 ? `${src.file}:${src.line}` : src.file) : '',
+    lineStatus: src.lineInfo.status,
+    lineReason: src.lineInfo.reason,
+    calleeTime: src.calleeTime.map((c) => {
+      const fn = s.out(c.fn);
+      return {
+        fn,
+        name: c.name || '(anonymous)',
+        origin: s.info(fn).origin,
+        selfUs: c.selfUs,
+        totalUs: c.totalUs,
+      };
+    }),
   };
 }
 

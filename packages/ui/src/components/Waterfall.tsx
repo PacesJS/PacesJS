@@ -36,7 +36,22 @@ import { Switch } from './Switch';
 const VIEWPORT_H = 720;
 const KEY_STEP_PX = 8;
 
-const TASK_GROUPS = ['Entry', 'Requests', 'Timers', 'I/O', 'Microtasks', 'Other'] as const;
+const TASK_GROUPS = [
+  'Whole run',
+  'Entry',
+  'Requests',
+  'Timers',
+  'I/O',
+  'Microtasks',
+  'Other',
+  'Small tasks',
+] as const;
+
+/** Option value of the picker when a time range is shown instead of a task. */
+const RANGE_OPTION = -2;
+
+const RESUMED_TIP =
+  'Continuations after an await are attached to the call that started them (inferred; run with --async for exact).';
 
 const SORTS: Array<{ value: WaterfallSort; label: string }> = [
   { value: 'time', label: 'Time order' },
@@ -60,6 +75,7 @@ const ORIGIN_HINT: Record<number, string> = { 1: 'node_modules', 3: 'node', 4: '
 
 function rowLocation(r: WaterfallRow): string {
   if (r.kind === 'task') return 'event-loop task';
+  if (r.kind === 'wait' || r.kind === 'summary') return '';
   return r.loc || (ORIGIN_HINT[r.origin] ?? '');
 }
 
@@ -146,7 +162,8 @@ export function Waterfall() {
   const pal = usePalette();
   const cols = liveCols ?? state.prefs.wfCols;
 
-  const taskKey = data ? `${data.trackId}:${data.taskIndex}` : '';
+  const taskKey = data ? `${data.trackId}:${data.mode}:${data.taskIndex}` : '';
+  const [showSmall, setShowSmall] = useState(false);
   const window = win && win.key === taskKey ? win.w : { start: 0, end: data?.taskUs ?? 1 };
   const rows = useMemo(() => data?.rows ?? [], [data]);
   const visible = useMemo(
@@ -268,10 +285,20 @@ export function Waterfall() {
       : 12.5;
   const hasAsync = data.hasAsync;
   const mirrorTask = tasksQ.data ?? [];
+  const smallCount = mirrorTask.filter((t) => t.group === 'Small tasks').length;
   const gridStyle = { ['--wf-grid' as string]: gridTemplate(cols) } as CSSProperties;
   const minWidth = WF.pad * 2 + cols.call + MIN_BAR_PX + cols.time + cols.share + WF.gap * 3;
 
   const selectRow = (r: WaterfallRow): void => {
+    if (r.kind === 'summary' && r.summaryTasks[0] !== undefined) {
+      // A row standing for small tasks opens the first of them.
+      dispatch({
+        type: 'go',
+        patch: { selection: { kind: 'task', track: data.trackId, task: r.summaryTasks[0] } },
+        options: { task: r.summaryTasks[0] },
+      });
+      return;
+    }
     if (r.kind === 'call') select({ kind: 'node', track: data.trackId, path: r.path, row: r.id });
     else if (r.kind === 'task' && data.taskIndex >= 0)
       select({ kind: 'task', track: data.trackId, task: data.taskIndex });
@@ -294,6 +321,12 @@ export function Waterfall() {
             (t) => measureText(t, `600 14px ${pal.fontSans}`),
           );
     dispatch({ type: 'prefs', prefs: { wfCols: { ...state.prefs.wfCols, [column]: next } } });
+  };
+
+  /** Empty space (not a row or a control) clears the selection. */
+  const clearOnEmpty = (target: EventTarget): void => {
+    if (!(target as Element).closest('.wf-row, button, select, input, label, [role="separator"]'))
+      select({ kind: 'none' });
   };
 
   const move = (e: KeyboardEvent<HTMLDivElement>): void => {
@@ -381,25 +414,44 @@ export function Waterfall() {
             <select
               id="task-pick"
               className="select"
-              value={data.taskIndex}
-              onChange={(e) =>
-                dispatch({
-                  type: 'go',
-                  patch: {
-                    selection: { kind: 'task', track: data.trackId, task: Number(e.target.value) },
-                  },
-                  options: { task: Number(e.target.value) },
-                })
-              }
+              value={data.mode === 'range' ? RANGE_OPTION : data.taskIndex}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (v === RANGE_OPTION) return;
+                dispatch(
+                  v < 0
+                    ? {
+                        type: 'go',
+                        patch: { selection: { kind: 'none' }, range: null },
+                        options: { task: -1 },
+                      }
+                    : {
+                        type: 'go',
+                        patch: { selection: { kind: 'task', track: data.trackId, task: v } },
+                        options: { task: v },
+                      },
+                );
+              }}
             >
+              {data.mode === 'range' ? (
+                <option value={RANGE_OPTION}>{data.taskLabel}</option>
+              ) : null}
               {TASK_GROUPS.map((group) => {
-                const tasks = mirrorTask.filter((t) => t.group === group);
+                const all = mirrorTask.filter((t) => t.group === group);
+                // Small tasks stay folded away until asked for, unless one of them is open.
+                const tasks =
+                  group === 'Small tasks' && !showSmall
+                    ? all.filter((t) => t.index === data.taskIndex)
+                    : all;
                 return tasks.length === 0 ? null : (
-                  <optgroup key={group} label={group}>
+                  <optgroup
+                    key={group}
+                    label={group === 'Small tasks' ? `Small tasks (${all.length})` : group}
+                  >
                     {tasks.map((t) => (
                       <option key={t.index} value={t.index}>
-                        {group === 'Entry' ? `${t.label} · program entry point` : t.label} ·{' '}
-                        {fmtDuration(t.durationUs)}
+                        {group === 'Entry' ? `${t.label} · program entry point` : t.label}
+                        {group === 'Whole run' ? '' : ` · ${fmtDuration(t.durationUs)}`}
                         {t.longest ? ' · longest' : ''}
                       </option>
                     ))}
@@ -408,6 +460,16 @@ export function Waterfall() {
               })}
             </select>
           </div>
+          {smallCount > 0 ? (
+            <button
+              type="button"
+              className="btn btn-sm"
+              aria-pressed={showSmall}
+              onClick={() => setShowSmall((v) => !v)}
+            >
+              {showSmall ? 'Hide small tasks' : `Show ${smallCount} small tasks`}
+            </button>
+          ) : null}
           <div className="field">
             <label htmlFor="wf-sort">Order</label>
             <select
@@ -455,7 +517,7 @@ export function Waterfall() {
         Ctrl + wheel zooms the time axis; drag the column edges to resize them.
       </Hint>
 
-      <div className="wf-scroll">
+      <div className="wf-scroll" onClick={(e) => clearOnEmpty(e.target)}>
         <div className="wf" style={{ ...gridStyle, minWidth }}>
           <div className="wf-grid" style={{ paddingTop: 0 }}>
             <div className="caps">Minimap</div>
@@ -612,7 +674,17 @@ export function Waterfall() {
                         aria-hidden="true"
                         style={{ background: originColor(r.origin, false) }}
                       />
-                      <span className={`wf-label${isUser ? ' is-user' : ''}`}>{r.name}</span>
+                      <span
+                        className={`wf-label${isUser ? ' is-user' : ''}${r.kind === 'wait' ? ' is-wait' : ''}`}
+                      >
+                        {r.name}
+                      </span>
+                      {r.resumed ? (
+                        <span className="wf-resumed" title={RESUMED_TIP}>
+                          <span aria-hidden="true">↻</span>
+                          <span className="sr-only">resumed after an await, inferred</span>
+                        </span>
+                      ) : null}
                       <span className="wf-loc">{where}</span>
                     </div>
                     <div className="wf-bar-cell" role="cell" aria-hidden="true" />
@@ -644,6 +716,13 @@ export function Waterfall() {
         <span className="wf-legend-item">
           <span className="wf-legend-swatch swatch-wait" aria-hidden="true" />
           Idle wait between an await and its continuation
+        </span>
+        <span className="wf-legend-item" title={RESUMED_TIP}>
+          <span aria-hidden="true" className="wf-resumed">
+            ↻
+          </span>
+          Resumed after an await: attached to the call that started it (inferred; run with --async
+          for exact)
         </span>
         <span className="view-footer-end">
           Arrows walk rows · Enter opens source · f focus · Backspace back

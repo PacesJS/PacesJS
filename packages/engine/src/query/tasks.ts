@@ -4,8 +4,18 @@ import { TaskKind } from '../model.js';
 import type { ExecutionModel } from '../model.js';
 import { displayPath } from '../util/paths.js';
 import type { TaskDescriptor, TaskGroup } from './types.js';
+import { trivialTasks } from './waterfall.js';
 
-const GROUP_ORDER: TaskGroup[] = ['Entry', 'Requests', 'Timers', 'I/O', 'Microtasks', 'Other'];
+const GROUP_ORDER: TaskGroup[] = [
+  'Whole run',
+  'Entry',
+  'Requests',
+  'Timers',
+  'I/O',
+  'Microtasks',
+  'Other',
+  'Small tasks',
+];
 
 function groupOf(kind: number, isEntry: boolean): TaskGroup {
   if (isEntry) return 'Entry';
@@ -34,6 +44,7 @@ export function describeTasks(model: ExecutionModel, trackIndex: number): TaskDe
   for (let k = 0; k < tasks.length && entryTask < 0; k++) {
     if (tasks.kind[k] === TaskKind.Main) entryTask = k;
   }
+  const small = trivialTasks(model, trackIndex);
   let longestTask = -1;
   let longestUs = -1;
   const out: TaskDescriptor[] = [];
@@ -44,9 +55,10 @@ export function describeTasks(model: ExecutionModel, trackIndex: number): TaskDe
       longestTask = k;
     }
     const isEntry = k === entryTask;
+    const trivial = small.has(k);
     out.push({
       index: k,
-      group: groupOf(tasks.kind[k] ?? TaskKind.Other, isEntry),
+      group: trivial ? 'Small tasks' : groupOf(tasks.kind[k] ?? TaskKind.Other, isEntry),
       label:
         isEntry && track.entry
           ? `main · load ${displayPath(track.entry)}`
@@ -55,10 +67,23 @@ export function describeTasks(model: ExecutionModel, trackIndex: number): TaskDe
       durationUs,
       busyUs: tasks.busy[k] ?? 0,
       longest: false,
+      trivial,
     });
   }
   const longest = out[longestTask];
   if (longest) longest.longest = true;
+  const firstStart = tasks.length > 0 ? (tasks.start[0] ?? 0) : 0;
+  const lastEnd = tasks.length > 0 ? (tasks.end[tasks.length - 1] ?? 0) : 0;
+  out.push({
+    index: -1,
+    group: 'Whole run',
+    label: `Whole run · ${track.entry ? displayPath(track.entry) : '(entry)'}`,
+    startUs: firstStart,
+    durationUs: lastEnd - firstStart,
+    busyUs: track.busyUs,
+    longest: false,
+    trivial: false,
+  });
   return out.sort(
     (a, b) =>
       GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) ||

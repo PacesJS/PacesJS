@@ -1,7 +1,9 @@
+import { fmtDuration } from '../util/format';
+
 /** Why a function's source cannot be shown, and what to do about it. */
 
 export type SourceReasonKind =
-  'no-file' | 'outside-root' | 'not-on-disk' | 'map-missing' | 'no-lines';
+  'no-file' | 'outside-root' | 'not-on-disk' | 'map-missing' | 'no-self-time' | 'no-line-data';
 
 export interface SourceReason {
   kind: SourceReasonKind;
@@ -21,6 +23,13 @@ export interface SourceFacts {
   mapMissing: boolean;
   /** Lines with attributed time. */
   lineCount: number;
+  /** The function's own time in microseconds, when known. */
+  selfUs?: number;
+  /** Whether it called anything that took time. */
+  hasCallees?: boolean;
+  /** The engine's verdict on line time and its one-sentence reason, when known. */
+  lineStatus?: 'self-lines' | 'no-self-time' | 'no-line-data';
+  lineReason?: string;
 }
 
 const ABSOLUTE = /^([a-zA-Z]:[\\/]|\/|\\\\)/;
@@ -74,10 +83,34 @@ export function sourceReason(f: SourceFacts): SourceReason | null {
     };
   }
   if (f.exists === true && f.lineCount === 0) {
+    if (f.lineStatus === 'no-self-time') {
+      return {
+        kind: 'no-self-time',
+        title: 'Its time is in its callees',
+        hint: `${f.lineReason ?? 'Its own time is tiny.'} Select a callee below to follow it.`,
+        showsText: true,
+      };
+    }
+    if (f.lineStatus === 'no-line-data') {
+      return {
+        kind: 'no-line-data',
+        title: 'No line data for this function',
+        hint: f.lineReason ?? 'V8 recorded no line positions for it.',
+        showsText: true,
+      };
+    }
+    if (f.hasCallees === true) {
+      return {
+        kind: 'no-self-time',
+        title: 'Its time is in its callees',
+        hint: `This function itself ran only ${fmtDuration(f.selfUs ?? 0)}; its time is in its callees, listed below. Select one to follow it.`,
+        showsText: true,
+      };
+    }
     return {
-      kind: 'no-lines',
-      title: 'No line-level time recorded',
-      hint: 'The sampler saw this function but attributed no time to its lines, usually because it ran for less than one sampling interval.',
+      kind: 'no-line-data',
+      title: 'No line data for this function',
+      hint: 'V8 recorded no line ticks for it, so the gutter is empty. It is probably native code, was optimized away, or ran for less than one sampling interval.',
       showsText: true,
     };
   }

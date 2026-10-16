@@ -307,7 +307,8 @@
 }
 
 .workspace.is-right.is-collapsed {
-  grid-template-columns: minmax(320px, 1fr) 16px 56px;
+  grid-template-columns: minmax(320px, 1fr) 56px;
+  gap: var(--sp-16);
 }
 
 .workspace.is-bottom {
@@ -317,10 +318,6 @@
 
 .workspace.is-bottom.is-collapsed {
   grid-template-rows: auto 16px auto;
-}
-
-.workspace.is-full {
-  display: block;
 }
 
 .app-col {
@@ -1304,9 +1301,52 @@
   background: color-mix(in srgb, var(--c-accent-tint) 45%, transparent);
 }
 
-.source-line.is-hot {
+/* The selected function's definition line. Hot lines are gutter bars, never this highlight. */
+.source-line.is-definition {
   background: var(--c-accent-soft);
   box-shadow: inset 3px 0 0 var(--c-accent);
+}
+
+.source-jump {
+  padding: var(--sp-6) var(--sp-16) 0;
+}
+
+.callee-time {
+  list-style: none;
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.callee-time-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--sp-8);
+  border: 0;
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--c-ink);
+  font: inherit;
+  font-size: var(--fs-13);
+  text-align: left;
+}
+
+.callee-time-row:hover:not(:disabled) {
+  background: var(--c-surface);
+}
+
+.callee-time-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-medium);
 }
 
 .source-gutter {
@@ -1691,4 +1731,24 @@
   font-size: var(--fs-13);
   font-weight: var(--fw-semi);
   text-decoration: underline;
+}
+
+/* Maximized dock */
+.dock-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  background: var(--c-accent-tint);
+  padding: var(--sp-16);
+}
+
+.dock-overlay {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--sp-16);
+  border-radius: var(--r-card);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-tip);
 }

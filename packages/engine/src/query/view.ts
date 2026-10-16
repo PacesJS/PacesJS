@@ -4,9 +4,11 @@
 
 import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
+import { stitchPlan } from './stitch.js';
 import type { FunctionInfo, Transform, TransformedView, ViewFnId } from './types.js';
 
 interface Working {
+  trackIndex: number;
   tree: CallTree;
   samples: Samples;
   inverted: boolean;
@@ -233,6 +235,7 @@ function finish(
     remapped[s] = id < 0 ? 0 : id;
   }
   return {
+    trackIndex: work.trackIndex,
     tree: {
       length,
       parent: tParent,
@@ -417,6 +420,17 @@ function applyOne(model: ExecutionModel, work: Working, t: Transform): Working {
       }
       return rebuild(model, work, { fnOf });
     }
+    case 'stitch-continuations': {
+      const K = F + work.synthetic.length + 1;
+      const plan = stitchPlan(model, work.trackIndex, tree, samples, K);
+      if (!plan) return work;
+      const tmp = new Float64Array(plan.parent.length);
+      for (let s = 0; s < samples.length; s++) {
+        const target = plan.node[s] ?? 0;
+        tmp[target] = (tmp[target] ?? 0) + (samples.dur[s] ?? 0);
+      }
+      return finish(work, plan.parent, plan.fn, samples.time, samples.dur, plan.node, tmp);
+    }
     case 'drop-idle': {
       const keepLeaf = new Uint8Array(tree.length).fill(1);
       for (let i = 1; i < tree.length; i++) {
@@ -450,6 +464,7 @@ export function applyTransforms(
   if (!track)
     throw new Error(`No track at index ${trackIndex}; the model has ${model.tracks.length}.`);
   let work: Working = {
+    trackIndex,
     tree: track.callTree,
     samples: track.samples,
     inverted: false,

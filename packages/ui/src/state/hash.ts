@@ -69,6 +69,7 @@ export function decodeSelection(text: string): Selection {
 
 export function encodeTransform(t: Transform): string {
   switch (t.k) {
+    case 'stitch':
     case 'collapse-deps':
     case 'merge-plumbing':
     case 'drop-idle':
@@ -96,6 +97,7 @@ export function encodeTransform(t: Transform): string {
 export function decodeTransform(text: string): Transform | null {
   const [kind, a] = text.split(':');
   switch (kind) {
+    case 'stitch':
     case 'collapse-deps':
     case 'merge-plumbing':
     case 'drop-idle':

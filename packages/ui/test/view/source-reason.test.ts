@@ -56,10 +56,16 @@ describe('why the source is unavailable', () => {
     expect(r?.hint).toMatch(/--sourcemap/);
   });
 
-  it('notes when no line carries time', () => {
-    expect(sourceReason({ ...ok, lineCount: 0 })).toMatchObject({
-      kind: 'no-lines',
-      showsText: true,
-    });
+  it('says a function with no line time ran only briefly and its time is in its callees', () => {
+    const r = sourceReason({ ...ok, lineCount: 0, selfUs: 1_200, hasCallees: true });
+    expect(r).toMatchObject({ kind: 'no-self-time', showsText: true });
+    expect(r?.hint).toContain('ran only');
+    expect(r?.hint).toContain('its time is in its callees');
+  });
+
+  it('gives the real reason when there is no line data and nothing it called', () => {
+    const r = sourceReason({ ...ok, lineCount: 0, selfUs: 0, hasCallees: false });
+    expect(r).toMatchObject({ kind: 'no-line-data', showsText: true });
+    expect(r?.hint).toMatch(/line ticks/);
   });
 });

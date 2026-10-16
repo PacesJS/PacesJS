@@ -180,3 +180,17 @@ export function measureText(text: string, font: string): number {
   measureCtx.font = font;
   return measureCtx.measureText(text).width;
 }
+
+/** Width and height of an element, tracked with a ResizeObserver (0 x 0 where there is none). */
+export function useElementSize(el: HTMLElement | null): { w: number; h: number } {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) =>
+      setSize({ w: entry?.contentRect.width ?? 0, h: entry?.contentRect.height ?? 0 }),
+    );
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return el ? size : { w: 0, h: 0 };
+}

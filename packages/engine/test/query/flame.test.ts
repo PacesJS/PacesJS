@@ -31,7 +31,7 @@ describe('flame graph on the orders server', () => {
 
   it('puts the heaviest stack leftmost by default', () => {
     const top = Array.from({ length: layout.length }, (_, i) => i).filter(
-      (i) => layout.depth[i] === 1,
+      (i) => layout.depth[i] === 2,
     );
     const leftmost = top.reduce((a, b) => ((layout.x[b] ?? 0) < (layout.x[a] ?? 0) ? b : a));
     const widest = top.reduce((a, b) => ((layout.w[b] ?? 0) > (layout.w[a] ?? 0) ? b : a));
@@ -42,7 +42,7 @@ describe('flame graph on the orders server', () => {
   it('sorts alphabetically for stable comparison', () => {
     const alpha = flameLayout(m, view, { sort: 'alphabetical' });
     const names = Array.from({ length: alpha.length }, (_, i) => i)
-      .filter((i) => alpha.depth[i] === 1)
+      .filter((i) => alpha.depth[i] === 2)
       .map((i) => describeFunction(m, alpha.fn[i] ?? 0, view.syntheticPackages).name);
     expect(names).toEqual([...names].sort());
   });

@@ -62,10 +62,14 @@ export function toEngineStack(
 ): EngineTransform[] {
   const F = ctx.model.functions.length;
   const out: EngineTransform[] = [];
+  // Stitching grafts whole stacks, so the engine only honours it as the first step.
+  if (ui.some((t) => t.k === 'stitch')) out.push({ kind: 'stitch-continuations' });
   if (range) out.push({ kind: 'time-range', start: range[0], end: range[1] });
   const paths = (p: number[]): boolean => p.every((id) => id < F);
   for (const t of ui) {
     switch (t.k) {
+      case 'stitch':
+        break;
       case 'collapse-deps':
         if (expanded.length === 0) out.push({ kind: 'collapse-dependencies' });
         else

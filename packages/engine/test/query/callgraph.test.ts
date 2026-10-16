@@ -94,3 +94,80 @@ describe('call graph edge cases', () => {
     expect(g.nodes.find((n) => n.fn === fnId(m, 'f'))?.recursion).toBe(2);
   });
 });
+
+describe('call graph roots and connectivity', () => {
+  const argv = ['node', '/project/src/app.js'];
+  const m = analyze(
+    synthCapture(
+      [
+        { stack: ['main', 'mid1', 'mid2', 'leaf'], samples: 50 },
+        { stack: ['main', 'other'], samples: 5 },
+        { stack: ['main'], samples: 1 },
+        { stack: ['main', 'mid1'], samples: 1 },
+        { stack: ['main', 'mid1', 'mid2'], samples: 1 },
+      ],
+      { argv },
+    ),
+  );
+  const view = applyTransforms(m, 0, DEFAULT_TRANSFORMS);
+  const graph = callGraph(m, view, { maxNodes: 2, coverage: 1 });
+  const name = (fn: number) => describeFunction(m, fn, view.syntheticPackages).name;
+
+  it('shows the entry root at the top, above everything else', () => {
+    expect(graph.nodes[0]?.isEntry).toBe(true);
+    expect(name(graph.nodes[0]?.fn ?? 0)).toBe('src/app.js');
+    expect(graph.nodes.filter((n) => n.isEntry)).toHaveLength(1);
+    expect(graph.nodes[0]?.totalShare).toBeCloseTo(1, 2);
+  });
+
+  it('contracts pruned frames into an edge from the nearest kept ancestor', () => {
+    const edges = graph.edges.map((e) => `${name(e.from)}>${name(e.to)}:${e.hiddenFrames}`);
+    expect(edges.sort()).toEqual(['src/app.js>leaf:3', 'src/app.js>other:1']);
+  });
+
+  it('never leaves a kept node without a caller, except the entry', () => {
+    const called = new Set(graph.edges.map((e) => e.to));
+    const orphans = graph.nodes.filter((n) => !n.isEntry && !called.has(n.fn));
+    expect(orphans).toEqual([]);
+  });
+
+  it('carries the time of the contracted path as the edge weight', () => {
+    const e = graph.edges.find((x) => name(x.to) === 'leaf');
+    expect(e?.weight).toBeCloseTo(50_000, -2);
+  });
+
+  it('draws direct calls with no hidden frames', () => {
+    const full = callGraph(m, view, { coverage: 1, maxNodes: 100 });
+    expect(full.edges.every((e) => e.hiddenFrames === 0)).toBe(true);
+  });
+
+  it('shows recursion as a count on the node, not as a self edge', () => {
+    const rec = analyze(
+      synthCapture(
+        [
+          { stack: ['main', 'rec', 'rec', 'rec', 'work'], samples: 5 },
+          { stack: ['main', 'rec', 'rec'], samples: 5 },
+        ],
+        { argv },
+      ),
+    );
+    const v = applyTransforms(rec, 0, DEFAULT_TRANSFORMS);
+    const g = callGraph(rec, v, { coverage: 1 });
+    expect(g.edges.filter((e) => e.from === e.to)).toEqual([]);
+    expect(g.nodes.find((n) => describeFunction(rec, n.fn).name === 'rec')?.recursion).toBe(2);
+  });
+
+  it('keeps the contracted graph connected on a real profile', () => {
+    const e = loadModel('eslint-cli');
+    const ev = applyTransforms(e, e.primaryTrack, DEFAULT_TRANSFORMS);
+    const g = callGraph(e, ev);
+    const called = new Set(g.edges.map((x) => x.to));
+    expect(g.nodes.filter((n) => !n.isEntry && !called.has(n.fn))).toEqual([]);
+    expect(g.nodes[0]?.isEntry).toBe(true);
+  });
+
+  it('has no entry node without the stitched root', () => {
+    const plain = applyTransforms(m, 0, [{ kind: 'drop-idle' }]);
+    expect(callGraph(m, plain).nodes.some((n) => n.isEntry)).toBe(false);
+  });
+});

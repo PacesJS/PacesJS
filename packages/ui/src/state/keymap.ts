@@ -26,7 +26,6 @@ const VIEW_KEYS: Record<string, ViewId> = {
   '2': 'flame',
   '3': 'callgraph',
   '4': 'functions',
-  '5': 'source',
 };
 
 const LETTER_ACTIONS: Record<string, KeyAction> = {
@@ -50,7 +49,7 @@ export interface KeyShortcut {
 }
 
 export const SHORTCUTS: readonly KeyShortcut[] = [
-  { keys: '1 2 3 4 5', label: 'Waterfall, Flame graph, Call graph, Functions, Source' },
+  { keys: '1 2 3 4', label: 'Waterfall, Flame graph, Call graph, Functions' },
   { keys: '/', label: 'Search functions, files and packages' },
   { keys: 'f', label: 'Focus on the selected subtree' },
   { keys: 'm', label: 'Merge the selected function into its callers' },
@@ -62,7 +61,8 @@ export const SHORTCUTS: readonly KeyShortcut[] = [
   },
   { keys: 'Alt+←  Alt+→', label: 'Back and forward through selections, views and transforms' },
   { keys: '↑ ↓ ← →', label: 'Walk waterfall rows, collapse and expand' },
-  { keys: 'Enter', label: 'Open source for the selected row' },
+  { keys: 'Enter', label: 'Open the source dock for the selected row' },
+  { keys: 'Esc', label: 'Clear the selection (the source dock collapses with it)' },
   { keys: 'Backspace', label: 'Back (in the waterfall)' },
   { keys: '?', label: 'Show this sheet' },
 ];

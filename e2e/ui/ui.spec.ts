@@ -41,7 +41,8 @@ test.describe('paces UI on the orders-server fixture', () => {
     await settled(app);
     const rows = app.getByRole('table', { name: 'Waterfall rows' }).getByRole('row');
     await expect(rows.first()).toHaveAttribute('aria-label', /^request · GET \/orders,/);
-    await expect(rows.nth(1)).toHaveAttribute('aria-label', /^getOrders,/);
+    await expect(rows.nth(1)).toHaveAttribute('aria-label', /server\.js,/);
+    await expect(rows.nth(2)).toHaveAttribute('aria-label', /^getOrders,/);
     const all = await rows.count();
     await app.keyboard.press('p');
     await expect(app).toHaveURL(/cpo%3A1|cpo:1/);
@@ -76,7 +77,9 @@ test.describe('paces UI on the orders-server fixture', () => {
   test('removes and adds transforms and keeps them in the URL', async ({ app }) => {
     await app.getByRole('button', { name: 'Remove Merge plumbing' }).click();
     await expect(app.getByRole('button', { name: 'Rewind to Merge plumbing' })).toHaveCount(0);
-    await expect(app).toHaveURL(/t=collapse-deps%2Cdrop-idle|t=collapse-deps,drop-idle/);
+    await expect(app).toHaveURL(
+      /t=stitch%2Ccollapse-deps%2Cdrop-idle|t=stitch,collapse-deps,drop-idle/,
+    );
     await app.getByRole('button', { name: 'Add transform' }).click();
     await app.getByRole('menuitem', { name: 'Invert call tree' }).click();
     await expect(app.getByRole('button', { name: 'Rewind to Invert' })).toBeVisible();
@@ -270,8 +273,9 @@ test.describe('paces UI on the orders-server fixture', () => {
       .toBeLessThan(4);
   });
 
-  test('the dock moves below the views and the Source tab shows the whole file', async ({
+  test('the dock moves below the views and maximizes to show the whole file', async ({
     app,
+    baseUrl,
   }) => {
     await settled(app);
     await app.getByRole('button', { name: 'Dock below' }).click();
@@ -279,10 +283,21 @@ test.describe('paces UI on the orders-server fixture', () => {
       'aria-orientation',
       'horizontal',
     );
-    await app.getByRole('button', { name: 'Open the full Source view' }).click();
-    await expect(view(app, /^Source/)).toHaveAttribute('aria-current', 'page');
-    await expect(app.getByRole('navigation', { name: 'Functions in this file' })).toBeVisible();
-    await expect(app.getByRole('list', { name: 'Source lines with self time' })).toBeVisible();
+    await app.getByRole('button', { name: 'Maximize the source dock' }).click();
+    const dialog = app.getByRole('dialog', { name: 'Source, maximized' });
+    await expect(dialog.getByRole('navigation', { name: 'Functions in this file' })).toBeVisible();
+    await expect(dialog.getByRole('list', { name: 'Source lines with self time' })).toBeVisible();
+    // The dev host keeps settings for the whole run: put the dock back where later tests expect it.
+    await app.keyboard.press('Escape');
+    await app.getByRole('button', { name: 'Dock to the right' }).click();
+    await expect
+      .poll(async () => {
+        const saved = (await (await app.request.get(`${baseUrl}/api/settings`)).json()) as {
+          uiPrefs?: { dock?: { orientation?: string } };
+        };
+        return saved.uiPrefs?.dock?.orientation;
+      })
+      .toBe('right');
   });
 
   test('Show filter hides an origin and says what it hides', async ({ app }) => {
@@ -324,7 +339,191 @@ test.describe('eslint session: target and supporting tracks, notes', () => {
     await page.keyboard.press('1');
     await settled(page);
     const groups = page.locator('#task-pick optgroup');
-    await expect(groups.first()).toHaveAttribute('label', 'Entry');
-    await expect(page.locator('#task-pick option').first()).toContainText('program entry point');
+    await expect(groups.first()).toHaveAttribute('label', 'Whole run');
+    await expect(groups.nth(1)).toHaveAttribute('label', 'Entry');
+    await expect(page.locator('#task-pick option').first()).toContainText('Whole run');
+    await expect(page.locator('#task-pick optgroup[label="Entry"] option')).toContainText(
+      'program entry point',
+    );
+  });
+});
+
+test.describe('selection, source dock and call graph navigation', () => {
+  test('clicking empty space in the waterfall clears the selection', async ({ app }) => {
+    await app.getByRole('button', { name: 'Show me: Event loop blocked' }).click();
+    await settled(app);
+    await app.keyboard.press('p');
+    await expect(app.locator('.wf-row.is-selected')).toHaveCount(1);
+    await app.locator('.wf-axis').click({ position: { x: 4, y: 4 } });
+    await expect(app.locator('.wf-row.is-selected')).toHaveCount(0);
+    await expect(app).not.toHaveURL(/sel=/);
+  });
+
+  test('clicking empty space in the flame graph clears the selection', async ({ app }) => {
+    await app.keyboard.press('2');
+    await settled(app);
+    await expect(app).toHaveURL(/sel=fn/);
+    const plot = app.locator('.flame-plot');
+    const box = await plot.boundingBox();
+    if (!box) throw new Error('flame plot has no box');
+    await plot.click({ position: { x: 6, y: box.height - 6 } });
+    await expect(app).not.toHaveURL(/sel=/);
+  });
+
+  test('the source dock collapses with the selection and opens when something is selected', async ({
+    app,
+  }) => {
+    await settled(app);
+    const dock = app.getByRole('complementary', { name: 'Source dock' });
+    await expect(dock.getByRole('button', { name: 'Collapse source panel' })).toBeVisible();
+    await app.keyboard.press('Escape');
+    await expect(dock.getByRole('button', { name: 'Expand source panel' })).toBeVisible();
+    await expect.poll(async () => (await dock.boundingBox())?.width ?? 999).toBeLessThan(120);
+    await app.keyboard.press('4');
+    await app
+      .getByRole('row', { name: /lineTotal/ })
+      .first()
+      .click();
+    await expect(dock.getByRole('button', { name: 'Collapse source panel' })).toBeVisible();
+  });
+
+  test('the source dock has no Source tab and maximizes into an overlay', async ({ app }) => {
+    await settled(app);
+    await expect(view(app, /^Source/)).toHaveCount(0);
+    await app.getByRole('button', { name: 'Maximize the source dock' }).click();
+    const dialog = app.getByRole('dialog', { name: 'Source, maximized' });
+    await expect(dialog.getByRole('navigation', { name: 'Functions in this file' })).toBeVisible();
+    await app.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test('selecting a function highlights its definition line, not its hottest line', async ({
+    app,
+  }) => {
+    await settled(app);
+    const marked = app.locator('.source-line.is-definition');
+    await expect(marked).toHaveCount(1);
+    await expect(marked).toContainText('lineTotal');
+    await expect(app.getByRole('button', { name: /Jump to hottest line/ })).toBeVisible();
+    await expect(app.locator('.source-bar').first()).toBeVisible();
+  });
+
+  test('the call graph opens fitted, zooms toward the cursor and pans by dragging', async ({
+    app,
+  }) => {
+    await app.keyboard.press('Escape');
+    await app.keyboard.press('3');
+    await settled(app);
+    const scroll = app.locator('.cg-scroll');
+    await scroll.scrollIntoViewIfNeeded();
+    const box = await scroll.boundingBox();
+    if (!box) throw new Error('call graph has no box');
+    const nodes = app.locator('.cg-node');
+    await expect(nodes.first()).toBeVisible();
+    const inside = await nodes.evaluateAll(
+      (els, b) =>
+        els.every((e) => {
+          const r = e.getBoundingClientRect();
+          return r.left >= b.x - 2 && r.right <= b.x + b.width + 2;
+        }),
+      box,
+    );
+    expect(inside).toBe(true);
+
+    const level = app.getByLabel('Zoom level');
+    const before = await level.textContent();
+    await app.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await app.mouse.wheel(0, -400);
+    await expect(level).not.toHaveText(before ?? '');
+
+    const layer = scroll.locator('.cg-plot > div');
+    const t0 = await layer.evaluate((el) => (el as HTMLElement).style.transform);
+    await app.mouse.move(box.x + 40, box.y + box.height - 40);
+    await app.mouse.down();
+    await app.mouse.move(box.x + 140, box.y + box.height - 80, { steps: 5 });
+    await app.mouse.up();
+    const t1 = await layer.evaluate((el) => (el as HTMLElement).style.transform);
+    expect(t1).not.toBe(t0);
+
+    await app.getByRole('button', { name: 'Zoom in' }).click();
+    await app.getByRole('button', { name: '100%' }).click();
+    await expect(level).toHaveText('100%');
+    await app.getByRole('button', { name: 'Zoom in' }).click();
+    await app.getByRole('button', { name: 'Fit' }).click();
+    await expect(level).toHaveText(before ?? '');
+  });
+
+  test('the call graph keeps node positions when a node is selected', async ({ app }) => {
+    await app.keyboard.press('Escape');
+    await app.keyboard.press('3');
+    await settled(app);
+    const nodes = app.locator('.cg-node');
+    const before = await nodes.evaluateAll((els) =>
+      els.map((e) => (e as HTMLElement).style.left + ',' + (e as HTMLElement).style.top),
+    );
+    await nodes.first().click();
+    const after = await nodes.evaluateAll((els) =>
+      els.map((e) => (e as HTMLElement).style.left + ',' + (e as HTMLElement).style.top),
+    );
+    expect(after).toEqual(before);
+  });
+});
+
+test.describe('definition line on the eslint session', () => {
+  test('selecting verify highlights the line that defines it', async ({ page, serve }) => {
+    await openFixture(page, serve, 'eslint-cli-wrapped');
+    await settled(page);
+    await page.keyboard.press('4');
+    await page.getByRole('searchbox', { name: /Filter functions/ }).fill('verify');
+    await page
+      .getByRole('row', { name: /^verify,? / })
+      .first()
+      .click();
+    const marked = page.locator('.source-line.is-definition');
+    await expect(marked).toHaveCount(1);
+    await expect(marked).toContainText('verify');
+  });
+});
+
+test.describe('whole run, stitching and the entry root', () => {
+  test('the default transforms include a removable stitching chip', async ({ app }) => {
+    const stack = app.getByRole('list', { name: 'Transform stack, oldest first' });
+    await expect(
+      stack.getByRole('button', { name: 'Rewind to Stitch continuations (inferred)' }),
+    ).toBeVisible();
+    await app.getByRole('button', { name: 'Remove Stitch continuations (inferred)' }).click();
+    await expect(
+      stack.getByRole('button', { name: 'Rewind to Stitch continuations (inferred)' }),
+    ).toHaveCount(0);
+  });
+
+  test('the waterfall opens on the whole run, rooted at the entry script', async ({ app }) => {
+    await app.keyboard.press('Escape');
+    await app.keyboard.press('1');
+    await settled(app);
+    await expect(app.getByLabel('Task').locator('option:checked')).toContainText('Whole run');
+    const rows = app.getByRole('table', { name: 'Waterfall rows' }).getByRole('row');
+    await expect(rows.first()).toHaveAttribute('aria-label', /server\.js,/);
+    await expect(app.getByRole('button', { name: /Show \d+ small tasks/ })).toBeVisible();
+  });
+
+  test('the call graph and the flame graph are rooted at the entry, never at an arbitrary function', async ({
+    app,
+  }) => {
+    await app.keyboard.press('Escape');
+    await app.keyboard.press('3');
+    await settled(app);
+    const entry = app.locator('.cg-node.is-entry');
+    await expect(entry).toHaveCount(1);
+    await expect(entry).toContainText('entry point');
+    const tops = await app
+      .locator('.cg-node')
+      .evaluateAll((els) => els.map((e) => parseFloat((e as HTMLElement).style.top)));
+    const entryTop = await entry.evaluate((e) => parseFloat((e as HTMLElement).style.top));
+    expect(Math.min(...tops)).toBe(entryTop);
+    await app.keyboard.press('2');
+    await settled(app);
+    const frames = app.getByRole('list', { name: 'Frames, widest first' }).getByRole('listitem');
+    await expect(frames.first()).toHaveAttribute('aria-label', /server\.js/);
   });
 });

@@ -81,7 +81,10 @@ export interface SelectionInfo {
 
 export interface TaskOption {
   index: number;
-  group: 'Entry' | 'Requests' | 'Timers' | 'I/O' | 'Microtasks' | 'Other';
+  group:
+    'Whole run' | 'Entry' | 'Requests' | 'Timers' | 'I/O' | 'Microtasks' | 'Other' | 'Small tasks';
+  /** Little busy time or only runtime frames. */
+  trivial: boolean;
   label: string;
   startUs: number;
   durationUs: number;
@@ -94,7 +97,7 @@ export interface TaskOption {
 export interface WaterfallRow {
   /** Row id: index in `rows`; row 0 is the task itself. */
   id: number;
-  kind: 'task' | 'call' | 'wait';
+  kind: 'task' | 'call' | 'wait' | 'summary';
   /** Function id, -1 for the task and wait rows. */
   fn: number;
   /** Function ids from the root's child to this call, for the selection. Empty for task/wait rows. */
@@ -111,10 +114,16 @@ export interface WaterfallRow {
   critical: boolean;
   belowPrecision: boolean;
   share: number;
+  /** Another segment of a call, resumed after an await (inferred unless run with --async). */
+  resumed: boolean;
+  /** Summary row: the tasks it stands for. */
+  summaryTasks: number[];
 }
 
 export interface WaterfallData {
-  /** Task index, or -1 for a time range. */
+  /** `run`: the whole logical execution (default); `task`: one task; `range`: a time window. */
+  mode: 'run' | 'task' | 'range';
+  /** Task index, or -1 for the whole run and for a time range. */
   taskIndex: number;
   trackId: string;
   taskLabel: string;
@@ -225,6 +234,10 @@ export interface CgNode {
   sub: string;
   origin: number;
   isPackage: boolean;
+  /** The synthetic root named after the entry script. */
+  isEntry: boolean;
+  /** Recursive calls into itself: drawn as a badge, never as a self-loop arc. */
+  recursion: number;
   selfUs: number;
   totalUs: number;
   hiddenCallers: number;
@@ -242,12 +255,13 @@ export interface CgEdge {
   calls: number;
   /** Closes a cycle. */
   back: boolean;
+  /** Frames between caller and callee that were left out (drawn dashed, "via N frames"). */
+  hiddenFrames: number;
 }
 
 export interface CallGraphData {
   nodes: CgNode[];
   edges: CgEdge[];
-  loops: Array<{ fn: number; count: number }>;
   shownFns: number;
   totalFns: number;
   maxSelfUs: number;
@@ -271,6 +285,8 @@ export interface SourceInfo {
   /** Project-relative path to read through the host, or '' for functions without a file. */
   path: string;
   startLine: number;
+  /** Line of the function's definition: the selection highlight and the scroll target. */
+  definitionLine: number;
   lineSelf: Array<{ line: number; selfUs: number }>;
   hottestLine: number;
   /** Activity per time bin across the run, 0..1 relative to the busiest bin. */
@@ -280,6 +296,17 @@ export interface SourceInfo {
   mapMissing: boolean;
   mapped: boolean;
   loc: string;
+  /** The engine's verdict on line-level time, with one sentence for the user. */
+  lineStatus: 'self-lines' | 'no-self-time' | 'no-line-data';
+  lineReason: string;
+  /** Callees of the function with the time under them. */
+  calleeTime: Array<{
+    fn: number;
+    name: string;
+    origin: number;
+    selfUs: number;
+    totalUs: number;
+  }>;
 }
 
 export interface HotPathRow {

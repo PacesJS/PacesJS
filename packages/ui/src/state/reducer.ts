@@ -11,13 +11,14 @@ import {
 import type { History } from './history';
 import { addTransform, removeTransform, rewindTo } from './transforms';
 import { DEFAULT_PREFS } from './prefs';
-import type { Prefs } from './prefs';
+import type { DockMode, Prefs } from './prefs';
 import type { Selection, Snapshot, Transform, ViewOptions } from './types';
 
 export interface AppState {
   history: History;
   hover: Selection;
-  sourceCollapsed: boolean;
+  /** The dock is shown full screen (the Expand button). */
+  dockMaximized: boolean;
   shortcutsOpen: boolean;
   /** Ids of dismissed first-run hints (also persisted through settings). */
   dismissed: string[];
@@ -41,7 +42,10 @@ export type AppAction =
   | { type: 'forward' }
   | { type: 'restore'; snapshot: Snapshot }
   | { type: 'hover'; selection: Selection }
+  /** Reveal the source dock (back to automatic) or collapse it. */
   | { type: 'set-source-collapsed'; collapsed: boolean }
+  | { type: 'set-dock-mode'; mode: DockMode }
+  | { type: 'set-dock-maximized'; maximized: boolean }
   | { type: 'set-shortcuts'; open: boolean }
   | { type: 'dismiss-hint'; id: string }
   | { type: 'set-dismissed'; ids: string[] }
@@ -55,7 +59,7 @@ export function createState(initial: Snapshot): AppState {
   return {
     history: createHistory(initial),
     hover: { kind: 'none' },
-    sourceCollapsed: false,
+    dockMaximized: false,
     shortcutsOpen: false,
     dismissed: [],
     search: '',
@@ -75,11 +79,19 @@ function commit(state: AppState, next: Snapshot): AppState {
     JSON.stringify(prev.transforms) !== JSON.stringify(next.transforms) ||
     JSON.stringify(prev.range) !== JSON.stringify(next.range) ||
     JSON.stringify(prev.options.hide) !== JSON.stringify(next.options.hide);
+  const selectionChanged =
+    JSON.stringify(prev.selection) !== JSON.stringify(next.selection) &&
+    next.options.line === prev.options.line;
+  const moved = selectionChanged ? { ...next, options: { ...next.options, line: 0 } } : next;
   const snap =
-    treeChanged && next.options.zoom === prev.options.zoom && next.options.zoom.length > 0
-      ? { ...next, options: { ...next.options, zoom: [] } }
-      : next;
+    treeChanged && moved.options.zoom === prev.options.zoom && moved.options.zoom.length > 0
+      ? { ...moved, options: { ...moved.options, zoom: [] } }
+      : moved;
   return { ...state, history: push(state.history, snap) };
+}
+
+function withDockMode(state: AppState, mode: DockMode): AppState {
+  return { ...state, prefs: { ...state.prefs, dock: { ...state.prefs.dock, mode } } };
 }
 
 export function reducer(state: AppState, action: AppAction): AppState {
@@ -119,7 +131,11 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case 'hover':
       return { ...state, hover: action.selection };
     case 'set-source-collapsed':
-      return { ...state, sourceCollapsed: action.collapsed };
+      return withDockMode(state, action.collapsed ? 'collapsed' : 'auto');
+    case 'set-dock-mode':
+      return withDockMode(state, action.mode);
+    case 'set-dock-maximized':
+      return { ...state, dockMaximized: action.maximized };
     case 'set-shortcuts':
       return { ...state, shortcutsOpen: action.open };
     case 'dismiss-hint':

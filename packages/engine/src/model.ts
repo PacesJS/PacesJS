@@ -142,6 +142,40 @@ export interface TaskTable {
   spanEnd: Uint32Array;
   /** Sampled self time excluding idle, microseconds. */
   busy: Float64Array;
+  /**
+   * Logical parent: index into the track's SpanTable of the call the first resumed function of this
+   * task continues under (after resolving chains), -1 = none (attach to the run's entry root).
+   */
+  parentSpan: Int32Array;
+  /** Span of the earlier segment of the same function that this task resumes, -1 = none. */
+  resumeOf: Int32Array;
+  /** Gap between the end of that earlier segment and the start of this task's first resumed call, microseconds (awaiting). */
+  waitUs: Float64Array;
+  /** How the stitch was made: 0 none, 1 inferred from an earlier call of the same function, 2 exact from async hooks. */
+  stitch: Uint8Array;
+  /** First non-runtime, non-plumbing function of the task (the one that resumed), -1 when there is none. */
+  resumedFn: Int32Array;
+  /** 1 = the task only runs runtime or plumbing frames (timer and I/O trampolines): nothing of the program's. */
+  runtimeOnly: Uint8Array;
+}
+
+/**
+ * One row per function resumed in a task (a task can resume several async functions in a row):
+ * the logical parent each continues under. Ordered by task, then by first appearance.
+ */
+export interface ContinuationTable {
+  length: number;
+  task: Uint32Array;
+  fn: Uint32Array;
+  /** First span of the function in the task. */
+  span: Uint32Array;
+  /** Logical parent span (chains resolved), -1 = none. */
+  parentSpan: Int32Array;
+  /** Earlier segment being resumed, -1 = none. */
+  resumeOf: Int32Array;
+  waitUs: Float64Array;
+  /** 0 none, 1 inferred, 2 exact from async hooks. */
+  stitch: Uint8Array;
 }
 
 /** task -> task that scheduled it. Empty without `--async` data. */
@@ -226,12 +260,15 @@ export interface Track {
   role: TrackRole;
   /** Entry script of this track's process ('' when unknown), same form as `TargetInfo.entry`. */
   entry: string;
+  /** Function row that stands for the whole run in stitched views: named after the entry script. */
+  rootFn: FnId;
   parent?: TrackId;
   callTree: CallTree;
   samples: Samples;
   spans: SpanTable;
   tasks: TaskTable;
   asyncEdges: AsyncEdgeTable;
+  continuations: ContinuationTable;
   events: EventTable;
   lines: LineTicks;
   agg: TrackAggregates;

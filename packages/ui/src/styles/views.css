@@ -433,6 +433,26 @@
 }
 
 /* Self time is what the node is about: large and first; total is the secondary number. */
+.cg-node.is-entry {
+  border-style: dashed;
+}
+
+.cg-recursion {
+  margin-left: auto;
+  padding: 0 var(--sp-6);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
+  font-size: var(--fs-11);
+  line-height: var(--lh-16);
+  font-weight: var(--fw-semi);
+  white-space: nowrap;
+}
+
+.cg-via {
+  color: var(--c-muted);
+}
+
 .cg-node-self {
   font-size: var(--fs-17);
   line-height: var(--lh-22);
@@ -810,4 +830,71 @@
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   color: var(--c-muted);
+}
+
+/* Call graph viewport: pan and zoom instead of scrollbars */
+.cg-scroll {
+  overflow: hidden;
+  position: relative;
+  height: min(72vh, 760px);
+  min-height: 360px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.cg-scroll:active {
+  cursor: grabbing;
+}
+
+.cg-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.cg-zoom-level {
+  min-width: 48px;
+  text-align: center;
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semi);
+}
+
+/* Level of detail: secondary text goes first when nodes are small. */
+.cg-scroll.is-compact .cg-node-sub,
+.cg-scroll.is-compact .cg-node-bar,
+.cg-scroll.is-compact .cg-node-total,
+.cg-scroll.is-minimal .cg-node-sub,
+.cg-scroll.is-minimal .cg-node-bar,
+.cg-scroll.is-minimal .cg-node-total,
+.cg-scroll.is-minimal .cg-node-self-label,
+.cg-scroll.is-minimal .cg-chip,
+.cg-scroll.is-minimal .cg-label,
+.cg-scroll.is-minimal .cg-loop-label {
+  display: none;
+}
+
+.cg-scroll.is-compact .cg-via,
+.cg-scroll.is-minimal .cg-via {
+  display: none;
+}
+
+.cg-scroll.is-minimal .cg-node-self {
+  font-size: var(--fs-13);
+}
+
+/* Waterfall: resumed segments and idle waits */
+.wf-resumed {
+  flex: none;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-11);
+  line-height: var(--lh-14);
+  color: var(--c-muted);
+}
+
+.wf-label.is-wait {
+  font-style: italic;
+  font-weight: var(--fw-regular, 400);
 }

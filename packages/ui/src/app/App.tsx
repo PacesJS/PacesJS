@@ -1,6 +1,7 @@
 import { deserializeModel } from '@pacesjs/engine';
 import { useEffect, useState } from 'react';
 import { localClient, workerClient } from '../data/client';
+import type { ElkProvider } from '../data/layout';
 import type { QueryClient } from '../data/protocol';
 import type { ModelSummary } from '../data/queries';
 import type { HostAdapter } from '../host/adapter';
@@ -19,6 +20,8 @@ interface AppProps {
   host: HostAdapter;
   /** Force the in-process query path (tests); the default uses a Web Worker when available. */
   inProcess?: boolean;
+  /** Layout engine for the in-process path (tests run ELK in Node); the browser uses its worker. */
+  elk?: ElkProvider;
 }
 
 interface Ready {
@@ -44,7 +47,7 @@ export function openingSnapshot(summary: ModelSummary, hash: string, topShowMe?:
   );
 }
 
-async function boot(host: HostAdapter, inProcess: boolean): Promise<Ready> {
+async function boot(host: HostAdapter, inProcess: boolean, elk?: ElkProvider): Promise<Ready> {
   const [session, bytes, settings] = await Promise.all([
     host.loadSession(),
     host.loadModel(),
@@ -56,6 +59,7 @@ async function boot(host: HostAdapter, inProcess: boolean): Promise<Ready> {
     client = localClient(
       deserializeModel(bytes),
       baselineBytes ? deserializeModel(baselineBytes) : null,
+      elk,
     );
   } else {
     client = await workerClient(bytes, baselineBytes);
@@ -79,14 +83,14 @@ async function boot(host: HostAdapter, inProcess: boolean): Promise<Ready> {
   };
 }
 
-export function App({ host, inProcess = false }: AppProps) {
+export function App({ host, inProcess = false, elk }: AppProps) {
   const [state, setState] = useState<{ ready: Ready | null; error: string | null }>({
     ready: null,
     error: null,
   });
   useEffect(() => {
     let cancelled = false;
-    boot(host, inProcess).then(
+    boot(host, inProcess, elk).then(
       (ready) => {
         if (!cancelled) setState({ ready, error: null });
       },
@@ -98,7 +102,7 @@ export function App({ host, inProcess = false }: AppProps) {
     return () => {
       cancelled = true;
     };
-  }, [host, inProcess]);
+  }, [host, inProcess, elk]);
 
   if (state.error) {
     return (

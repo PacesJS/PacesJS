@@ -35,6 +35,11 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
 
   const entries: MenuEntry[] = [
     {
+      label: 'Stitch continuations (inferred)',
+      transform: { k: 'stitch' },
+      disabled: hasTransform(snap.transforms, 'stitch'),
+    },
+    {
       label: 'Collapse dependencies',
       transform: { k: 'collapse-deps' },
       disabled: hasTransform(snap.transforms, 'collapse-deps'),

@@ -1,19 +1,12 @@
-export type ViewId = 'waterfall' | 'flame' | 'callgraph' | 'functions' | 'source';
+export type ViewId = 'waterfall' | 'flame' | 'callgraph' | 'functions';
 
-export const VIEW_ORDER: readonly ViewId[] = [
-  'waterfall',
-  'flame',
-  'callgraph',
-  'functions',
-  'source',
-];
+export const VIEW_ORDER: readonly ViewId[] = ['waterfall', 'flame', 'callgraph', 'functions'];
 
 export const VIEW_LABELS: Record<ViewId, string> = {
   waterfall: 'Waterfall',
   flame: 'Flame graph',
   callgraph: 'Call graph',
   functions: 'Functions',
-  source: 'Source',
 };
 
 /** One selection drives every view: a function, a call node, a span, a task or a time range. */
@@ -32,6 +25,7 @@ export const NO_SELECTION: Selection = { kind: 'none' };
 
 /** Transform descriptors; applied in order to the model by the query layer. */
 export type Transform =
+  | { k: 'stitch' }
   | { k: 'collapse-deps' }
   | { k: 'merge-plumbing' }
   | { k: 'drop-idle' }
@@ -118,6 +112,7 @@ export const DEFAULT_OPTIONS: ViewOptions = {
 
 /** The default stack, in UI form; the engine's `DEFAULT_TRANSFORMS` is its twin. */
 export const DEFAULT_TRANSFORMS: readonly Transform[] = [
+  { k: 'stitch' },
   { k: 'collapse-deps' },
   { k: 'merge-plumbing' },
   { k: 'drop-idle' },

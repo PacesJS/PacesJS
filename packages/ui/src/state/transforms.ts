@@ -4,6 +4,8 @@ import type { Transform } from './types';
 /** Names for transform chips. `fnName` resolves function ids to display names. */
 export function transformLabel(t: Transform, fnName: (fn: number) => string): string {
   switch (t.k) {
+    case 'stitch':
+      return 'Stitch continuations (inferred)';
     case 'collapse-deps':
       return 'Collapse dependencies';
     case 'merge-plumbing':

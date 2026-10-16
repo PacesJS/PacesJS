@@ -41,14 +41,19 @@ describe('waterfall on the orders server', () => {
   });
 
   it('marks the widest child at each level as the critical path', () => {
-    const names = w.criticalPath.map((id) => nameOf(w.rows[id]?.fn ?? 0));
+    const all = w.criticalPath.map((id) => nameOf(w.rows[id]?.fn ?? 0));
+    // The stitched view roots every stack at the entry script.
+    const names = all.slice(all.indexOf('getOrders'));
+    expect(all[0]).toBe('zoo/orders-server/dist/server.js');
     expect(names.slice(0, 3)).toEqual(['getOrders', 'renderInvoice', 'buildInvoiceRows']);
     expect(names[names.length - 1]).toBe('lineTotal');
     expect(w.rows.filter((r) => r.critical).length).toBe(w.criticalPath.length);
   });
 
   it('computes self time as duration minus child rows and shares of the task', () => {
-    const root = w.rows.find((r) => nameOf(r.fn) === 'getOrders');
+    const root = w.rows
+      .filter((r) => nameOf(r.fn) === 'getOrders')
+      .reduce((a, b) => (b.durUs > a.durUs ? b : a));
     expect(root?.share).toBeGreaterThan(0.5);
     expect(root?.selfUs).toBeLessThan(root?.durUs ?? 0);
     expect(w.precisionUs).toBe(m.meta.precisionUs);
@@ -140,7 +145,7 @@ describe('waterfall on an inverted view', () => {
 describe('waterfall options on the eslint cli', () => {
   const m = loadModel('eslint-cli');
   const view = applyTransforms(m, m.primaryTrack, DEFAULT_TRANSFORMS);
-  const entryTask = describeTasks(m, m.primaryTrack)[0]?.index ?? 0;
+  const entryTask = describeTasks(m, m.primaryTrack).find((t) => t.group === 'Entry')?.index ?? 0;
   const plain = waterfallForTask(m, view, entryTask);
 
   const isConsistent = (w: typeof plain): boolean =>

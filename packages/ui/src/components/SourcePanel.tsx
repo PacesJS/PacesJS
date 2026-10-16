@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import { useSource } from '../app/useSource';
 import type { SourceState } from '../app/useSource';
-import { originInfo } from '../theme/origin';
+import { dockCollapsed } from '../state/prefs';
+import { originColor, originInfo } from '../theme/origin';
 import { fmtCount, fmtDuration } from '../util/format';
 import { functionEnd } from '../view/source-lines';
 import { Icon } from './Icon';
@@ -29,6 +30,33 @@ interface SourceReasonNoteProps {
   source: SourceState;
 }
 
+/** Time in callees, largest first: the answer when a function has no time of its own. */
+function CalleeTime({ source }: { source: SourceState }) {
+  const { select } = useApp();
+  return (
+    <ul className="callee-time" aria-label="Time in callees">
+      {source.callees.slice(0, 8).map((c) => (
+        <li key={`${c.fn}-${c.name}`}>
+          <button
+            type="button"
+            className="callee-time-row"
+            disabled={c.fn === null}
+            onClick={() => c.fn !== null && select({ kind: 'fn', fn: c.fn })}
+          >
+            <span
+              className="wf-dot"
+              aria-hidden="true"
+              style={{ background: originColor(c.origin, false) }}
+            />
+            <span className="callee-time-name">{c.name}</span>
+            <span className="num">{fmtDuration(c.us)}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Why there is no source (or only generated code), and what to do about it. */
 export function SourceReasonNote({ source }: SourceReasonNoteProps) {
   const r = source.reason;
@@ -39,6 +67,7 @@ export function SourceReasonNote({ source }: SourceReasonNoteProps) {
       <div>
         <strong className="source-reason-title">{r.title}</strong>
         <p className="source-reason-hint">{r.hint}</p>
+        {r.kind === 'no-self-time' ? <CalleeTime source={source} /> : null}
       </div>
     </div>
   );
@@ -169,17 +198,17 @@ export function EmptySourceNote({
 export function SourcePanel() {
   const { state, snap, dispatch, selection } = useApp();
   const source = useSource({ whole: false });
-  const { orientation, wrap } = state.prefs.dock;
+  const { orientation, wrap, mode } = state.prefs.dock;
   const { info, fn } = source;
 
-  if (state.sourceCollapsed) {
+  if (dockCollapsed(mode, fn !== null)) {
     return (
       <section aria-label="Source" className="source card source-collapsed">
         <button
           type="button"
           className="icon-btn"
           aria-label="Expand source panel"
-          onClick={() => dispatch({ type: 'set-source-collapsed', collapsed: false })}
+          onClick={() => dispatch({ type: 'set-dock-mode', mode: 'open' })}
         >
           <Icon name="expand" />
         </button>
@@ -223,9 +252,9 @@ export function SourcePanel() {
       <button
         type="button"
         className="icon-btn"
-        aria-label="Open the full Source view"
-        title="Open the full Source view (5)"
-        onClick={() => dispatch({ type: 'go', patch: { view: 'source' } })}
+        aria-label="Maximize the source dock"
+        title="Maximize: the whole file with an outline of its functions"
+        onClick={() => dispatch({ type: 'set-dock-maximized', maximized: true })}
       >
         <Icon name="maximize" />
       </button>

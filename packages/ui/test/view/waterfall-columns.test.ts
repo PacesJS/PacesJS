@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, WF_COLUMN_LIMITS, parsePrefs } from '../../src/state/prefs';
+import { DEFAULT_PREFS, WF_COLUMN_LIMITS, dockCollapsed, parsePrefs } from '../../src/state/prefs';
 import {
   MIN_BAR_PX,
   fitCallWidth,
@@ -27,6 +27,8 @@ const row = (name: string, depth: number, loc = ''): WaterfallRow => ({
   critical: false,
   belowPrecision: false,
   share: 1,
+  resumed: false,
+  summaryTasks: [],
 });
 const mono = (text: string): number => text.length * 7;
 
@@ -98,8 +100,31 @@ describe('saved preferences', () => {
   it('round-trips a saved layout', () => {
     const saved = {
       wfCols: { call: 400, time: 90, share: 70 },
-      dock: { orientation: 'bottom', widthFraction: 0.5, heightPx: 500, wrap: true },
+      dock: {
+        orientation: 'bottom',
+        mode: 'collapsed',
+        widthFraction: 0.5,
+        heightPx: 500,
+        wrap: true,
+      },
     };
     expect(parsePrefs(saved)).toEqual(saved);
+  });
+});
+
+describe('dock mode', () => {
+  it('collapses automatically only when nothing is selected', () => {
+    expect(dockCollapsed('auto', false)).toBe(true);
+    expect(dockCollapsed('auto', true)).toBe(false);
+  });
+
+  it('obeys the user over the selection', () => {
+    expect(dockCollapsed('collapsed', true)).toBe(true);
+    expect(dockCollapsed('open', false)).toBe(false);
+  });
+
+  it('defaults to automatic and ignores an unknown saved mode', () => {
+    expect(DEFAULT_PREFS.dock.mode).toBe('auto');
+    expect(parsePrefs({ dock: { mode: 'sideways' } }).dock.mode).toBe('auto');
   });
 });

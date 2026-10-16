@@ -24,7 +24,12 @@ export {
 } from './serialize.js';
 
 export { applyTransforms, childrenOf, describeFunction, findNode, nodePath } from './query/view.js';
-export { waterfallForRange, waterfallForTask } from './query/waterfall.js';
+export {
+  trivialTasks,
+  waterfallForRange,
+  waterfallForRun,
+  waterfallForTask,
+} from './query/waterfall.js';
 export { flameLayout, flameLayoutOfTree } from './query/flame.js';
 export { callGraph } from './query/callgraph.js';
 export { functionRows, sandwich } from './query/functions.js';

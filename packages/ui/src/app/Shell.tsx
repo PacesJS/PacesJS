@@ -211,7 +211,9 @@ export function Shell({
           dispatch({ type: 'forward' });
           break;
         case 'escape':
-          if (stateRef.current.shortcutsOpen) dispatch({ type: 'set-shortcuts', open: false });
+          if (stateRef.current.dockMaximized)
+            dispatch({ type: 'set-dock-maximized', maximized: false });
+          else if (stateRef.current.shortcutsOpen) dispatch({ type: 'set-shortcuts', open: false });
           else if (!isTypingTarget(e.target)) {
             const shown = summaryRef.current.findings.find((f) =>
               isShowing(f, s, stateRef.current.search, showMeContext(summaryRef.current)),

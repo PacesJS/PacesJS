@@ -7,6 +7,7 @@ import type { ExecutionModel, FunctionTable, Track } from './model.js';
 import { aggregateTrack, mergePackages } from './passes/aggregate.js';
 import type { TrackAggregateResult } from './passes/aggregate.js';
 import { stitchAsync } from './passes/async.js';
+import { stitchContinuations } from './passes/continuations.js';
 import { toCallTree } from './passes/call-tree.js';
 import { classify } from './passes/classification.js';
 import { findIssues } from './passes/findings.js';
@@ -21,7 +22,7 @@ import type { TargetDetection } from './passes/target.js';
 import type { IngestResult, PassContext, WarningDraft } from './passes/types.js';
 import { buildWarnings } from './passes/warnings.js';
 import type { RawCapture } from './raw.js';
-import { displayPath } from './util/paths.js';
+import { displayPath, packageNameFromPath } from './util/paths.js';
 import { createStringTable } from './util/strings.js';
 
 const LISTEN_NAMES = new Set(['listen', 'Server.listen', 'setupListenHandle', 'onconnection']);
@@ -41,6 +42,58 @@ function hasListeningServer(ing: IngestResult, strings: string[], tracks: number
     for (let n = 0; n < tree.length; n++) if (listening[tree.frame[n] ?? 0] === 1) return true;
     return false;
   });
+}
+
+/** Appends a first-party function row for each track's entry script; they never appear in a raw call tree. */
+function withEntryFunctions(
+  base: FunctionTable,
+  detection: TargetDetection,
+  ctx: PassContext,
+  byEntry: Map<string, number>,
+): { functions: FunctionTable; rootOf: number[] } {
+  const rootOf: number[] = [];
+  const added: Array<{ name: number; file: number; pkg: number }> = [];
+  detection.entries.forEach((entry, i) => {
+    const key = entry || `(entry ${i})`;
+    let id = byEntry.get(key);
+    if (id === undefined) {
+      id = base.length + added.length;
+      byEntry.set(key, id);
+      const abs = detection.entryAbs[i] ?? '';
+      const pkg = packageNameFromPath(abs);
+      added.push({
+        name: ctx.strings.intern(entry ? displayPath(entry) : '(entry)'),
+        file: ctx.strings.intern(entry),
+        pkg: pkg && detection.spec.packages.has(pkg) ? ctx.strings.intern(pkg) : 0,
+      });
+    }
+    rootOf.push(id);
+  });
+  const n = base.length + added.length;
+  const grow = <T extends Uint8Array | Uint32Array>(a: T, fill: (k: number) => number): T => {
+    const out = new (a.constructor as new (len: number) => T)(n);
+    out.set(a);
+    added.forEach((_, k) => {
+      out[base.length + k] = fill(k);
+    });
+    return out;
+  };
+  return {
+    rootOf,
+    functions: {
+      length: n,
+      name: grow(base.name, (k) => added[k]?.name ?? 0),
+      file: grow(base.file, (k) => added[k]?.file ?? 0),
+      line: grow(base.line, () => 1),
+      col: grow(base.col, () => 0),
+      origin: grow(base.origin, () => Origin.User),
+      pkg: grow(base.pkg, (k) => added[k]?.pkg ?? 0),
+      plumbing: grow(base.plumbing, () => 0),
+      mapped: grow(base.mapped, () => 0),
+      mapMissing: grow(base.mapMissing, () => 0),
+      loader: grow(base.loader, () => 0),
+    },
+  };
 }
 
 function trackLabel(
@@ -77,7 +130,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
   const classification = classify(sm.functions, ctx);
   const plumbing = detectPlumbing({ functions: sm.functions, classification }, ctx);
   const { loader } = foldModuleLoading({ functions: sm.functions, classification, plumbing }, ctx);
-  const functions: FunctionTable = {
+  const base: FunctionTable = {
     length: sm.functions.length,
     name: sm.functions.name,
     file: sm.functions.file,
@@ -90,6 +143,9 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
     mapMissing: sm.functions.mapMissing,
     loader,
   };
+  // One function row per distinct entry script: the root of that run in stitched views.
+  const rootFns = new Map<string, number>();
+  const { functions, rootOf } = withEntryFunctions(base, detection, ctx, rootFns);
 
   // 5-8: per-track passes.
   const tracks: Track[] = [];
@@ -107,6 +163,12 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
       ctx,
     );
     const asyncEdges = stitchAsync({ records: raw.async, tasks: tasks.table });
+    const continuations = stitchContinuations({
+      spans,
+      tasks: tasks.table,
+      asyncEdges,
+      functions,
+    });
     const result = aggregateTrack({
       tree,
       samples: raw.samples,
@@ -134,12 +196,14 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
       label: trackLabel(raw.info, detection, index),
       role: detection.roles[index] ?? 'target',
       entry: detection.entries[index] ?? '',
+      rootFn: rootOf[index] ?? 0,
       ...(raw.info.parent ? { parent: raw.info.parent } : {}),
       callTree: tree,
       samples: raw.samples,
       spans,
       tasks: tasks.table,
       asyncEdges,
+      continuations,
       events: raw.events,
       lines: result.lines,
       agg: result.agg,

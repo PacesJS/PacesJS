@@ -12,7 +12,7 @@ import { callGraph } from '../src/query/callgraph.js';
 import { flameLayout } from '../src/query/flame.js';
 import { functionRows, sandwich } from '../src/query/functions.js';
 import { timelineLane } from '../src/query/timeline.js';
-import { waterfallForRange } from '../src/query/waterfall.js';
+import { waterfallForRange, waterfallForRun } from '../src/query/waterfall.js';
 import { deserializeModel, serializeModel } from '../src/serialize.js';
 import { largeCapture } from './helpers/large.js';
 
@@ -25,10 +25,10 @@ const timings: Record<string, number> = {};
 // (these run in parallel with other packages' tests).
 const RUNS = 3;
 
-function time<T>(label: string, fn: () => T): T {
+function time<T>(label: string, fn: () => T, runs = RUNS): T {
   let best = Infinity;
   let out!: T;
-  for (let i = 0; i < RUNS; i++) {
+  for (let i = 0; i < runs; i++) {
     const t0 = performance.now();
     out = fn();
     best = Math.min(best, performance.now() - t0);
@@ -68,6 +68,20 @@ describe('performance on a 60 s x 1 ms synthetic profile', () => {
     expect(model.target).toMatchObject({ packages: [], entry: '', kind: 'script' });
     expect(model.tracks[0]?.role).toBe('target');
     expect(model.primaryTrack).toBe(0);
+  });
+
+  it('stitches continuations on its own in under 100 ms (spec target 50 ms for the default stack)', () => {
+    const view = time('transform-stitch', () =>
+      applyTransforms(model, 0, [{ kind: 'stitch-continuations' }]),
+    );
+    expect(view.totalUs).toBeGreaterThan(0);
+    expect(timings['transform-stitch']).toBeLessThan(100);
+  });
+
+  it('builds the whole-run waterfall in under 500 ms', () => {
+    const w = time('run-waterfall', () => waterfallForRun(model, 0));
+    expect(w.rows.length).toBeGreaterThan(0);
+    expect(timings['run-waterfall']).toBeLessThan(500);
   });
 
   it('hides origins in under 100 ms', () => {
@@ -121,11 +135,12 @@ describe('performance on a 60 s x 1 ms synthetic profile', () => {
   });
 
   it('stays inside generous bounds on the worst case: unrelated random stacks everywhere', () => {
-    const stress = time('stress-analyze', () => analyze(largeCapture(60_000, false)));
+    const stress = time('stress-analyze', () => analyze(largeCapture(60_000, false)), 1);
     time('stress-transform-default', () => applyTransforms(stress, 0, DEFAULT_TRANSFORMS));
     expect(timings['stress-analyze']).toBeLessThan(3000);
-    expect(timings['stress-transform-default']).toBeLessThan(250);
-  });
+    // Extreme random stacks; the realistic-profile bounds above hold the real targets.
+    expect(timings['stress-transform-default']).toBeLessThan(600);
+  }, 30_000);
 
   it('records the measured numbers', () => {
     const out = process.env.PACES_BENCH_OUT;

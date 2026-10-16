@@ -89,7 +89,7 @@ describe('sandwich on the orders server', () => {
   });
 
   it('weights both sides by the function total time', () => {
-    const total = view.tree.total[Array.from(view.tree.fn).indexOf(fn)] ?? 0;
+    const total = functionRows(m, view).find((r) => r.fn === fn)?.total ?? 0;
     expect(s.callees.total[1]).toBeCloseTo(total, 3);
     expect(s.callers.total[1]).toBeCloseTo(total, 3);
   });

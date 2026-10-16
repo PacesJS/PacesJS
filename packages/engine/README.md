@@ -165,6 +165,83 @@ recursion.
 passes the capture it already has (`tracks` and `sourceMaps`), the first call parses the maps once, later calls
 are map lookups. Use it when the file is not on disk.
 
+### Continuation stitching and the run root
+
+A sampled profile has no async parents. After its first `await`, an async function resumes as a promise
+continuation: V8 records that stack rooted at the runtime (`processTicksAndRejections`, a timer, an I/O
+callback), not under the function that called it. The engine infers the logical parent instead.
+
+- **Pass (`passes/continuations.ts`).** For each task, in time order, every distinct resumed function (the
+  shallowest non-runtime, non-plumbing frame of a stack in the task) is a _segment_. Its source is the latest
+  earlier span of the _same function id_ (same file, line and column, never just the same name) that ended
+  before the segment started and has a caller (`depth >= 1`); ties prefer the latest, then the deepest. The
+  logical parent is that span's parent, resolved through chains: if the earlier span was itself a stitched
+  segment, its logical parent is reused. With `--async` data, a real edge from the scheduling task wins
+  (`stitch = 2`); otherwise `stitch = 1`.
+- **Data.** `TaskTable` gains `parentSpan` (-1 = none, attach to the run root), `resumeOf` (the earlier span being
+  resumed), `waitUs` (gap between that span's end and the resumption: the awaiting time), `stitch`
+  (0 none, 1 inferred, 2 exact), `resumedFn` (-1 when the task has no program frame) and `runtimeOnly` (1 when it
+  only runs runtime or plumbing frames). They describe the task's first segment. `Track.continuations`
+  (`ContinuationTable`) has one row per stitched segment (`task`, `fn`, `span`, `parentSpan`, `resumeOf`,
+  `waitUs`, `stitch`). Tasks with several resumed functions in a row (an inner async function finishing, then
+  its caller resuming) have several rows.
+- **Run root.** `Track.rootFn` is a function row named after the entry script (`eslint/bin/eslint.js`, origin
+  `user`, `pkg` set for a package target). It never appears in a raw call tree; it is the root of stitched views.
+- **Transform** `{ kind: 'stitch-continuations' }` (default-on, first in `DEFAULT_TRANSFORMS`; chip label
+  "Stitch continuations (inferred)"). It grafts the samples of each stitched segment under the logical parent
+  path and puts every stack under one top frame, `rootFn`, so views start at the entry: `(root) > entry >
+module load, main, unstitched roots...`. Self and total time and the sample count are preserved. It reads the
+  track's own tree, so it only works as the first step; elsewhere in the stack it does nothing. Flame graph,
+  call graph, functions table, source panel and `hotPaths` all read the stitched tree. `hotPaths` leaves the
+  root out of its chains.
+
+Limits, honestly. This is inference. (1) A function that was called but never sampled before its first
+`await` (a short synchronous prelude under one sampling interval) leaves no earlier span, so its
+continuation stays an unstitched root under the entry. (2) A function called from several places that resumes
+as a fresh callback can be attached to the wrong earlier call (the latest one wins). (3) A callback that is
+the task's entry on every run (a timer function) has no caller to attach to and stays a root. (4) Awaits
+shorter than one sampling interval do not split a call, so no segment exists for them.
+
+### Whole-run waterfall
+
+`waterfallForRun(model, trackIndex, options?)` returns the same `Waterfall` as the task waterfall, for the whole
+run, on the stitched tree (`options.transforms`, default `DEFAULT_TRANSFORMS`). Row 0 is the entry root, one row
+covering the run; nested rows are logical calls in time order. Options: `hideOrigins`, `minDurationUs`, `sort`
+(as the task waterfall), `maxDepth`, plus `collapseTrivialUs`.
+
+- A call that continues after an `await` is another row (segment) of the same call, with `resumed: true`
+  (also set on callers that resume at the same instant), and an idle row `kind: 'wait'`, label
+  `awaiting ~7.0 ms`, between the segments at the level of the topmost resumed caller. Waits shorter than
+  one sampling interval are not drawn.
+- Small tasks (`trivialTasks(model, trackIndex, thresholdUs?)`): busy time below `collapseTrivialUs` (default the
+  larger of 0.5 ms and 0.1% of the run), or only runtime frames (`runtimeOnly`), except the entry task. They
+  make no rows. Each run of consecutive small tasks becomes one `kind: 'summary'` row under the root,
+  `"N small tasks · ~X ms"`, with `summaryTasks` listing the task indexes; expand a summary by opening those
+  tasks with `waterfallForTask`. `collapseTrivialUs: 0` turns collapsing off.
+- New row fields: `resumed: boolean`, `summaryTasks: number[]` (empty except on summary rows); `kind` is
+  `'call' | 'wait' | 'summary'`. Ids stay indexes, parents come before children.
+
+`describeTasks` starts with `{ index: -1, group: 'Whole run', label: 'Whole run · <entry>' }` (open it with
+`waterfallForRun`), then `Entry`, `Requests`, `Timers`, `I/O`, `Microtasks`, `Other`, and last `Small tasks`.
+Every descriptor has `trivial: boolean`; trivial tasks are listed under `Small tasks`.
+
+### Call graph roots
+
+`callGraph` always draws the stitched entry root first (`node.isEntry`, callers above callees). Pruning keeps
+every drawn node connected: an edge goes from the nearest drawn ancestor, with `edge.hiddenFrames` = pruned frames
+in between (0 = a direct call; > 0 draws dashed, "via N frames"). Recursion is `node.recursion`, never a self
+edge.
+
+### Function source info
+
+`functionSource` adds `definitionLine` (1-based definition line, 0 for collapsed packages), `hotLines` (lines with
+self time, most first), `calleeTime` (`{ fn, name, pkg, selfUs, totalUs }` of the callees under this function,
+largest first; `line` is never set, because sampled profiles carry no call-site line) and
+`lineInfo: { status: 'self-lines' | 'no-self-time' | 'no-line-data', reason }`: `no-self-time` means the function
+itself ran little and its time is in its callees; `no-line-data` means V8 recorded no line positions
+(inlined, native, a collapsed package). Definition lines are verified against the real sources of the orders
+server (source-mapped TypeScript) and eslint (class methods, constructors, arrows, anonymous functions).
+
 ### Breaking changes (UI and CLI)
 
 - `meta.warnings` is `ModelWarning[]` (was `string[]`); `meta.runKind` is new.
@@ -175,6 +252,13 @@ are map lookups. Use it when the file is not on disk.
 - `buildAgentSummary`: `schemaVersion: 2`, `hotPaths` and `packages` changed shape, `warnings` is derived from
   the new `caveats`.
 - paces' preload frames are `node` + plumbing (were `framework`).
+- Second round: `TaskTable` has six new columns and `Track` has `continuations` and `rootFn`; the function table
+  gets one appended row per entry script; `DEFAULT_TRANSFORMS` starts with `stitch-continuations`, so every
+  default view is rooted at the entry function; `WaterfallRow` has `resumed` and `summaryTasks` and `kind` may be
+  `'summary'`; `CallGraphNode.isEntry` and `CallGraphEdge.hiddenFrames` are required; `TaskDescriptor` has `trivial`,
+  the first descriptor is the whole run (`index: -1`) and `TaskGroup` has `'Whole run'` and `'Small tasks'`;
+  `FunctionSourceInfo` has `definitionLine`, `hotLines`, `calleeTime`, `lineInfo`; `hotPaths` leaves the entry
+  root out of its chains.
 - The transform tag is `kind` like every other transform: `{ kind: 'hide-origins', origins }`.
 - `ENGINE_VERSION` is `0.2.0`: cached models from 0.1.0 are rejected by `deserializeModel`.
 
@@ -215,7 +299,8 @@ type Transform =
   | { kind: 'collapse-recursion'; fn }      | { kind: 'drop-samples'; fn }
   | { kind: 'time-range'; start; end }      | { kind: 'invert' }
   | { kind: 'collapse-dependencies' }       | { kind: 'merge-plumbing' } | { kind: 'drop-idle' }
-  | { kind: 'hide-origins'; origins: OriginId[] };
+  | { kind: 'hide-origins'; origins: OriginId[] }
+  | { kind: 'stitch-continuations' };
 
 const DEFAULT_TRANSFORMS: readonly Transform[]; // collapse-dependencies, merge-plumbing, drop-idle
 
@@ -243,6 +328,7 @@ view.syntheticPackages)` to get a `FunctionInfo` for any id.
 | ------------------------------------------------------------- | --------------------------------------------------------------- |
 | `waterfallForTask(model, view, task, options?)`               | `Waterfall` for a task of `view.trackIndex`                     |
 | `waterfallForRange(model, view, start, end, options?)`        | `Waterfall` for a time range                                    |
+| `waterfallForRun(model, trackIndex, options?)`                | `Waterfall` of the whole run on the stitched tree               |
 | `flameLayout(model, view, options?)`                          | `FlameLayout` (typed arrays, fractions of the root)             |
 | `flameLayoutOfTree(model, tree, syntheticPackages, options?)` | Same for any `CallTree`                                         |
 | `callGraph(model, view, options?)`                            | `CallGraph` nodes and edges; layout is the UI's job (ELK)       |

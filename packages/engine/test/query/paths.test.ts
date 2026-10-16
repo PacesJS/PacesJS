@@ -182,3 +182,29 @@ describe('callersOf', () => {
     expect(callersOf(m, 0, fn('main'), 3)).toEqual([]);
   });
 });
+
+describe('hotPaths follow stitched continuations', () => {
+  const rt = (name: string) => ({ name, url: 'node:internal/process/task_queues' });
+  const m = analyze(
+    synthCapture(
+      [
+        { stack: ['main', 'run', 'readAndVerify'], samples: 3 },
+        { stack: ['main', 'run'], samples: 1 },
+        { idle: 6 },
+        { stack: [rt('processTicksAndRejections'), 'readAndVerify', 'verify'], samples: 40 },
+        { idle: 3 },
+      ],
+      { argv },
+    ),
+  );
+
+  it('reads one logical chain from the caller down to the work done after the await', () => {
+    const [top] = hotPaths(m, 0, { minShare: 0.5 });
+    expect(top?.fns.map((f) => nameOf(m, f))).toEqual(['main', 'run', 'readAndVerify', 'verify']);
+  });
+
+  it('leaves the entry root out of the chain', () => {
+    const [top] = hotPaths(m, 0, { minShare: 0.01, limit: 1 });
+    expect(top?.fns.includes(m.tracks[0]?.rootFn ?? -1)).toBe(false);
+  });
+});

@@ -65,3 +65,136 @@ describe('function source edge cases', () => {
     expect(info.callSites.map((c) => c.callee)).toEqual([fnId(m, 'g')]);
   });
 });
+
+describe('definition lines', () => {
+  const find = (m: ExecutionModel, name: string, fileEndsWith: string, line: number): number => {
+    for (let fn = 0; fn < m.functions.length; fn++) {
+      if (m.strings[m.functions.name[fn] ?? 0] !== name) continue;
+      if (!(m.strings[m.functions.file[fn] ?? 0] ?? '').endsWith(fileEndsWith)) continue;
+      if (m.functions.line[fn] === line) return fn;
+    }
+    return -1;
+  };
+  const orders = loadModel('orders-server');
+  const eslint = loadModel('eslint-cli');
+
+  it.each([
+    ['function declaration', 'lineTotal', 'src/util/money.ts', 6],
+    ['async function declaration', 'getOrders', 'src/routes/orders.ts', 4],
+    ['nested function declaration', 'request', 'src/server.ts', 29],
+    ['function in another file', 'crunch', 'src/worker.ts', 3],
+    ['anonymous async arrow passed to createServer', '', 'src/server.ts', 12],
+    ['anonymous async arrow passed to listen', '', 'src/server.ts', 38],
+    ['anonymous arrow in a promise executor', '', 'src/db/orders.ts', 9],
+  ])('source-mapped TypeScript: %s', (_what, name, file, line) => {
+    const fn = find(orders, name, file, line);
+    expect(fn).toBeGreaterThanOrEqual(0);
+    const info = functionSource(orders, applyTransforms(orders, 0, []), fn);
+    expect(info.definitionLine).toBe(line);
+    expect(info.definitionLine).toBe(info.line);
+  });
+
+  it.each([
+    ['class method', 'verify', 'lib/linter/linter.js', 1644],
+    ['private method', '#flatVerifyWithoutProcessors', 'lib/linter/linter.js', 1832],
+    ['class constructor', 'ESLint', 'lib/eslint/eslint.js', 719],
+    ['constructor with a class name', 'Config', 'lib/config/config.js', 380],
+    [
+      'constructor of another class',
+      'SourceCode',
+      'lib/languages/js/source-code/source-code.js',
+      414,
+    ],
+    ['arrow assigned to module.exports', 'module.exports', 'lib/shared/ajv.js', 18],
+    ['arrow as an object property', 'consistent-return', 'lib/rules/index.js', 37],
+    ['anonymous async arrow in a call', '', 'lib/eslint/eslint.js', 628],
+    ['function declaration', 'runRules', 'lib/linter/linter.js', 1046],
+  ])('plain JavaScript: %s', (_what, name, file, line) => {
+    const fn = find(eslint, name, file, line);
+    expect(fn).toBeGreaterThanOrEqual(0);
+    const info = functionSource(eslint, applyTransforms(eslint, eslint.primaryTrack, []), fn);
+    expect(info.definitionLine).toBe(line);
+  });
+
+  it('maps an export default function to the line of the export in the original file', () => {
+    const url = 'file:///project/dist/a.js';
+    const map = JSON.stringify({
+      version: 3,
+      file: 'a.js',
+      sources: ['../src/a.ts'],
+      names: [],
+      mappings: 'AAAA;AACA;AACA;AACA;AACA;AACA,eAAe',
+    });
+    const m = analyze(
+      synthCapture([{ stack: [{ name: 'handler', url, line: 5, col: 0 }], samples: 3 }], {
+        sourceMaps: { [url]: map },
+      }),
+    );
+    const info = functionSource(m, applyTransforms(m, 0, []), fnId(m, 'handler'));
+    expect(info.definitionLine).toBe(6);
+    expect(info.file).toBe('src/a.ts');
+  });
+});
+
+describe('what the function itself did', () => {
+  const m = loadModel('orders-server');
+  const view = applyTransforms(m, 0, []);
+
+  it('lists the lines that have self time, hottest first', () => {
+    const info = functionSource(m, view, fnId(m, 'lineTotal'));
+    expect(info.hotLines[0]).toMatchObject({ line: 9 });
+    const selfs = info.hotLines.map((l) => l.selfUs);
+    expect(selfs).toEqual([...selfs].sort((a, b) => b - a));
+    expect(info.hotLines.every((l) => l.selfUs > 0)).toBe(true);
+  });
+
+  it('says there are self lines when there are', () => {
+    const info = functionSource(m, view, fnId(m, 'lineTotal'));
+    expect(info.lineInfo.status).toBe('self-lines');
+    expect(info.lineInfo.reason).toMatch(/line/);
+  });
+
+  it('lists callees with the time under the function, largest first', () => {
+    const info = functionSource(m, view, fnId(m, 'buildInvoiceRows'));
+    expect(info.calleeTime.map((c) => c.name).slice(0, 2)).toEqual(['lineTotal', 'formatCurrency']);
+    expect(info.calleeTime[0]?.totalUs).toBeGreaterThan(1_800_000);
+    expect(info.calleeTime[0]?.selfUs).toBeGreaterThan(1_800_000);
+    expect(info.calleeTime[0]).toMatchObject({ fn: fnId(m, 'lineTotal'), pkg: '' });
+    const totals = info.calleeTime.map((c) => c.totalUs);
+    expect(totals).toEqual([...totals].sort((a, b) => b - a));
+  });
+
+  it('does not invent call-site lines', () => {
+    const info = functionSource(m, view, fnId(m, 'buildInvoiceRows'));
+    expect(info.calleeTime.every((c) => c.line === undefined)).toBe(true);
+  });
+
+  it('explains a function whose own time is small: the time is in its callees', () => {
+    const info = functionSource(m, view, fnId(m, 'loadTemplate'));
+    expect(info.lines).toEqual([]);
+    expect(info.lineInfo.status).toBe('no-self-time');
+    expect(info.lineInfo.reason).toMatch(/callee/i);
+    expect(info.lineInfo.reason).toMatch(/ms/);
+    expect(info.calleeTime.length).toBeGreaterThan(0);
+  });
+
+  it('says honestly when V8 gave no line data for a function that did run', () => {
+    const steps = [{ stack: ['work'], samples: 20 }];
+    const synth = analyze(synthCapture(steps));
+    const info = functionSource(synth, applyTransforms(synth, 0, []), fnId(synth, 'work'));
+    expect(info.lines).toEqual([]);
+    expect(info.lineInfo.status).toBe('no-line-data');
+    expect(info.lineInfo.reason).toMatch(/V8/);
+  });
+
+  it('explains collapsed packages and native frames', () => {
+    const pkg = functionSource(
+      m,
+      applyTransforms(m, 0, [{ kind: 'collapse-package', pkg: 'ajv' }]),
+      m.functions.length,
+    );
+    expect(pkg.lineInfo.status).toBe('no-line-data');
+    expect(pkg.lineInfo.reason).toMatch(/package/);
+    expect(pkg.definitionLine).toBe(0);
+  });
+});

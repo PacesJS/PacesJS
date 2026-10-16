@@ -53,7 +53,11 @@ export function hotPaths(
   trackAt(model, trackIndex);
   const limit = options.limit ?? 8;
   const minShare = options.minShare ?? 0.02;
-  const stack: Transform[] = [{ kind: 'merge-plumbing' }, { kind: 'drop-idle' }];
+  const stack: Transform[] = [
+    { kind: 'stitch-continuations' },
+    { kind: 'merge-plumbing' },
+    { kind: 'drop-idle' },
+  ];
   if (options.origin !== undefined) {
     stack.push({
       kind: 'hide-origins',
@@ -65,6 +69,7 @@ export function hotPaths(
   const floor = view.totalUs * minShare;
   if (view.totalUs <= 0) return [];
 
+  const rootFn = trackAt(model, trackIndex).rootFn;
   const terminals: number[] = [];
   for (let n = 1; n < tree.length; n++) {
     if ((tree.total[n] ?? 0) < floor) continue;
@@ -77,18 +82,24 @@ export function hotPaths(
   }
   terminals.sort((a, b) => (tree.total[b] ?? 0) - (tree.total[a] ?? 0) || a - b);
 
-  return terminals.slice(0, limit).map((node): HotPath => {
-    const fns: FnId[] = [];
-    for (let n = node; n > 0; n = tree.parent[n] ?? 0) fns.push(tree.fn[n] ?? 0);
-    fns.reverse();
-    return {
-      fns,
-      locations: fns.map((fn) => locate(model, fn)),
-      selfUs: tree.self[node] ?? 0,
-      totalUs: tree.total[node] ?? 0,
-      share: (tree.total[node] ?? 0) / view.totalUs,
-    };
-  });
+  return terminals
+    .map((node): HotPath => {
+      const fns: FnId[] = [];
+      for (let n = node; n > 0; n = tree.parent[n] ?? 0) {
+        // The run's entry root is not a function of the program.
+        if (tree.fn[n] !== rootFn) fns.push(tree.fn[n] ?? 0);
+      }
+      fns.reverse();
+      return {
+        fns,
+        locations: fns.map((fn) => locate(model, fn)),
+        selfUs: tree.self[node] ?? 0,
+        totalUs: tree.total[node] ?? 0,
+        share: (tree.total[node] ?? 0) / view.totalUs,
+      };
+    })
+    .filter((p) => p.fns.length > 0)
+    .slice(0, limit);
 }
 
 /** The functions of one npm package on a track, hottest by self time first. */

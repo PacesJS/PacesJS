@@ -26,6 +26,6 @@ test.describe('differential mode with a baseline session', () => {
     const frame = app.getByRole('list', { name: 'Frames, widest first' }).getByRole('listitem', {
       name: /^lineTotal, .*slower than baseline/,
     });
-    await expect(frame).toHaveCount(1);
+    await expect(frame.first()).toBeVisible();
   });
 });

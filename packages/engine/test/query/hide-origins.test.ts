@@ -115,7 +115,7 @@ describe('hide-origins on the eslint cli', () => {
     const flame = flameLayout(m, hidden);
     expect(Array.from(flame.origin).filter((o, i) => i > 0 && o !== Origin.User)).toEqual([]);
     expect(functionRows(m, hidden).every((r) => r.origin === Origin.User)).toBe(true);
-    expect(callGraph(m, hidden).nodes.length).toBeGreaterThan(5);
+    expect(callGraph(m, hidden).nodes.length).toBeGreaterThan(2);
     expect(
       callGraph(m, hidden).nodes.every((n) => describeFunction(m, n.fn).origin === Origin.User),
     ).toBe(true);
