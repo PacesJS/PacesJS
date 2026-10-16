@@ -1,0 +1,32 @@
+{
+  "name": "paces",
+  "version": "0.0.0",
+  "description": "Profile a Node command and read what the JavaScript did. Run: npx paces -- node app.js",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "paces": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "@pacesjs/collector-node": "workspace:*",
+    "@pacesjs/engine": "workspace:*",
+    "@pacesjs/format": "workspace:*",
+    "@pacesjs/ui": "workspace:*",
+    "@types/node": "^24.0.0",
+    "tsup": "^9.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

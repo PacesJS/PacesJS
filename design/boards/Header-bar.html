@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Trailmap — Header bar</title>
+<script src="69475d61-5480-477a-bbb0-5b0a6bea0a25"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!--fonts-->
+<style>
+body{margin:0}
+</style>
+</helmet>
+<header style="font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif; color: #171a3a; background: #ffffff; border-bottom: 1px solid #e8eaf1; padding: 12px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); box-shadow: 0 8px 20px -6px #ff7a1a8c; display: flex; align-items: center; justify-content: center">
+<svg width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="#171a3a" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18c3 0 3-6 6-6s3 4 6 4 2-8 4-10"></path><circle cx="4" cy="18" r="1.6"></circle><circle cx="20" cy="6" r="1.6"></circle></svg>
+</span>
+<span style="font-size: 17px; line-height: 24px; font-weight: 600">Trailmap</span>
+</div>
+<div style="display: flex; gap: 4px">
+<button aria-label="Back (Alt+Left)" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #5f6580; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg></button>
+<button aria-label="Forward (Alt+Right)" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #5f6580; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg></button>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: 10px; background: #f4f5fa; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; line-height: 20px; max-width: 100%; overflow: hidden">
+<span style="color: #5f6580; white-space: nowrap">$ trailmap --</span>
+<span style="font-weight: 600; white-space: nowrap">node server.js</span>
+</div>
+<dl style="display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0">
+<div style="display: flex; flex-direction: column"><dt style="font-size: 12px; line-height: 16px; color: #5f6580">Duration</dt><dd style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; font-variant-numeric: tabular-nums">42.8 s</dd></div>
+<div style="display: flex; flex-direction: column"><dt style="font-size: 12px; line-height: 16px; color: #5f6580">Samples</dt><dd style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; font-variant-numeric: tabular-nums">~42,700 / track</dd></div>
+<div style="display: flex; flex-direction: column"><dt style="font-size: 12px; line-height: 16px; color: #5f6580">Ended by</dt><dd style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">Ctrl+C</dd></div>
+</dl>
+<span style="display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border-radius: 6px; background: #e3edff; color: #1d5ad0; font-size: 12px; line-height: 16px; font-weight: 600">
+<svg aria-hidden="true" width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+Sampled · 1 ms · ±1 ms
+</span>
+<div style="flex: 1 1 0; min-width: 0"></div>
+<div style="display: flex; align-items: center; gap: 8px">
+<label for="track-pick" style="font-size: 12px; line-height: 16px; color: #5f6580">Tracks</label>
+<sc-raw-select id="track-pick" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #848aa3; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 14px">
+<option>All 3 tracks</option>
+<option>main · pid 4182</option>
+<option>worker 1 · thread 1</option>
+<option>worker 2 · thread 2</option>
+</sc-raw-select>
+</div>
+<div style="position: relative; flex: 0 1 320px; min-width: 220px">
+<label for="search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search functions, files and packages</label>
+<svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#5f6580" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 14px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<input id="search" type="search" placeholder="Search functions, files, packages" style="width: 100%; box-sizing: border-box; min-height: 44px; padding: 0 40px 0 36px; border-radius: 10px; border: 0; background: #f4f5fa; color: #171a3a; font-family: inherit; font-size: 14px">
+<kbd style="position: absolute; right: 10px; top: 12px; font-family: inherit; font-size: 11px; line-height: 18px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1; color: #5f6580">/</kbd>
+</div>
+<button aria-label="Keyboard shortcuts (?)" style="width: 44px; height: 44px; border: 1px solid #848aa3; border-radius: 10px; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer">?</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<span style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580; margin-right: 4px">TRANSFORMS</span>
+<ol aria-label="Transform stack, oldest first" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; list-style: none; margin: 0; padding: 0">
+<li style="display: flex; align-items: center; gap: 2px; padding-left: 10px; border-radius: 6px; background: #f4f5fa; font-size: 13px; line-height: 20px; font-weight: 500">Collapse dependencies<button aria-label="Remove Collapse dependencies" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5f6580; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></li>
+<li aria-hidden="true" style="color: #848aa3">›</li>
+<li style="display: flex; align-items: center; gap: 2px; padding-left: 10px; border-radius: 6px; background: #f4f5fa; font-size: 13px; line-height: 20px; font-weight: 500">Merge plumbing<button aria-label="Remove Merge plumbing" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5f6580; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></li>
+<li aria-hidden="true" style="color: #848aa3">›</li>
+<li style="display: flex; align-items: center; gap: 2px; padding-left: 10px; border-radius: 6px; background: #f4f5fa; font-size: 13px; line-height: 20px; font-weight: 500">Drop idle<button aria-label="Remove Drop idle" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5f6580; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></li>
+<li aria-hidden="true" style="color: #848aa3">›</li>
+<li style="display: flex; align-items: center; gap: 2px; padding-left: 10px; border-radius: 6px; background: #ffebd6; color: #b24700; font-size: 13px; line-height: 20px; font-weight: 600">Range 18.0–19.6 s<button aria-label="Remove time range" style="width: 32px; height: 32px; border: 0; background: transparent; color: #b24700; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></li>
+</ol>
+<button style="display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px dashed #848aa3; border-radius: 6px; background: transparent; color: #5f6580; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg aria-hidden="true" width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add transform</button>
+<div style="flex: 1 1 0"></div>
+<span style="font-size: 12px; line-height: 16px; color: #5f6580; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace">.trailmap/2026-10-15T21-04.tmap</span>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #848aa3; border-radius: 10px; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Compare with…</button>
+</div>
+</header>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:150}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+
+
+</body></html>

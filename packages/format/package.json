@@ -1,0 +1,30 @@
+{
+  "name": "@pacesjs/format",
+  "version": "0.0.0",
+  "description": "paces session file (.paces) reader and writer",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pacesjs/engine": "workspace:*",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "tsup": "^9.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@pacesjs/collector-node",
+  "version": "0.0.0",
+  "description": "paces Node collector: preload scripts, socket client, flush logic. Node built-ins only.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./preload.cjs": "./dist/preload.cjs",
+    "./preload.mjs": "./dist/preload.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pacesjs/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "^9.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

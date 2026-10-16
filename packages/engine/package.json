@@ -1,0 +1,30 @@
+{
+  "name": "@pacesjs/engine",
+  "version": "0.0.0",
+  "description": "paces analysis engine: passes, execution model, query and transform layer. No Node or DOM imports.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "source-map-js": "^1.2.1"
+  },
+  "devDependencies": {
+    "tsup": "^9.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

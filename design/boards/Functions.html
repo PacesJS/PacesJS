@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Trailmap — Functions</title>
+<script src="c9d4c785-cd5a-42ac-8805-57ca74509b8c"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!--fonts-->
+<style>
+body{margin:0;background:#f4f5fa}
+a{color:#1d5ad0}a:hover{color:#171a3a}
+:focus-visible{outline:none;box-shadow:0 0 0 2px #ffffff,0 0 0 4px #b24700}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f4f5fa; color: #171a3a; font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif; font-size: 14px; line-height: 22px">
+<dc-import name="Header" hint-size="100%,132px"></dc-import>
+<main style="max-width: 1680px; margin: 0 auto; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+<dc-import name="Overview" active="3" hint-size="100%,440px"></dc-import>
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+<section aria-label="Main view" style="background: #ffffff; border-radius: 16px; box-shadow: 0 1px 2px #171a3a0a, 0 6px 20px -6px #171a3a14; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<nav aria-label="Views" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: #f4f5fa; border-radius: 10px; align-self: flex-start">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Waterfall <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">1</kbd></a>
+<a href="FlameGraph.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Flame graph <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">2</kbd></a>
+<a href="CallGraph.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Call graph <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">3</kbd></a>
+<a href="Functions.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); box-shadow: 0 8px 20px -6px #ff7a1a8c; color: #171a3a; font-size: 14px; font-weight: 500; text-decoration: none">Functions <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff99">4</kbd></a>
+</nav>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center">
+<div style="position: relative; flex: 1 1 280px; max-width: 420px">
+<label for="fn-filter" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Filter functions by name, file or package</label>
+<svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#5f6580" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 14px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<input id="fn-filter" type="search" placeholder="Filter by name, file or package" style="width: 100%; box-sizing: border-box; min-height: 44px; padding: 0 12px 0 36px; border-radius: 10px; border: 0; background: #f4f5fa; color: #171a3a; font-family: inherit; font-size: 14px">
+</div>
+<button role="switch" aria-checked="true" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px 0 6px; border: 0; border-radius: 10px; background: #ffebd6; color: #b24700; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer"><span aria-hidden="true" style="width: 32px; height: 20px; border-radius: 9999px; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); position: relative; display: inline-block"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 9999px; background: #ffffff"></span></span>Your code first</button>
+<span style="font-size: 13px; line-height: 18px; color: #5f6580">63 functions · sorted by self time · range 18.0–19.6 s (1.60 s on main)</span>
+</div>
+
+<div style="overflow-x: auto">
+<div role="table" aria-label="Functions, sorted by self time" style="min-width: 900px; display: flex; flex-direction: column; font-size: 14px; line-height: 20px">
+<div role="row" style="display: grid; grid-template-columns: minmax(180px, 1.5fr) 120px 150px 110px 70px 96px minmax(200px, 1.5fr); align-items: center; border-bottom: 1px solid #e8eaf1; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580">
+<span role="columnheader" style="padding: 8px 12px">FUNCTION</span>
+<span role="columnheader" style="padding: 8px 12px">ORIGIN</span>
+<span role="columnheader" aria-sort="descending" style="padding: 8px 12px; text-align: right; color: #b24700">SELF, HIGH TO LOW</span>
+<span role="columnheader" style="padding: 8px 12px; text-align: right">TOTAL</span>
+<span role="columnheader" style="padding: 8px 12px; text-align: right">SHARE</span>
+<span role="columnheader" style="padding: 8px 12px; text-align: right">CALLS EST.</span>
+<span role="columnheader" style="padding: 8px 12px">LOCATION</span>
+</div>
+<div role="row" style="padding: 12px 12px 4px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #b24700"><span role="rowheader">YOUR CODE · 8</span></div>
+<sc-for list="{{mine}}" as="r" hint-placeholder-count="8">
+<div role="row" style="{{r.rowStyle}}">
+<span role="cell" style="padding: 8px 12px; display: flex; align-items: center; gap: 8px; min-width: 0"><span aria-hidden="true" style="{{r.dot}}"></span><span style="{{r.nameStyle}}">{{r.name}}</span></span>
+<span role="cell" style="padding: 8px 12px; font-size: 12px; color: #5f6580; white-space: nowrap">{{r.origin}}</span>
+<span role="cell" style="padding: 8px 12px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; white-space: nowrap"><span aria-hidden="true" style="display: inline-block; width: 56px; height: 6px; border-radius: 3px; background: #f4f5fa; overflow: hidden"><span style="{{r.bar}}"></span></span><span style="font-weight: 600; font-variant-numeric: tabular-nums">{{r.self}}</span></span>
+<span role="cell" style="padding: 8px 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap">{{r.total}}</span>
+<span role="cell" style="padding: 8px 12px; text-align: right; font-variant-numeric: tabular-nums">{{r.share}}</span>
+<span role="cell" style="padding: 8px 12px; text-align: right; font-variant-numeric: tabular-nums; color: #5f6580">{{r.calls}}</span>
+<span role="cell" style="padding: 8px 12px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; color: #5f6580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.loc}}</span>
+</div>
+</sc-for>
+<div role="row" style="padding: 16px 12px 4px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580"><span role="rowheader">DEPENDENCIES, NODE AND NATIVE · 7 OF 55 · PACKAGES COLLAPSED</span></div>
+<sc-for list="{{others}}" as="r" hint-placeholder-count="7">
+<div role="row" style="{{r.rowStyle}}">
+<span role="cell" style="padding: 8px 12px; display: flex; align-items: center; gap: 8px; min-width: 0"><span aria-hidden="true" style="{{r.dot}}"></span><span style="{{r.nameStyle}}">{{r.name}}</span></span>
+<span role="cell" style="padding: 8px 12px; font-size: 12px; color: #5f6580; white-space: nowrap">{{r.origin}}</span>
+<span role="cell" style="padding: 8px 12px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; white-space: nowrap"><span aria-hidden="true" style="display: inline-block; width: 56px; height: 6px; border-radius: 3px; background: #f4f5fa; overflow: hidden"><span style="{{r.bar}}"></span></span><span style="font-weight: 600; font-variant-numeric: tabular-nums">{{r.self}}</span></span>
+<span role="cell" style="padding: 8px 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap">{{r.total}}</span>
+<span role="cell" style="padding: 8px 12px; text-align: right; font-variant-numeric: tabular-nums">{{r.share}}</span>
+<span role="cell" style="padding: 8px 12px; text-align: right; font-variant-numeric: tabular-nums; color: #5f6580">{{r.calls}}</span>
+<span role="cell" style="padding: 8px 12px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; color: #5f6580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.loc}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: #f4f5fa">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px">
+<h2 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600">Sandwich · buildInvoiceRows</h2>
+<span style="font-size: 12px; line-height: 16px; color: #5f6580">Callers above, inverted · callees below · width = share of this function's ~674 ms</span>
+</div>
+<div style="overflow-x: auto">
+<div role="img" aria-label="Sandwich view. Callers: renderInvoice, then getOrders, then express, each 100%. Callees: lineTotal 26.7%, ajv 19.0%, formatCurrency 10.4%; 43.9% is self time." style="position: relative; min-width: 640px; height: 222px">
+<sc-for list="{{sandwich}}" as="s" hint-placeholder-count="9">
+<div style="{{s.style}}"><span style="{{s.textStyle}}">{{s.label}}</span></div>
+</sc-for>
+<span style="position: absolute; left: calc(56.1% + 12px); top: 132px; font-size: 12px; line-height: 16px; color: #5f6580">self · 43.9%</span>
+</div>
+</div>
+</div>
+</section>
+<dc-import name="Details" fn="buildInvoiceRows" hint-size="100%,280px"></dc-import>
+</div>
+<aside aria-label="Source" style="flex: 1 1 380px; min-width: 0; max-width: 100%">
+<dc-import name="Source" fn="buildInvoiceRows" hint-size="100%,900px"></dc-import>
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1580}}">
+class Component extends DCLogic {
+  renderVals() {
+    var RANGE = 1600, MAX = 296;
+    var SOLID = { you: '#ff8a1f', dep: '#4c8dff', node: '#1bb5a2', native: '#2bc48a', gc: '#848aa3' };
+    var DIM = { you: '#ff8a1f', dep: 'rgba(76,141,255,0.45)', node: 'rgba(27,181,162,0.45)', native: 'rgba(43,196,138,0.45)', gc: 'rgba(132,138,163,0.45)' };
+    var LABEL = { you: 'Your code', dep: 'Dependency', node: 'Node internals', native: 'Native', gc: 'GC' };
+    function row(r, i) {
+      var sel = r[6] === true;
+      return {
+        name: r[0], origin: LABEL[r[1]], self: '~' + r[2] + ' ms', total: '~' + r[3].toLocaleString('en-US') + ' ms',
+        share: (r[2] / RANGE * 100).toFixed(1) + '%', calls: r[4], loc: r[5],
+        rowStyle: 'display: grid; grid-template-columns: minmax(180px, 1.5fr) 120px 150px 110px 70px 96px minmax(200px, 1.5fr); align-items: center; border-bottom: 1px solid #e8eaf1; cursor: pointer;' + (sel ? ' background: #ffebd6; border-radius: 10px; box-shadow: inset 0 0 0 2px #ff8a1f;' : ''),
+        dot: 'width: 8px; height: 8px; flex: none; border-radius: 9999px; background: ' + SOLID[r[1]],
+        nameStyle: 'white-space: nowrap; ' + (r[1] === 'you' ? 'font-weight: 600; color: #171a3a' : 'font-weight: 500; color: #5f6580'),
+        bar: 'display: block; height: 6px; border-radius: 3px; width: ' + Math.max(3, r[2] / MAX * 100).toFixed(1) + '%; background: ' + DIM[r[1]]
+      };
+    }
+    var mine = [
+      ['buildInvoiceRows', 'you', 296, 674, '~7', 'src/render/invoice.ts:71', true],
+      ['mapRows', 'you', 41, 96, '~7', 'src/db/orders.ts:61'],
+      ['lineTotal', 'you', 38, 180, '~670', 'src/util/money.ts:30'],
+      ['parseNumeric', 'you', 30, 64, '~1,340', 'src/db/orders.ts:90'],
+      ['renderInvoice', 'you', 22, 998, '~7', 'src/render/invoice.ts:24'],
+      ['getOrders', 'you', 16, 1224, '~7', 'src/routes/orders.ts:18'],
+      ['formatCurrency', 'you', 12, 70, '~1,340', 'src/util/money.ts:12'],
+      ['loadTemplate', 'you', 9, 267, '~7', 'src/render/template.ts:38']
+    ].map(row);
+    var others = [
+      ['(native) read', 'native', 243, 243, '~7', '(native)'],
+      ['Intl.NumberFormat', 'native', 175, 175, '~2,010', '(native)'],
+      ['ajv', 'dep', 128, 128, '~670', 'node_modules/ajv'],
+      ['(GC)', 'gc', 128, 128, '—', 'V8'],
+      ['JSON.stringify', 'native', 77, 77, '~7', '(native)'],
+      ['jsonwebtoken', 'dep', 46, 46, '~7', 'node_modules/jsonwebtoken'],
+      ['express', 'dep', 38, 1248, '~7', 'node_modules/express']
+    ].map(row);
+    // level (negative = callers above), name, origin, start %, end %
+    var S = [
+      [-3, 'express ▸ router.handle', 'dep', 0, 100],
+      [-2, 'getOrders', 'you', 0, 100],
+      [-1, 'renderInvoice', 'you', 0, 100],
+      [0, 'buildInvoiceRows · src/render/invoice.ts:71', 'you', 0, 100, true],
+      [1, 'lineTotal', 'you', 0, 26.7],
+      [1, 'ajv ▸ validate', 'dep', 26.7, 45.7],
+      [1, 'formatCurrency', 'you', 45.7, 56.1],
+      [2, 'Intl.NumberFormat', 'native', 0, 17.4],
+      [2, 'Intl.NumberFormat', 'native', 45.7, 54.3]
+    ];
+    var sandwich = S.map(function (s) {
+      var top = (s[0] + 3) * 30 + (s[0] > 0 ? 12 : 0);
+      var w = s[4] - s[3];
+      return {
+        label: w > 7 ? s[1] : '',
+        style: 'position: absolute; top: ' + top + 'px; height: 28px; left: ' + s[3] + '%; width: calc(' + w + '% - 2px); box-sizing: border-box; border-radius: 4px; overflow: hidden; display: flex; align-items: center; background: ' + DIM[s[2]] + ';' + (s[5] ? ' outline: 2px solid #171a3a; outline-offset: -1px; box-shadow: 0 8px 20px -6px #ff7a1a8c;' : ''),
+        textStyle: 'padding: 0 8px; white-space: nowrap; font-size: 12px; line-height: 16px; color: #171a3a; ' + (s[2] === 'you' ? 'font-weight: 600' : 'font-weight: 500')
+      };
+    });
+    return { mine: mine, others: others, sandwich: sandwich };
+  }
+}
+</script>
+
+
+</body></html>

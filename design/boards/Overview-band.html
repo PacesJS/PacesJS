@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Trailmap — Overview band</title>
+<script src="3137a909-12fc-4468-a3f9-17f8ce474cf2"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!--fonts-->
+<style>
+body{margin:0}
+</style>
+</helmet>
+<section aria-label="Overview" style="font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif; color: #171a3a; font-size: 14px; line-height: 22px; background: #ffffff; border-radius: 16px; box-shadow: 0 1px 2px #171a3a0a, 0 6px 20px -6px #171a3a14; overflow: hidden">
+<div aria-hidden="true" style="height: 4px; background: linear-gradient(90deg, #ff8a1f 0%, #ffc23d 25%, #4c8dff 50%, #1bb5a2 75%, #e03fcb 100%)"></div>
+<div style="padding: 20px; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px">
+<h2 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600">Findings</h2>
+<span style="font-size: 12px; line-height: 16px; color: #5f6580">Top 5 of 7, ranked by severity · thresholds from trailmap.config.json</span>
+<a href="#all-findings" style="margin-left: auto; font-size: 14px; line-height: 20px; font-weight: 500">View all 7</a>
+</div>
+<ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px">
+<sc-for list="{{findings}}" as="f" hint-placeholder-count="5">
+<li style="{{f.cardStyle}}">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="{{f.pillStyle}}">{{f.sev}}</span>
+<span style="font-size: 12px; line-height: 16px; color: #5f6580">#{{f.rank}}</span>
+</div>
+<h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">{{f.title}}</h3>
+<p style="margin: 0; font-size: 13px; line-height: 20px; flex: 1 1 auto">{{f.text}}</p>
+<p style="margin: 0; font-size: 12px; line-height: 16px; color: #5f6580">{{f.rule}}</p>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="font-size: 12px; line-height: 16px; color: #5f6580">Opens {{f.opens}}</span>
+<button aria-label="Show me: {{f.title}}" style="{{f.btnStyle}}">Show me</button>
+</div>
+</li>
+</sc-for>
+</ol>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #e8eaf1; padding-top: 16px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px">
+<h2 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600">Tracks</h2>
+<span style="font-size: 12px; line-height: 16px; color: #5f6580">Drag across the lanes to set the range for every view</span>
+<ul aria-label="Legend" style="list-style: none; margin: 0 0 0 auto; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; line-height: 16px; color: #5f6580">
+<li style="display: flex; align-items: center; gap: 4px"><span aria-hidden="true" style="width: 14px; height: 8px; border-radius: 2px; background: rgba(255,138,31,0.3); border-top: 2px solid #ff8a1f"></span>CPU busy</li>
+<li style="display: flex; align-items: center; gap: 4px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #ff8a1f"></span>Your code</li>
+<li style="display: flex; align-items: center; gap: 4px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #4c8dff"></span>Dependency</li>
+<li style="display: flex; align-items: center; gap: 4px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #1bb5a2"></span>Node internals</li>
+<li style="display: flex; align-items: center; gap: 4px"><span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 2px; background: #ffc23d; border: 1px solid #171a3a"></span>Long task, over 50 ms</li>
+<li style="display: flex; align-items: center; gap: 4px"><span aria-hidden="true" style="width: 2px; height: 10px; background: #5f6580"></span>GC pause</li>
+</ul>
+</div>
+
+<div style="overflow-x: auto">
+<div style="min-width: 760px; position: relative">
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 12px; align-items: end; padding-bottom: 4px">
+<div></div>
+<div style="position: relative; height: 16px; font-size: 12px; line-height: 16px; color: #5f6580; font-variant-numeric: tabular-nums">
+<sc-for list="{{ticks}}" as="t" hint-placeholder-count="9"><span style="{{t.style}}">{{t.label}}</span></sc-for>
+</div>
+</div>
+
+<sc-for list="{{lanes}}" as="lane" hint-placeholder-count="3">
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 12px; align-items: stretch; border-top: 1px solid #e8eaf1">
+<div style="display: flex; align-items: center; gap: 6px; padding: 6px 0">
+<button aria-label="{{lane.pinLabel}}" aria-pressed="{{lane.pinned}}" style="{{lane.pinStyle}}"><svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6z"></path><path d="M12 13v7"></path></svg></button>
+<div style="display: flex; flex-direction: column; min-width: 0">
+<span style="font-size: 14px; line-height: 20px; font-weight: 600">{{lane.name}}</span>
+<span style="font-size: 12px; line-height: 16px; color: #5f6580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{lane.meta}}</span>
+</div>
+</div>
+<div style="position: relative; height: 64px; background-image: linear-gradient(to right, #e8eaf1 1px, transparent 1px); background-size: 11.682% 100%">
+<svg aria-hidden="true" sc-camel-view-box="0 0 1000 20" sc-camel-preserve-aspect-ratio="none" style="position: absolute; left: 0; top: 2px; width: 100%; height: 20px"><path d="{{lane.cpuArea}}" fill="rgba(255,138,31,0.28)"></path><path d="{{lane.cpuLine}}" fill="none" stroke="#ff8a1f" stroke-width="1.5" vector-effect="non-scaling-stroke"></path></svg>
+<sc-for list="{{lane.tasks}}" as="tk" hint-placeholder-count="20"><div style="{{tk.style}}"><span style="font-size: 11px; line-height: 18px; font-weight: 600; color: #171a3a; white-space: nowrap; padding: 0 6px">{{tk.label}}</span></div></sc-for>
+<sc-for list="{{lane.ticks}}" as="lt" hint-placeholder-count="6"><div style="{{lt.style}}"></div></sc-for>
+<sc-for list="{{lane.gc}}" as="g" hint-placeholder-count="8"><div style="{{g.style}}"></div></sc-for>
+<sc-if value="{{lane.hasTip}}" hint-placeholder-val="{{ false }}">
+<div role="tooltip" style="position: absolute; top: 2px; left: calc(42.85% + 14px); z-index: 2; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px -8px #171a3a33; padding: 8px 12px; display: flex; flex-direction: column; white-space: nowrap">
+<span style="font-size: 13px; line-height: 18px; font-weight: 600">GET /orders · ~182 ms</span>
+<span style="font-size: 12px; line-height: 16px; color: #5f6580">at 18.31 s · long task · selected</span>
+</div>
+</sc-if>
+</div>
+</div>
+<sc-if value="{{lane.hasDelay}}" hint-placeholder-val="{{ false }}">
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 12px; align-items: center">
+<span style="font-size: 12px; line-height: 16px; color: #5f6580; padding-left: 38px">Loop delay, p99</span>
+<div style="position: relative; height: 24px">
+<svg aria-hidden="true" sc-camel-view-box="0 0 1000 24" sc-camel-preserve-aspect-ratio="none" style="position: absolute; inset: 0; width: 100%; height: 24px"><path d="{{lane.delayLine}}" fill="none" stroke="#5f6580" stroke-width="1.25" vector-effect="non-scaling-stroke"></path></svg>
+<span style="position: absolute; right: 0; top: 4px; font-size: 11px; line-height: 16px; color: #5f6580; background: #ffffff; padding-left: 4px">peak 186 ms at 18.3 s</span>
+</div>
+</div>
+</sc-if>
+</sc-for>
+
+<div aria-label="Selected range 18.0 to 19.6 seconds" style="position: absolute; top: 0; bottom: 0; left: calc(212px + (100% - 212px) * 0.4206); width: calc((100% - 212px) * 0.0374); background: rgba(255,138,31,0.14); border-left: 2px solid #b24700; border-right: 2px solid #b24700; pointer-events: none">
+<span style="position: absolute; top: -2px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 11px; line-height: 16px; font-weight: 600; color: #b24700; background: #ffebd6; padding: 0 6px; border-radius: 6px">18.0–19.6 s</span>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;active&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:2,&quot;min&quot;:1,&quot;max&quot;:5},&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:480}}">
+class Component extends DCLogic {
+  renderVals() {
+    var active = this.props.active == null ? 2 : Number(this.props.active);
+    var D = 42.8;
+    var findings = [
+      { sev: 'High', title: 'Event loop blocked', text: '14 tasks ran over 50 ms. The worst, GET /orders, took ~182 ms.', rule: 'Rule: any task over 50 ms', opens: 'waterfall' },
+      { sev: 'High', title: 'Synchronous I/O on a hot path', text: 'fs.readFileSync in loadTemplate costs ~37 ms on every GET /orders.', rule: 'Rule: a *Sync call inside a request task', opens: 'waterfall + source' },
+      { sev: 'Medium', title: 'Hot function', text: 'buildInvoiceRows holds 18.4% of self time on main.', rule: 'Rule: a user function over 10% self', opens: 'source' },
+      { sev: 'Medium', title: 'Hot dependency', text: 'ajv takes 21.6% of total time, mostly through validateOrderItem.', rule: 'Rule: a package over 20% total', opens: 'call graph' },
+      { sev: 'Medium', title: 'GC pressure', text: 'GC used 11.2% of wall time. The longest pause was 64 ms.', rule: 'Rule: GC over 10%, or a pause over 50 ms', opens: 'track timeline' }
+    ].map(function (f, i) {
+      var sel = (i + 1) === active;
+      return {
+        sev: f.sev, title: f.title, text: f.text, rule: f.rule, opens: f.opens, rank: i + 1,
+        cardStyle: 'display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; box-sizing: border-box; ' + (sel ? 'background: #ffebd6; box-shadow: inset 0 0 0 2px #ff8a1f' : 'background: #f4f5fa'),
+        pillStyle: 'display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: #171a3a; background: ' + (f.sev === 'High' ? '#ff6b6b' : '#ffc23d'),
+        btnStyle: 'min-height: 44px; padding: 0 16px; border-radius: 10px; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer; ' + (sel ? 'border: 0; color: #171a3a; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); box-shadow: 0 8px 20px -6px #ff7a1a8c' : 'border: 1px solid #848aa3; color: #171a3a; background: #ffffff')
+      };
+    });
+
+    function rng(seed) { var s = seed; return function () { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
+    var COL = { you: '#ff8a1f', dep: '#4c8dff', node: '#1bb5a2' };
+    function block(start, dur, origin, label, selected) {
+      var l = start / D * 100, w = dur / D * 100;
+      return {
+        start: start, dur: dur, long: dur > 0.05,
+        label: label || '',
+        style: 'position: absolute; top: 24px; height: 18px; left: ' + l.toFixed(3) + '%; width: ' + w.toFixed(3) + '%; min-width: 3px; box-sizing: border-box; border-radius: 3px; overflow: hidden; display: flex; align-items: center; background: ' + COL[origin] + ';' + (selected ? ' outline: 2px solid #171a3a; outline-offset: 1px;' : '')
+      };
+    }
+    function makeLane(seed, kind) {
+      var r = rng(seed), tasks = [], t;
+      if (kind === 'main') {
+        tasks.push(block(0, 1.9, 'you', 'startup · require'));
+        t = 2.3;
+        while (t < 42.4) {
+          var x = r();
+          var dur = x > 0.86 ? 0.055 + r() * 0.12 : 0.008 + r() * 0.03;
+          var o = x < 0.12 ? 'node' : (x < 0.3 ? 'dep' : 'you');
+          if (Math.abs(t - 18.31) > 0.35) tasks.push(block(t, dur, o));
+          t += 0.45 + r() * 0.9;
+        }
+        tasks.push(block(18.31, 0.182, 'you', '', true));
+      } else {
+        t = 1.0 + r() * 2;
+        while (t < 41.8) {
+          var d2 = 0.25 + r() * 0.7;
+          tasks.push(block(t, d2, r() < 0.2 ? 'dep' : 'you', d2 > 0.75 ? 'resize' : ''));
+          t += d2 + 1.2 + r() * 2.6;
+        }
+      }
+      // CPU activity: share of each bin covered by tasks
+      var bins = 200, bw = D / bins, pts = [];
+      for (var b = 0; b < bins; b++) {
+        var b0 = b * bw, b1 = b0 + bw, cov = 0;
+        tasks.forEach(function (tk) { var a = Math.max(b0, tk.start), z = Math.min(b1, tk.start + tk.dur); if (z > a) cov += z - a; });
+        var act = Math.min(1, cov / bw * 1.5 + 0.04 + r() * 0.05);
+        pts.push([(b + 0.5) / bins * 1000, 20 - act * 18]);
+      }
+      var line = 'M' + pts.map(function (p) { return p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' L');
+      var area = line + ' L1000 20 L0 20 Z';
+      var longTicks = tasks.filter(function (tk) { return tk.long && tk.dur < 1; }).map(function (tk) {
+        return { style: 'position: absolute; top: 19px; left: calc(' + ((tk.start + tk.dur) / D * 100).toFixed(3) + '% - 3px); width: 7px; height: 7px; box-sizing: border-box; border-radius: 2px; background: #ffc23d; border: 1px solid #171a3a' };
+      });
+      var gc = [];
+      var n = kind === 'main' ? 16 : 6;
+      for (var g = 0; g < n; g++) {
+        var at = 2 + r() * 40;
+        gc.push({ style: 'position: absolute; top: 47px; height: 12px; width: 2px; background: #5f6580; left: ' + (at / D * 100).toFixed(2) + '%' });
+      }
+      if (kind === 'main') gc.push({ style: 'position: absolute; top: 45px; height: 16px; width: 4px; border-radius: 1px; background: #171a3a; left: ' + (31.4 / D * 100).toFixed(2) + '%' });
+      return { tasks: tasks.map(function (tk) { return { style: tk.style, label: tk.label }; }), ticks: longTicks, gc: gc, cpuLine: line, cpuArea: area };
+    }
+    var m = makeLane(7, 'main'), w1 = makeLane(31, 'worker'), w2 = makeLane(97, 'worker');
+    var rd = rng(5), dl = [];
+    for (var i = 0; i <= 200; i++) {
+      var tt = i / 200 * D, v = 3 + rd() * 3;
+      if (Math.abs(tt - 18.35) < 0.25) v = 22;
+      else if (rd() > 0.93) v = 8 + rd() * 6;
+      dl.push((i * 5).toFixed(0) + ' ' + (23 - v).toFixed(1));
+    }
+    function lane(name, meta, pinned, data, extra) {
+      return {
+        name: name, meta: meta, pinned: pinned ? 'true' : 'false',
+        pinLabel: (pinned ? 'Unpin ' : 'Pin ') + name,
+        pinStyle: 'width: 32px; height: 32px; flex: none; border: 0; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; ' + (pinned ? 'background: #ffebd6; color: #b24700' : 'background: transparent; color: #5f6580'),
+        tasks: data.tasks, ticks: data.ticks, gc: data.gc, cpuLine: data.cpuLine, cpuArea: data.cpuArea,
+        hasTip: !!extra, hasDelay: !!extra, delayLine: 'M' + dl.join(' L')
+      };
+    }
+    var lanes = [
+      lane('main', 'pid 4182 · server.js', true, m, true),
+      lane('worker 1', 'thread 1 · resize.js', false, w1, false),
+      lane('worker 2', 'thread 2 · resize.js', false, w2, false)
+    ];
+    var ticks = [0, 5, 10, 15, 20, 25, 30, 35, 40].map(function (s) {
+      return { label: s + ' s', style: 'position: absolute; left: ' + (s / D * 100).toFixed(2) + '%; padding-left: 3px; white-space: nowrap' };
+    });
+    return { findings: findings, lanes: lanes, ticks: ticks };
+  }
+}
+</script>
+
+
+</body></html>
