@@ -76,4 +76,25 @@ describe('transform stack', () => {
     expect(transformLabel({ k: 'stitch' }, String)).toBe('Stitch continuations (inferred)');
     expect(transformLabel({ k: 'merge-fn', fn: 9 }, () => 'lineTotal')).toBe('Merge lineTotal');
   });
+
+  it('moves to a history entry the browser navigated to', () => {
+    let s = createState(initialSnapshot());
+    s = reducer(s, { type: 'select', selection: { kind: 'fn', fn: 1 } });
+    s = reducer(s, { type: 'select', selection: { kind: 'fn', fn: 2 } });
+    s = reducer(s, { type: 'goto', index: 1 });
+    expect(snapshotOf(s).selection).toEqual({ kind: 'fn', fn: 1 });
+    expect(s.history.entries).toHaveLength(3);
+  });
+
+  it('adopts a snapshot from the URL by replacing the current entry, not growing the stack', () => {
+    let s = createState(initialSnapshot());
+    s = reducer(s, { type: 'select', selection: { kind: 'fn', fn: 1 } });
+    const before = s.history.entries.length;
+    s = reducer(s, {
+      type: 'restore',
+      snapshot: { ...initialSnapshot(), selection: { kind: 'fn', fn: 9 } },
+    });
+    expect(snapshotOf(s).selection).toEqual({ kind: 'fn', fn: 9 });
+    expect(s.history.entries).toHaveLength(before);
+  });
 });

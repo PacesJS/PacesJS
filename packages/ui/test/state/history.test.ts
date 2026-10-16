@@ -6,7 +6,9 @@ import {
   createHistory,
   current,
   forward,
+  goto,
   push,
+  replace,
 } from '../../src/state/history';
 import { initialSnapshot } from '../../src/state/types';
 
@@ -44,5 +46,28 @@ describe('history', () => {
     expect(canBack(h)).toBe(false);
     expect(back(h)).toBe(h);
     expect(forward(h)).toBe(h);
+  });
+
+  it('counts pushes, so the URL layer can tell a new entry from a replaced one', () => {
+    let h = createHistory(initialSnapshot());
+    const first = h.serial;
+    h = push(h, at(1));
+    expect(h.serial).toBe(first + 1);
+    h = replace(h, at(2));
+    expect(h.serial).toBe(first + 1);
+    h = back(h);
+    expect(h.serial).toBe(first + 1);
+    h = forward(h);
+    expect(h.serial).toBe(first + 1);
+  });
+
+  it('jumps to an entry by index and ignores an index that is not there', () => {
+    let h = createHistory(initialSnapshot());
+    h = push(h, at(1));
+    h = push(h, at(2));
+    h = goto(h, 0);
+    expect(h.index).toBe(0);
+    expect(goto(h, 5)).toBe(h);
+    expect(goto(h, -1)).toBe(h);
   });
 });

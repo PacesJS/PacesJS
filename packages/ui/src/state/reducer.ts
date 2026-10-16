@@ -5,6 +5,7 @@ import {
   createHistory,
   current,
   forward,
+  goto,
   push,
   replace,
 } from './history';
@@ -40,6 +41,7 @@ export type AppAction =
   | { type: 'options'; options: Partial<ViewOptions>; replace?: boolean }
   | { type: 'back' }
   | { type: 'forward' }
+  | { type: 'goto'; index: number }
   | { type: 'restore'; snapshot: Snapshot }
   | { type: 'hover'; selection: Selection }
   /** Reveal the source dock (back to automatic) or collapse it. */
@@ -126,8 +128,12 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return canBack(state.history) ? { ...state, history: back(state.history) } : state;
     case 'forward':
       return canForward(state.history) ? { ...state, history: forward(state.history) } : state;
+    case 'goto':
+      return { ...state, history: goto(state.history, action.index) };
     case 'restore':
-      return { ...state, history: push(state.history, action.snapshot) };
+      // The URL changed under us (a pasted link, or the browser moved to an entry we do not have):
+      // adopt it in place; the browser already holds the entry, so the stack must not grow.
+      return { ...state, history: replace(state.history, action.snapshot) };
     case 'hover':
       return { ...state, hover: action.selection };
     case 'set-source-collapsed':

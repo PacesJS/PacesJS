@@ -552,4 +552,156 @@ test.describe('whole run, stitching and the entry root', () => {
       app.locator('.source-line', { hasText: /return total|Math.round|Intl.NumberFormat/ }),
     ).toHaveCount(0);
   });
+
+  test.describe("the browser's own back and forward step through selections too", () => {
+    const details = (page: Page) => page.getByRole('region', { name: 'Selection details' });
+
+    test('page.goBack and goForward across Functions-table selections', async ({ app }) => {
+      await settled(app);
+      await app.keyboard.press('4');
+      await app
+        .getByRole('row', { name: /lineTotal/ })
+        .first()
+        .click();
+      await expect(details(app)).toContainText('lineTotal');
+      await app
+        .getByRole('row', { name: /loadTemplate/ })
+        .first()
+        .click();
+      await expect(details(app)).toContainText('loadTemplate');
+      await app.goBack();
+      await expect(details(app)).toContainText('lineTotal');
+      await app.goForward();
+      await expect(details(app)).toContainText('loadTemplate');
+    });
+
+    test('the header buttons and the browser share one stack', async ({ app }) => {
+      await settled(app);
+      await app.keyboard.press('4');
+      await app
+        .getByRole('row', { name: /lineTotal/ })
+        .first()
+        .click();
+      await app
+        .getByRole('row', { name: /loadTemplate/ })
+        .first()
+        .click();
+      await app.getByRole('button', { name: /^Back/ }).click();
+      await expect(details(app)).toContainText('lineTotal');
+      // The header button went through the browser, so the browser can go forward again.
+      await app.goForward();
+      await expect(details(app)).toContainText('loadTemplate');
+      await app.goBack();
+      await app.goBack();
+      await expect(app.getByRole('button', { name: /^Back/ }))
+        .toBeDisabled()
+        .catch(() => undefined);
+    });
+
+    test('a view switch is a browser entry too', async ({ app }) => {
+      await settled(app);
+      await app.keyboard.press('2');
+      await app.keyboard.press('3');
+      await expect(view(app, /Call graph/)).toHaveAttribute('aria-current', 'page');
+      await app.goBack();
+      await expect(view(app, /Flame graph/)).toHaveAttribute('aria-current', 'page');
+    });
+
+    test('dragging or tweaking options replaces the entry instead of flooding the history', async ({
+      app,
+    }) => {
+      await settled(app);
+      await app.keyboard.press('4');
+      const before = await app.evaluate(() => history.length);
+      await app.keyboard.press('/');
+      await app.keyboard.type('lineTotal');
+      const after = await app.evaluate(() => history.length);
+      expect(after - before).toBeLessThanOrEqual(1);
+    });
+  });
+
+  test.describe('back and forward step through the selections you made', () => {
+    const details = (page: Page) => page.getByRole('region', { name: 'Selection details' });
+
+    test('in the Functions table', async ({ app }) => {
+      await settled(app);
+      await app.keyboard.press('4');
+      await app
+        .getByRole('row', { name: /lineTotal/ })
+        .first()
+        .click();
+      await expect(details(app)).toContainText('lineTotal');
+      await app
+        .getByRole('row', { name: /loadTemplate/ })
+        .first()
+        .click();
+      await expect(details(app)).toContainText('loadTemplate');
+      await app.getByRole('button', { name: /^Back/ }).click();
+      await expect(details(app)).toContainText('lineTotal');
+      await app.getByRole('button', { name: /^Forward/ }).click();
+      await expect(details(app)).toContainText('loadTemplate');
+    });
+
+    test('in the Waterfall', async ({ app }) => {
+      await settled(app);
+      await app.keyboard.press('1');
+      const rows = app.getByRole('table', { name: 'Waterfall rows' }).getByRole('row');
+      await rows
+        .and(app.getByRole('row', { name: /^loadTemplate/ }))
+        .first()
+        .click();
+      await expect(details(app)).toContainText('loadTemplate');
+      await rows
+        .and(app.getByRole('row', { name: /^buildInvoiceRows/ }))
+        .first()
+        .click();
+      await expect(details(app)).toContainText('buildInvoiceRows');
+      await app.getByRole('button', { name: /^Back/ }).click();
+      await expect(details(app)).toContainText('loadTemplate');
+    });
+
+    test('in the Call graph', async ({ app }) => {
+      await settled(app);
+      await app.keyboard.press('3');
+      const nodes = app.locator('.cg-node');
+      await expect(nodes.first()).toBeVisible();
+      const name = (i: number) => nodes.nth(i).locator('.cg-node-name').innerText();
+      await nodes.nth(1).click();
+      const first = await name(1);
+      await expect(details(app)).toContainText(first);
+      await nodes.nth(2).click();
+      const second = await name(2);
+      await expect(details(app)).toContainText(second);
+      await app.getByRole('button', { name: /^Back/ }).click();
+      await expect(details(app)).toContainText(first);
+    });
+
+    test('in the Flame graph', async ({ app }) => {
+      await settled(app);
+      await app.keyboard.press('2');
+      const frames = app.getByRole('list', { name: 'Frames, widest first' }).getByRole('listitem');
+      await expect.poll(() => frames.count()).toBeGreaterThan(5);
+      // The frames are drawn on a canvas; the DOM mirror takes the same click handler.
+      const click = (i: number) => frames.nth(i).evaluate((el) => (el as HTMLElement).click());
+      await click(2);
+      await expect.poll(() => app.url()).toMatch(/sel=/);
+      const first = app.url();
+      // Wait for the details to settle before reading them: they load after the selection changes.
+      await expect(details(app)).not.toContainText('Nothing selected');
+      let firstDetails = '';
+      await expect
+        .poll(async () => {
+          const now = await details(app).innerText();
+          const stable = now === firstDetails;
+          firstDetails = now;
+          return stable;
+        })
+        .toBe(true);
+      await click(4);
+      await expect.poll(() => app.url()).not.toBe(first);
+      await app.getByRole('button', { name: /^Back/ }).click();
+      await expect.poll(() => app.url()).toBe(first);
+      await expect(details(app)).toHaveText(firstDetails, { useInnerText: true });
+    });
+  });
 });

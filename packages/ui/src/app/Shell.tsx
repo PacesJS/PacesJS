@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { HostAdapter } from '../host/adapter';
 import type { QueryClient } from '../data/protocol';
 import type { ModelSummary, Scope } from '../data/queries';
@@ -7,6 +7,8 @@ import { fmtRange } from '../util/format';
 import { Overview } from '../components/Overview';
 import { ShortcutSheet } from '../components/ShortcutSheet';
 import { Workspace } from '../components/Workspace';
+import { popTarget, stepBrowser, urlAction } from '../state/browser-history';
+import type { UrlSync } from '../state/browser-history';
 import { hashToSnapshot, snapshotToHash } from '../state/hash';
 import { isTypingTarget, resolveKey } from '../state/keymap';
 import {
@@ -19,6 +21,7 @@ import {
 } from '../state/showme';
 import type { Prefs } from '../state/prefs';
 import { createState, reducer, snapshotOf } from '../state/reducer';
+import type { AppAction } from '../state/reducer';
 import { addTransform } from '../state/transforms';
 import { ALL_TRACKS } from '../state/types';
 import type { Selection, Snapshot } from '../state/types';
@@ -47,13 +50,31 @@ export function Shell({
   initialPinned,
   initialPrefs,
 }: ShellProps) {
-  const [state, dispatch] = useReducer(reducer, initial, (snap) => ({
+  const [state, rawDispatch] = useReducer(reducer, initial, (snap) => ({
     ...createState(snap),
     dismissed: initialDismissed,
     pinned: initialPinned,
     prefs: initialPrefs,
   }));
   const snap = snapshotOf(state);
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
+
+  // Back and forward go through the browser, so its own buttons and these stay one stack.
+  const dispatch = useCallback((action: AppAction): void => {
+    if (action.type === 'back' || action.type === 'forward') {
+      stepBrowser(
+        action.type === 'back' ? -1 : 1,
+        stateRef.current.history,
+        typeof window === 'undefined' ? undefined : window.history,
+        rawDispatch,
+      );
+      return;
+    }
+    rawDispatch(action);
+  }, []);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const scope: Scope = useMemo(
@@ -86,21 +107,32 @@ export function Shell({
   const hoverFn = state.hover.kind === 'fn' ? state.hover.fn : null;
   const primaryTrack = snap.track !== ALL_TRACKS ? snap.track : (summary.tracks[0]?.id ?? '');
 
-  const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-  });
-
-  // URL hash mirrors the screen: reload or a pasted link restores it.
+  // The URL hash mirrors the screen (a reload or a pasted link restores it), and every new screen
+  // is a browser history entry, so the browser's back and forward step through your selections.
   const hash = snapshotToHash(snap);
+  const urlSync = useRef<UrlSync | null>(null);
   useEffect(() => {
-    if (location.hash !== hash) history.replaceState(null, '', hash);
-  }, [hash]);
+    const h = state.history;
+    const action = urlAction(urlSync.current, h, hash, location.hash);
+    urlSync.current = { serial: h.serial, index: h.index };
+    const mark = { i: h.index };
+    if (action === 'push') history.pushState(mark, '', hash);
+    else if (action === 'stamp' || action === 'replace') history.replaceState(mark, '', hash);
+  }, [state.history, hash]);
+  useEffect(() => {
+    const onPop = (e: PopStateEvent): void => {
+      const target = popTarget(stateRef.current.history, e.state);
+      if (target.kind === 'goto') rawDispatch({ type: 'goto', index: target.index });
+      else rawDispatch({ type: 'restore', snapshot: hashToSnapshot(location.hash) });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   useEffect(() => {
     const onHash = (): void => {
       const next = hashToSnapshot(location.hash);
       if (snapshotToHash(next) !== snapshotToHash(snapshotOf(stateRef.current))) {
-        dispatch({ type: 'restore', snapshot: next });
+        rawDispatch({ type: 'restore', snapshot: next });
       }
     };
     window.addEventListener('hashchange', onHash);
@@ -226,7 +258,7 @@ export function Shell({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [client]);
+  }, [client, dispatch]);
 
   const ctx = showMeContext(summary);
   const finding = summary.findings.find((f) => isShowing(f, snap, state.search, ctx));
