@@ -1,5 +1,6 @@
 // Injected into every Node process of the target through NODE_OPTIONS (--require).
 // Runs inside the user's process: keep it small, dependency-free and behavior-neutral.
+import { Server } from 'node:http';
 import { connect } from 'node:net';
 import { Session } from 'node:inspector';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -16,7 +17,15 @@ interface ScriptRecord {
 
 type RuntimeEvent =
   | { type: 'gc'; time: number; duration: number; kind: number }
-  | { type: 'loop'; time: number; p50: number; p99: number; max: number };
+  | { type: 'loop'; time: number; p50: number; p99: number; max: number }
+  | {
+      type: 'request';
+      time: number;
+      duration: number;
+      method: string;
+      url: string;
+      status: number;
+    };
 
 const FLAG = Symbol.for('paces.preload.active');
 
@@ -26,8 +35,11 @@ function start(): void {
   if (!dir || g[FLAG]) return;
   g[FLAG] = true;
 
+  // Children spawned by this process inherit the track id and link themselves to it.
+  const parentTrack = process.env.PACES_PARENT;
   const interval = Number(process.env.PACES_INTERVAL) || 1000;
   const track = isMainThread ? `p${process.pid}` : `p${process.pid}-w${threadId}`;
+  if (isMainThread) process.env.PACES_PARENT = track;
   const session = new Session();
   session.connect();
 
@@ -70,6 +82,29 @@ function start(): void {
   }, 100);
   loopTimer.unref();
 
+  // Labels request tasks ("GET /orders"): a CPU profile alone cannot know the route.
+  const emit = Server.prototype.emit;
+  Server.prototype.emit = function (this: Server, event: string | symbol, ...args: unknown[]) {
+    if (event === 'request') {
+      const [req, res] = args as [
+        { method?: string; url?: string },
+        { statusCode: number; once(e: string, cb: () => void): void },
+      ];
+      const begin = performance.now();
+      res.once('finish', () => {
+        events.push({
+          type: 'request',
+          time: t0 + begin,
+          duration: performance.now() - begin,
+          method: req.method ?? 'GET',
+          url: (req.url ?? '/').split('?')[0] ?? '/',
+          status: res.statusCode,
+        });
+      });
+    }
+    return (emit as (...a: unknown[]) => boolean).call(this, event, ...args);
+  } as typeof Server.prototype.emit;
+
   let started = false;
   const startProfiler = (): void => {
     if (started) return;
@@ -97,6 +132,16 @@ function start(): void {
       const raw = join(dir, 'raw');
       mkdirSync(raw, { recursive: true });
       if (profile) writeFileSync(join(raw, `${track}.cpuprofile`), JSON.stringify(profile));
+      writeFileSync(
+        join(raw, `${track}.info`),
+        JSON.stringify({
+          pid: process.pid,
+          threadId,
+          parent: isMainThread ? parentTrack : `p${process.pid}`,
+          argv: process.argv,
+          cwd: process.cwd(),
+        }),
+      );
       writeFileSync(join(raw, `${track}.scripts`), JSON.stringify(scripts));
       writeFileSync(join(raw, `${track}.events`), events.map((e) => JSON.stringify(e)).join('\n'));
     } catch {

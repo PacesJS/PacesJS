@@ -79,3 +79,20 @@ describe('preload with ESM targets', () => {
     expect(scripts.some((s: { url: string }) => s.url.endsWith('app.mjs'))).toBe(true);
   });
 });
+
+describe('request events', () => {
+  it('records HTTP requests handled by node:http servers', async () => {
+    const code = `const http=require('node:http');
+      const s=http.createServer((q,r)=>{r.statusCode=201;r.end('ok')});
+      s.listen(0,()=>{http.get({port:s.address().port,path:'/orders?x=1'},(r)=>{r.resume();r.on('end',()=>s.close())})})`;
+    const r = await runWithPreload(['-e', code]);
+    const file = rawFiles(r.dir).find((f) => f.endsWith('.events'))!;
+    const events = readRaw(r.dir, file)
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
+    const req = events.find((e) => e.type === 'request');
+    expect(req).toMatchObject({ method: 'GET', url: '/orders', status: 201 });
+    expect(req.duration).toBeGreaterThanOrEqual(0);
+  });
+});
