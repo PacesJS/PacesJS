@@ -43,6 +43,8 @@ export interface Host {
   lastRequestAt(): number;
   /** Epoch ms of the last heartbeat, if the UI ever sent one. */
   lastHeartbeatAt(): number | undefined;
+  /** Epoch ms of the last "page is going away" beacon, if any. */
+  lastGoodbyeAt(): number | undefined;
   close(): Promise<void>;
 }
 
@@ -139,6 +141,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
   const expected = Buffer.from(token);
   let lastRequest = Date.now();
   let lastHeartbeat: number | undefined;
+  let lastGoodbye: number | undefined;
   let port = 0;
 
   const staticFile = (pathname: string): string | undefined => {
@@ -195,9 +198,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
 
     if (isApi || isDoc) {
       const header = req.headers['x-paces-token'];
+      // `sendBeacon` cannot set headers, so the goodbye beacon may carry the token in the URL.
+      const queryToken = isDoc || p === '/api/goodbye';
       const given =
         (Array.isArray(header) ? header[0] : header) ??
-        (isDoc ? url.searchParams.get('token') : null);
+        (queryToken ? url.searchParams.get('token') : null);
       if (!tokenOk(expected, given)) {
         res
           .writeHead(401, { 'content-type': 'text/plain' })
@@ -224,6 +229,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
       return;
     }
 
+    if (p === '/api/goodbye' && method === 'POST') {
+      lastGoodbye = Date.now();
+      res.writeHead(204).end();
+      return;
+    }
     if (p === '/api/heartbeat' && method === 'POST') {
       lastHeartbeat = Date.now();
       res.writeHead(204).end();
@@ -308,6 +318,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
     token,
     lastRequestAt: () => lastRequest,
     lastHeartbeatAt: () => lastHeartbeat,
+    lastGoodbyeAt: () => lastGoodbye,
     close: () =>
       new Promise<void>((ok) => {
         server.closeAllConnections();

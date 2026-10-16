@@ -167,8 +167,10 @@ async function present(session: HostSession, flags: Flags, io: Io): Promise<void
   const onSigint = (): void => abort.abort();
   process.once('SIGINT', onSigint);
   const grace = Number(process.env.PACES_GRACE_MS) || 10_000;
+  const stale = Number(process.env.PACES_STALE_HEARTBEAT_MS) || undefined;
   await waitForWindowClose(host, {
     graceMs: grace,
+    ...(stale ? { staleHeartbeatMs: stale } : {}),
     ...(browserExited ? { browserExited } : {}),
     signal: abort.signal,
   });

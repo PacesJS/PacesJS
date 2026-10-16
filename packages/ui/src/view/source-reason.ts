@@ -3,7 +3,13 @@ import { fmtDuration } from '../util/format';
 /** Why a function's source cannot be shown, and what to do about it. */
 
 export type SourceReasonKind =
-  'no-file' | 'outside-root' | 'not-on-disk' | 'map-missing' | 'no-self-time' | 'no-line-data';
+  | 'no-file'
+  | 'host-down'
+  | 'outside-root'
+  | 'not-on-disk'
+  | 'map-missing'
+  | 'no-self-time'
+  | 'no-line-data';
 
 export interface SourceReason {
   kind: SourceReasonKind;
@@ -20,6 +26,8 @@ export interface SourceFacts {
   exists: boolean | undefined;
   /** The host's error message when reading failed. */
   error: string | null;
+  /** The request never reached the host (it stopped), as opposed to the host refusing the file. */
+  hostDown?: boolean;
   mapMissing: boolean;
   /** Lines with attributed time. */
   lineCount: number;
@@ -47,6 +55,14 @@ export function sourceReason(f: SourceFacts): SourceReason | null {
       kind: 'no-file',
       title: 'No source file',
       hint: 'This function is native or runtime code: it has no file to show. Its time is still counted in the views.',
+      showsText: false,
+    };
+  }
+  if (f.hostDown) {
+    return {
+      kind: 'host-down',
+      title: 'Lost connection to the paces host',
+      hint: 'The paces process that serves this window has stopped (it exits shortly after its window closes). Reopen the session with `paces open <file>`; nothing shown here is out of date until then, but source and settings cannot be read.',
       showsText: false,
     };
   }

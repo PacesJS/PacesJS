@@ -83,12 +83,28 @@ export function runPaces(args: string[], options: RunOptions = {}): Promise<Pace
   });
 }
 
-/** Behaves like a UI that loaded once and was then closed: one heartbeat, then silence. */
+/** One heartbeat, as a loaded page sends. */
+export async function heartbeat(url: string): Promise<void> {
+  const u = new URL(url);
+  const headers = { 'x-paces-token': u.searchParams.get('token') ?? '' };
+  await fetch(`${u.origin}/api/heartbeat`, { method: 'POST', headers });
+}
+
+/** The beacon a page sends from `pagehide` (the token rides in the URL: beacons set no headers). */
+export async function goodbye(url: string): Promise<void> {
+  const u = new URL(url);
+  await fetch(`${u.origin}/api/goodbye?token=${u.searchParams.get('token') ?? ''}`, {
+    method: 'POST',
+  });
+}
+
+/** Behaves like a UI that loaded once and was then closed: a heartbeat, then a goodbye. */
 export async function openAndClose(url: string): Promise<{ session: unknown }> {
   const u = new URL(url);
   const headers = { 'x-paces-token': u.searchParams.get('token') ?? '' };
   const session = await (await fetch(`${u.origin}/api/session`, { headers })).json();
-  await fetch(`${u.origin}/api/heartbeat`, { method: 'POST', headers });
+  await heartbeat(url);
+  await goodbye(url);
   return { session };
 }
 

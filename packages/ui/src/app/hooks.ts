@@ -141,11 +141,13 @@ export function useAsync<T>(run: () => Promise<T>, key: string): AsyncState<T> {
         // eslint-disable-next-line no-console
         console.error('paces: a view query failed', e);
         if (!cancelled) {
-          setState((s) => ({
-            ...s,
+          // The previous result belongs to a different request: showing it next to this error
+          // would present stale data as current.
+          setState({
+            data: undefined,
             error: e instanceof Error ? e.message : String(e),
             doneKey: key,
-          }));
+          });
         }
       });
     return () => {

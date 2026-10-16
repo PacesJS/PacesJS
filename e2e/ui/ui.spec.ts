@@ -527,4 +527,29 @@ test.describe('whole run, stitching and the entry root', () => {
     const frames = app.getByRole('list', { name: 'Frames, widest first' }).getByRole('listitem');
     await expect(frames.first()).toHaveAttribute('aria-label', /server\.js/);
   });
+
+  test('a failed source read never shows the previous file under the new function, and says the host is gone', async ({
+    app,
+  }) => {
+    await settled(app);
+    // The opening selection is lineTotal (util/money.ts): its code is on screen.
+    await expect(
+      app.locator('.source-line', { hasText: 'Intl.NumberFormat' }).first(),
+    ).toBeVisible();
+    // The host stops answering (what the owner hit when the CLI exited behind a background window).
+    await app.route('**/api/source**', (route) => route.abort('connectionrefused'));
+    await app.keyboard.press('4');
+    await app
+      .getByRole('row', { name: /loadTemplate/ })
+      .first()
+      .click();
+    const dock = app.getByRole('complementary', { name: 'Source dock' });
+    await expect(dock).toContainText('Lost connection to the paces host');
+    await expect(dock).toContainText('paces open');
+    // Nothing from money.ts may remain under loadTemplate's header. The dock shows a window of lines
+    // around loadTemplate's line number, so check lines from the tail of money.ts as well.
+    await expect(
+      app.locator('.source-line', { hasText: /return total|Math.round|Intl.NumberFormat/ }),
+    ).toHaveCount(0);
+  });
 });

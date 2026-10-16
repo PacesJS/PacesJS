@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { httpHostAdapter } from '../../src/host/http';
+import { afterEach, vi } from 'vitest';
+import { HostUnreachableError, httpHostAdapter, startHeartbeat } from '../../src/host/http';
 
 type Call = [string, RequestInit | undefined];
 
@@ -58,5 +59,54 @@ describe('httpHostAdapter', () => {
     await expect(
       httpHostAdapter({ search: '', fetchImpl: f as unknown as typeof fetch }).loadSession(),
     ).rejects.toThrow(/HTTP 403/);
+  });
+});
+
+describe('losing the host', () => {
+  it('reports an unreachable host as such, not as a refusal', async () => {
+    const down = (async () => {
+      throw new TypeError('Failed to fetch');
+    }) as unknown as typeof fetch;
+    const host = httpHostAdapter({ search: '?token=t', fetchImpl: down });
+    await expect(host.readSource('src/a.ts')).rejects.toBeInstanceOf(HostUnreachableError);
+    await expect(host.readSource('src/a.ts')).rejects.toThrow(/lost connection/i);
+  });
+
+  it('still reports an HTTP error as an HTTP error', async () => {
+    const bad = (async () => new Response('no', { status: 500 })) as unknown as typeof fetch;
+    const host = httpHostAdapter({ search: '?token=t', fetchImpl: bad });
+    await expect(host.readSource('x')).rejects.not.toBeInstanceOf(HostUnreachableError);
+  });
+});
+
+describe('startHeartbeat', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('tells the host the page is going away, so a throttled window is not mistaken for a closed one', () => {
+    const beacon = vi.fn(() => true);
+    vi.stubGlobal('navigator', { sendBeacon: beacon });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 204 })),
+    );
+    const stop = startHeartbeat('?token=abc', 60_000);
+    window.dispatchEvent(new Event('pagehide'));
+    stop();
+    expect(beacon).toHaveBeenCalledWith('api/goodbye?token=abc');
+    vi.unstubAllGlobals();
+  });
+
+  it('stops listening once stopped', () => {
+    const beacon = vi.fn(() => true);
+    vi.stubGlobal('navigator', { sendBeacon: beacon });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 204 })),
+    );
+    const stop = startHeartbeat('?token=abc', 60_000);
+    stop();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(beacon).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

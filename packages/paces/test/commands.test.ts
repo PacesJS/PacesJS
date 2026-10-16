@@ -31,7 +31,7 @@ function capture(): { io: Io; out: string[]; err: string[] } {
   return { io: { out: (t) => out.push(t), err: (t) => err.push(t) }, out, err };
 }
 
-/** Behaves like a UI window: loads the session, sends a heartbeat, then goes quiet. */
+/** Behaves like a UI window: loads the session, sends a heartbeat, then closes (goodbye beacon). */
 async function closeWindowWhenReady(
   err: string[],
 ): Promise<{ session: unknown; baseline?: number }> {
@@ -47,6 +47,10 @@ async function closeWindowWhenReady(
   const session = await (await fetch(`${u.origin}/api/session`, { headers })).json();
   const baseline = (await fetch(`${u.origin}/api/model?which=baseline`, { headers })).status;
   await fetch(`${u.origin}/api/heartbeat`, { method: 'POST', headers });
+  // A page's pagehide beacon: heartbeat silence alone no longer counts as a closed window.
+  await fetch(`${u.origin}/api/goodbye?token=${u.searchParams.get('token') ?? ''}`, {
+    method: 'POST',
+  });
   return { session, baseline };
 }
 

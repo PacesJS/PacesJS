@@ -5,6 +5,7 @@ import type { Details, SourceInfo } from '../data/types';
 import { matchCallSites } from '../view/call-sites';
 import type { CallSiteChip } from '../view/call-sites';
 import { lineWindow } from '../view/source-lines';
+import { isHostLost } from '../host/http';
 import { sourceReason } from '../view/source-reason';
 import type { SourceReason } from '../view/source-reason';
 
@@ -114,6 +115,7 @@ export function useSource({ whole }: Options): SourceState {
         path,
         exists: file ? file.exists : undefined,
         error: textQ.error,
+        hostDown: isHostLost(textQ.error),
         mapMissing: info.mapMissing,
         lineCount: info.lineSelf.length,
         selfUs: details?.selfUs,

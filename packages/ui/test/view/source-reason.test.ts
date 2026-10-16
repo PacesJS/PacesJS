@@ -68,4 +68,12 @@ describe('why the source is unavailable', () => {
     expect(r).toMatchObject({ kind: 'no-line-data', showsText: true });
     expect(r?.hint).toMatch(/line ticks/);
   });
+
+  it('says the host is gone, not that it refused the file, when the connection was lost', () => {
+    const r = sourceReason({ ...ok, error: 'Lost connection to the paces host', hostDown: true });
+    expect(r?.kind).toBe('host-down');
+    expect(r?.title).toMatch(/connection|stopped/i);
+    expect(r?.hint).toMatch(/paces open/);
+    expect(r?.hint).not.toMatch(/project root/);
+  });
 });

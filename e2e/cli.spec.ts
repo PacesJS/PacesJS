@@ -5,7 +5,16 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { readSession } from '../packages/format/dist/index.js';
-import { PACES_CLI, ROOT, openAndClose, removeDir, runPaces, tempDir } from './helpers/cli.js';
+import {
+  PACES_CLI,
+  ROOT,
+  goodbye,
+  heartbeat,
+  openAndClose,
+  removeDir,
+  runPaces,
+  tempDir,
+} from './helpers/cli.js';
 import { engineReady } from './helpers/engine.js';
 
 const APP = ['node', 'zoo/apps/hot-regex.cjs'];
@@ -42,7 +51,8 @@ test.describe('commands on a saved session', () => {
           hasBaseline = session.hasBaseline;
           baselineStatus = (await fetch(`${u.origin}/api/model?which=baseline`, { headers }))
             .status;
-          await fetch(`${u.origin}/api/heartbeat`, { method: 'POST', headers });
+          await heartbeat(url);
+          await goodbye(url);
         },
       });
       expect(run.code, run.stderr).toBe(0);

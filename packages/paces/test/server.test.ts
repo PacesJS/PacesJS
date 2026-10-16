@@ -280,6 +280,20 @@ describe('/api/settings and /api/heartbeat', () => {
     expect((await api('/api/settings', { method: 'PUT', body: '[1]' })).status).toBe(400);
   });
 
+  it('records an explicit goodbye sent as a beacon with the token in the query', async () => {
+    // navigator.sendBeacon cannot set headers, so the goodbye is the one API call that may carry the
+    // token in the URL; everything else stays header-only.
+    expect(host.lastGoodbyeAt()).toBeUndefined();
+    const bare = await fetch(`http://127.0.0.1:${host.port}/api/goodbye`, { method: 'POST' });
+    expect(bare.status).toBe(401);
+    expect(host.lastGoodbyeAt()).toBeUndefined();
+    const ok = await fetch(`http://127.0.0.1:${host.port}/api/goodbye?token=${host.token}`, {
+      method: 'POST',
+    });
+    expect(ok.status).toBe(204);
+    expect(host.lastGoodbyeAt()).toBeTypeOf('number');
+  });
+
   it('records heartbeats', async () => {
     expect(host.lastHeartbeatAt()).toBeUndefined();
     expect((await api('/api/heartbeat', { method: 'POST' })).status).toBe(204);
