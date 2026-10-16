@@ -51,6 +51,13 @@ Data flows one way: raw chunks (target) → finished model (CLI) → queries (UI
 
 Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bars under two sampling intervals. Exact data (instrumentation) drops the `~`. Red and amber mean finding severity only. Dim non-user frames to 45%, never hide them. Folded things are always expandable.
 
+## Product lessons
+
+- **The profiled program is first-party.** When the entry script lives in `node_modules` (e.g. `npx eslint .`), that package is the _target_: its functions are origin `User`, not `Dependency`. Otherwise collapse-dependencies folds the whole program into one node. Its plugins and libraries stay dependencies. Wrapper processes (npx, npm) are `support` tracks; the default track is the target.
+- Test the tool on real third-party CLIs, not only the zoo. `paces -- npx eslint .` is the reference scenario: you must be able to name ESLint's own hot paths and the slow plugin functions from the UI and from `paces mcp`.
+- Warnings are aggregated (one note per kind); never print one line per file.
+- Live zoo runs vary with machine load: assert committed captures exactly (engine tests), assert only the planted finding's presence on live runs (e2e).
+
 ## Git
 
 Conventional commits (`feat:`, `fix:`, `test:`, `chore:`, `docs:`), small and focused, tests and implementation together. Do not commit `.paces` files, `dist/`, or screenshots outside `e2e/`.
