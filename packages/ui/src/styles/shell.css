@@ -1173,3 +1173,41 @@
   font-weight: var(--fw-semi);
   white-space: nowrap;
 }
+
+/* Compare with…: disabled until the host exposes a baseline; the tooltip says how to get one. */
+.btn[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.compare-anchor {
+  position: relative;
+}
+
+.compare-tip {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + var(--sp-6));
+  right: 0;
+  width: 280px;
+  padding: var(--sp-8) var(--sp-12);
+  background: var(--c-surface);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-tip);
+  font-size: var(--fs-12);
+  line-height: var(--lh-16);
+  color: var(--c-muted);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.compare-anchor:hover .compare-tip,
+.compare-anchor:focus-within .compare-tip {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .compare-tip {
+    transition: opacity 120ms ease;
+  }
+}

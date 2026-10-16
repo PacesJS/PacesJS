@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync, useElementWidth } from '../app/hooks';
-import type { CgEdge, CgNode } from '../data/callgraph';
+import type { CgNode } from '../data/types';
 import { NODE_H } from '../data/layout';
 import type { PlacedNode } from '../data/layout';
 import { fmtCount, fmtDuration } from '../util/format';
@@ -19,30 +19,6 @@ const ORIGIN_VAR = [
   '--c-origin-gc',
 ] as const;
 
-/** Functions within `levels` of the selection along caller and callee edges (ego mode). */
-export function egoSet(edges: readonly CgEdge[], fn: number, levels = 2): Set<number> {
-  const keep = new Set<number>([fn]);
-  let up = [fn];
-  let down = [fn];
-  for (let l = 0; l < levels; l++) {
-    const nu: number[] = [];
-    const nd: number[] = [];
-    for (const e of edges) {
-      if (up.includes(e.to) && !keep.has(e.from)) {
-        keep.add(e.from);
-        nu.push(e.from);
-      }
-      if (down.includes(e.from) && !keep.has(e.to)) {
-        keep.add(e.to);
-        nd.push(e.to);
-      }
-    }
-    up = nu;
-    down = nd;
-  }
-  return keep;
-}
-
 export function CallGraph() {
   const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select } = useApp();
   const [all, setAll] = useState(false);
@@ -52,12 +28,13 @@ export function CallGraph() {
   const boxW = useElementWidth(scrollEl);
   const revealIds = reveal.key === scopeKey ? reveal.ids : [];
   const expanded = snap.options.expanded;
+  const selFn = selection.fn;
+  const egoFn = snap.options.ego ? selFn : null;
   const q = useAsync(
-    () => client.callGraph(scope, { all, reveal: revealIds }, expanded),
-    `cg:${scopeKey}:${all}:${revealIds.join(',')}:${expanded.join('|')}`,
+    () => client.callGraph(scope, { all, revealed: revealIds, ego: egoFn }, expanded),
+    `cg:${scopeKey}:${all}:${revealIds.join(',')}:${expanded.join('|')}:${egoFn}`,
   );
   const res = q.data;
-  const selFn = selection.fn;
   const pos = useMemo(
     () => new Map<number, PlacedNode>((res?.layout.nodes ?? []).map((n) => [n.fn, n])),
     [res],
@@ -76,8 +53,7 @@ export function CallGraph() {
       </div>
     );
   const { graph, layout } = res;
-  const ego = snap.options.ego && selFn !== null && graph.nodes.some((n) => n.fn === selFn);
-  const near = ego && selFn !== null ? egoSet(graph.edges, selFn) : null;
+  const near = res.near ? new Set(res.near) : null;
   const scale = fit && boxW > 0 && layout.width > boxW ? boxW / layout.width : 1;
   const byFn = new Map<number, CgNode>(graph.nodes.map((n) => [n.fn, n]));
   const maxTotal = graph.maxTotalUs;
@@ -228,6 +204,7 @@ export function CallGraph() {
                     d={`M${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`}
                     fill="none"
                     strokeWidth={1.5 + (9 * e.timeUs) / graph.maxEdgeUs}
+                    strokeDasharray={e.back ? '5 4' : undefined}
                     strokeLinecap="round"
                     className={`${isEgo ? 'cg-edge-ego' : 'cg-edge'}${faded ? ' cg-fade-edge' : ''}`}
                   />
@@ -363,9 +340,7 @@ export function CallGraph() {
                     className="cg-chip"
                     aria-label={`Show ${n.hiddenCallees} hidden callee${n.hiddenCallees === 1 ? '' : 's'} of ${n.name}`}
                     style={{ left: box.x + box.w - 18, top: box.y + box.h - 10 }}
-                    onClick={() =>
-                      setReveal({ key: scopeKey, ids: [...revealIds, ...n.hiddenCalleeIds] })
-                    }
+                    onClick={() => setReveal({ key: scopeKey, ids: [...revealIds, n.fn] })}
                   >
                     +{n.hiddenCallees}
                   </button>,
@@ -379,9 +354,7 @@ export function CallGraph() {
                     className="cg-chip"
                     aria-label={`Show ${n.hiddenCallers} hidden caller${n.hiddenCallers === 1 ? '' : 's'} of ${n.name}`}
                     style={{ left: box.x + box.w - 18, top: box.y - 14 }}
-                    onClick={() =>
-                      setReveal({ key: scopeKey, ids: [...revealIds, ...n.hiddenCallerIds] })
-                    }
+                    onClick={() => setReveal({ key: scopeKey, ids: [...revealIds, n.fn] })}
                   >
                     +{n.hiddenCallers}
                   </button>,

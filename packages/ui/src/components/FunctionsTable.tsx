@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
-import type { FnRow } from '../data/functions';
+import type { FnRow } from '../data/types';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
 import { Hint } from './Hint';

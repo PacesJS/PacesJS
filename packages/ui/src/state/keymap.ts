@@ -55,7 +55,10 @@ export const SHORTCUTS: readonly KeyShortcut[] = [
   { keys: 'm', label: 'Merge the selected function into its callers' },
   { keys: 'c', label: 'Collapse the selected function’s package' },
   { keys: 'i', label: 'Invert the call tree' },
-  { keys: 'p', label: 'Critical path in the waterfall' },
+  {
+    keys: 'p',
+    label: 'Collapse the waterfall to the critical path (press again to expand)',
+  },
   { keys: 'Alt+←  Alt+→', label: 'Back and forward through selections, views and transforms' },
   { keys: '↑ ↓ ← →', label: 'Walk waterfall rows, collapse and expand' },
   { keys: 'Enter', label: 'Open source for the selected row' },

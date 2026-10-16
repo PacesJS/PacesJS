@@ -1,6 +1,6 @@
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
-import type { RelatedRow } from '../data/functions';
+import type { RelatedRow } from '../data/types';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
 

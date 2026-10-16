@@ -1,10 +1,9 @@
+import { deserializeModel } from '@pacesjs/engine';
 import { useEffect, useState } from 'react';
 import { localClient, workerClient } from '../data/client';
-import { decodeModel } from '../data/engine-bridge';
 import type { QueryClient } from '../data/protocol';
 import type { ModelSummary } from '../data/queries';
 import type { HostAdapter } from '../host/adapter';
-import { rankFindings } from '../components/Findings';
 import { hashToSnapshot } from '../state/hash';
 import { createState, reducer, snapshotOf } from '../state/reducer';
 import { showMeAction } from '../state/showme';
@@ -31,9 +30,9 @@ interface Ready {
 export function openingSnapshot(summary: ModelSummary, hash: string): Snapshot {
   if (hash.length > 1) return hashToSnapshot(hash);
   const base = initialSnapshot();
-  const top = rankFindings(summary.findings)[0];
+  const top = summary.findings[0];
   if (!top) return { ...base, view: 'flame' };
-  const primary = summary.tracks[0]?.id ?? 'main';
+  const primary = summary.tracks[0]?.id ?? '';
   return snapshotOf(reducer(createState(base), showMeAction(top.showMe, base, primary)));
 }
 
@@ -46,7 +45,10 @@ async function boot(host: HostAdapter, inProcess: boolean): Promise<Ready> {
   const baselineBytes = session.hasBaseline ? await host.loadModel('baseline') : null;
   let client: QueryClient;
   if (inProcess || typeof Worker === 'undefined') {
-    client = localClient(decodeModel(bytes), baselineBytes ? decodeModel(baselineBytes) : null);
+    client = localClient(
+      deserializeModel(bytes),
+      baselineBytes ? deserializeModel(baselineBytes) : null,
+    );
   } else {
     client = await workerClient(bytes, baselineBytes);
   }

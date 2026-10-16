@@ -2,12 +2,12 @@ import { useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { useApp } from '../app/context';
 import { useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
-import { visibleRows } from '../data/waterfall';
-import type { WaterfallRow } from '../data/waterfall';
+import type { WaterfallRow } from '../data/types';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtAxis, fmtDuration, fmtShare } from '../util/format';
 import { drawBar } from '../view/draw-bars';
 import { niceTicks } from '../view/scale';
+import { visibleRows } from '../view/waterfall-rows';
 import {
   WF,
   barColumn,
@@ -33,18 +33,24 @@ function durLabel(r: WaterfallRow): string {
 const ORIGIN_HINT: Record<number, string> = { 1: 'node_modules', 3: 'node', 4: 'native', 6: 'V8' };
 
 function rowLocation(r: WaterfallRow): string {
-  if (r.folded > 0 && !r.loc) return `${r.folded + 1} frames folded`;
+  if (r.kind === 'task') return 'event-loop task';
   return r.loc || (ORIGIN_HINT[r.origin] ?? '');
 }
 
+function samePath(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((f, i) => f === b[i]);
+}
+
 export function Waterfall() {
-  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, summary } = useApp();
+  const { client, scope, scopeKey, snap, dispatch, hoverFn, select, summary } = useApp();
   const task = snap.options.task;
   const tasksQ = useAsync(() => client.tasks(scope), `tasks:${scopeKey}`);
   const wfQ = useAsync(() => client.waterfall(scope, task), `wf:${scopeKey}:${task}`);
   const data = wfQ.data;
 
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+  // The clicked row: one call can map to several rows, so the row id disambiguates the selection.
+  const [activeRow, setActiveRow] = useState<{ key: string; id: number } | null>(null);
   const [win, setWin] = useState<{ key: string; w: TimeWindow } | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +61,11 @@ export function Waterfall() {
   const taskKey = data ? `${data.trackId}:${data.taskIndex}` : '';
   const window = win && win.key === taskKey ? win.w : { start: 0, end: data?.taskUs ?? 1 };
   const rows = useMemo(() => data?.rows ?? [], [data]);
-  const visible = useMemo(() => visibleRows(rows, collapsed), [rows, collapsed]);
+  const pathOnly = snap.options.pathOnly;
+  const visible = useMemo(
+    () => visibleRows(rows, collapsed, pathOnly && data ? data.criticalRows : null),
+    [rows, collapsed, pathOnly, data],
+  );
   const [from, to] = visibleSlice(scrollTop, VIEWPORT_H, visible.length);
   const slice = visible.slice(from, to);
 
@@ -121,13 +131,25 @@ export function Waterfall() {
   const hasAsync = data.hasAsync;
   const mirrorTask = tasksQ.data ?? [];
   const sel = snap.selection;
-  const selectedRowSpan = sel.kind === 'span' ? sel.span : null;
+  const matches = (r: WaterfallRow): boolean => {
+    if (sel.kind === 'node') return r.kind === 'call' && samePath(sel.path, r.path);
+    if (sel.kind === 'task') return r.kind === 'task' && sel.track === data.trackId;
+    if (sel.kind === 'fn') return r.kind === 'call' && r.fn === sel.fn;
+    return false;
+  };
+  const active = activeRow && activeRow.key === taskKey ? rows[activeRow.id] : undefined;
+  const selectedRowId =
+    active && matches(active) ? active.id : (rows.find((r) => matches(r))?.id ?? null);
 
-  const selectRow = (r: WaterfallRow): void =>
-    select({ kind: 'span', track: data.trackId, span: r.span });
+  const selectRow = (r: WaterfallRow): void => {
+    setActiveRow({ key: taskKey, id: r.id });
+    if (r.kind === 'call') select({ kind: 'node', track: data.trackId, path: r.path });
+    else if (r.kind === 'task' && data.taskIndex >= 0)
+      select({ kind: 'task', track: data.trackId, task: data.taskIndex });
+  };
 
   const move = (e: KeyboardEvent<HTMLDivElement>): void => {
-    const idx = visible.findIndex((ri) => (rows[ri] as WaterfallRow).span === selectedRowSpan);
+    const idx = visible.findIndex((ri) => (rows[ri] as WaterfallRow).id === selectedRowId);
     const cur = idx >= 0 ? (rows[visible[idx] as number] as WaterfallRow) : null;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -194,7 +216,13 @@ export function Waterfall() {
             checked={snap.options.critical}
             onChange={(v) => dispatch({ type: 'options', options: { critical: v } })}
           >
-            Critical path <kbd className="kbd">p</kbd>
+            Critical path
+          </Switch>
+          <Switch
+            checked={pathOnly}
+            onChange={(v) => dispatch({ type: 'options', options: { pathOnly: v } })}
+          >
+            Path only <kbd className="kbd">p</kbd>
           </Switch>
           <Switch
             checked={snap.options.logical && hasAsync}
@@ -308,21 +336,18 @@ export function Waterfall() {
               />
               {slice.map((ri, k) => {
                 const r = rows[ri] as WaterfallRow;
-                const isSel =
-                  sel.kind === 'span'
-                    ? sel.span === r.span
-                    : selection.fn !== null && selection.fn === r.fn;
+                const isSel = selectedRowId !== null ? r.id === selectedRowId : false;
                 const isHover = hoverFn !== null && hoverFn === r.fn;
                 const info = originInfo(r.origin);
                 const isUser = r.origin === 0;
                 return (
                   <div
-                    key={r.span}
+                    key={r.id}
                     role="row"
                     aria-level={r.depth + 1}
                     aria-expanded={r.hasChildren ? !collapsed.has(ri) : undefined}
                     aria-selected={isSel}
-                    aria-label={`${r.name}, ${info.label}, ${durLabel(r)}, ${fmtShare(r.share)} of task${r.critical ? ', critical path' : ''}`}
+                    aria-label={`${r.name}, ${info.label}, ${durLabel(r)}, ${fmtShare(r.share)} of ${r.kind === 'task' ? 'itself' : 'task'}${r.critical ? ', critical path' : ''}`}
                     className={`wf-row${isSel ? ' is-selected' : ''}${isHover ? ' is-hover' : ''}`}
                     style={{
                       position: 'absolute',
@@ -407,7 +432,7 @@ export function Waterfall() {
         </span>
       </div>
       <span className="sr-only" role="status" aria-live="polite">
-        {data.taskLabel}, {fmtDuration(data.taskUs)}, {rows.length} calls
+        {data.taskLabel}, {fmtDuration(data.taskUs)}, {rows.length - 1} calls
       </span>
     </>
   );

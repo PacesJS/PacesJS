@@ -8,11 +8,6 @@ import { gunzipSync } from 'node:zlib';
 import * as engine from '@pacesjs/engine';
 import type { ExecutionModel, RawCapture } from '@pacesjs/engine';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
-import { encodeDevModel } from '../src/data/dev-codec.ts';
-
-interface Serializer {
-  serializeModel?: (m: ExecutionModel) => Uint8Array;
-}
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const fixtureName = process.env['PACES_DEV_FIXTURE'] ?? 'orders-server';
@@ -21,11 +16,6 @@ function loadModel(name: string): ExecutionModel {
   const file = resolve(repoRoot, `packages/engine/test/fixtures/${name}.capture.json.gz`);
   const raw = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as RawCapture;
   return engine.analyze(raw);
-}
-
-function encode(model: ExecutionModel): Uint8Array {
-  const real = (engine as unknown as Serializer).serializeModel;
-  return real ? real(model) : encodeDevModel(model);
 }
 
 function json(res: ServerResponse, body: unknown, status = 200): void {
@@ -42,9 +32,9 @@ async function readBody(req: IncomingMessage): Promise<string> {
 
 function createHost(): (req: IncomingMessage, res: ServerResponse, next: () => void) => void {
   const model = loadModel(fixtureName);
-  const bytes = encode(model);
+  const bytes = engine.serializeModel(model);
   const baselineName = process.env['PACES_DEV_BASELINE'];
-  const baselineBytes = baselineName ? encode(loadModel(baselineName)) : null;
+  const baselineBytes = baselineName ? engine.serializeModel(loadModel(baselineName)) : null;
   let settings: Record<string, unknown> = {};
 
   return (req, res, next) => {

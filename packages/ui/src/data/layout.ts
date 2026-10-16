@@ -1,5 +1,5 @@
 import type { ElkNode } from 'elkjs/lib/elk-api.js';
-import type { CallGraphData } from './callgraph';
+import type { CallGraphData } from './types';
 
 export const NODE_H = 72;
 

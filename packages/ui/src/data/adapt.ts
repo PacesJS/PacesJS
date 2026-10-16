@@ -1,0 +1,594 @@
+import {
+  Origin,
+  callGraph,
+  flameLayout,
+  functionRows,
+  functionSource,
+  nodePath,
+  sandwich,
+  timelineLane,
+  waterfallForRange,
+  waterfallForTask,
+} from '@pacesjs/engine';
+import type { ExecutionModel, FlameLayout, ModelDiff, Track } from '@pacesjs/engine';
+import { locationOf } from './scope';
+import type { Scoped } from './scope';
+import type {
+  CallGraphData,
+  CgEdge,
+  CgNode,
+  Details,
+  FlameData,
+  FlameOptions,
+  FnRow,
+  FunctionsResult,
+  LaneData,
+  RelatedRow,
+  SandwichRow,
+  SourceInfo,
+  TaskOption,
+  WaterfallData,
+  WaterfallRow,
+} from './types';
+
+const MIN_FRAME_FRACTION = 0.0002;
+const SANDWICH_CALLER_LEVELS = 3;
+const SANDWICH_CALLEE_LEVELS = 2;
+const MIN_SANDWICH_WIDTH = 0.004;
+
+const taskLabelOf = (model: ExecutionModel, track: Track, i: number): string =>
+  model.strings[track.tasks.label[i] ?? 0] || 'task';
+
+export function taskOptions(model: ExecutionModel, track: Track, limit = 25): TaskOption[] {
+  const { tasks } = track;
+  const dur = (i: number): number => (tasks.end[i] ?? 0) - (tasks.start[i] ?? 0);
+  const idx = Array.from({ length: tasks.length }, (_, i) => i).sort(
+    (a, b) => dur(b) - dur(a) || a - b,
+  );
+  return idx.slice(0, limit).map((i, rank) => ({
+    index: i,
+    label: taskLabelOf(model, track, i),
+    startUs: tasks.start[i] ?? 0,
+    durationUs: dur(i),
+    longest: rank === 0,
+  }));
+}
+
+export function longestTask(track: Track): number {
+  let best = -1;
+  let bestDur = -1;
+  for (let i = 0; i < track.tasks.length; i++) {
+    const d = (track.tasks.end[i] ?? 0) - (track.tasks.start[i] ?? 0);
+    if (d > bestDur) {
+      bestDur = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+// ---- Waterfall ----
+
+export interface WaterfallRequest {
+  /** Task index; -1 means the longest task, or the range when one is given. */
+  task: number;
+  range: readonly [number, number] | null;
+}
+
+/**
+ * Engine waterfall rows with the task itself as row 0 (the engine's first row is the first frame
+ * of the task), every other row one level deeper. Wait rows hang off the task row.
+ */
+export function waterfallData(
+  model: ExecutionModel,
+  s: Scoped,
+  req: WaterfallRequest,
+): WaterfallData | null {
+  const { track } = s;
+  const useRange = req.task < 0 && req.range !== null;
+  const task = useRange
+    ? -1
+    : req.task >= 0 && req.task < track.tasks.length
+      ? req.task
+      : longestTask(track);
+  if (!useRange && task < 0) return null;
+  const wf =
+    useRange && req.range
+      ? waterfallForRange(model, s.view, req.range[0], req.range[1])
+      : waterfallForTask(model, s.view, task);
+  const t0 = wf.start;
+  const spanUs = Math.max(1, wf.end - wf.start);
+  const label =
+    useRange && req.range
+      ? `Range ${(req.range[0] / 1e6).toFixed(1)}–${(req.range[1] / 1e6).toFixed(1)} s`
+      : taskLabelOf(model, track, task);
+  const rows: WaterfallRow[] = [
+    {
+      id: 0,
+      kind: 'task',
+      fn: -1,
+      path: [],
+      name: label,
+      loc: '',
+      origin: Origin.Node,
+      start: 0,
+      end: spanUs,
+      depth: 0,
+      parent: -1,
+      hasChildren: wf.rows.length > 0,
+      critical: wf.rows.length > 0,
+      belowPrecision: false,
+      share: 1,
+    },
+  ];
+  for (const r of wf.rows) {
+    const call = r.kind === 'call';
+    const info = call ? s.info(s.out(r.fn)) : null;
+    rows.push({
+      id: r.id + 1,
+      kind: r.kind,
+      fn: call ? s.out(r.fn) : -1,
+      path: call ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
+      name: info ? info.name || '(anonymous)' : r.label,
+      loc: info ? locationOf(info) : '',
+      origin: info ? info.origin : Origin.Idle,
+      start: r.start - t0,
+      end: r.end - t0,
+      depth: r.depth + 1,
+      parent: r.parent < 0 ? 0 : r.parent + 1,
+      hasChildren: false,
+      critical: r.critical,
+      belowPrecision: r.hatched,
+      share: r.share,
+    });
+  }
+  for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
+  return {
+    taskIndex: useRange ? -1 : task,
+    trackId: track.id,
+    taskLabel: label,
+    taskUs: spanUs,
+    taskStartUs: t0,
+    rows,
+    criticalRows: [0, ...wf.criticalPath.map((id) => id + 1)],
+    hasAsync: wf.hasAsyncFlow,
+  };
+}
+
+// ---- Flame graph ----
+
+export function flameData(
+  model: ExecutionModel,
+  s: Scoped,
+  opts: FlameOptions,
+  diff: ModelDiff | null,
+): FlameData {
+  const zoomLast = opts.zoom.length > 0 ? (opts.zoom[opts.zoom.length - 1] as number) : 0;
+  const layout: FlameLayout = flameLayout(model, s.view, {
+    sort: opts.sort === 'alpha' ? 'alphabetical' : 'left-heavy',
+    colorBy: diff ? 'diff' : opts.color,
+    diff: diff ?? undefined,
+    zoomNode: zoomLast > 0 && zoomLast < s.view.tree.length ? zoomLast : undefined,
+    minWidth: MIN_FRAME_FRACTION,
+  });
+  const n = layout.length;
+  const node = new Int32Array(n);
+  const fn = new Uint32Array(n);
+  const heat = new Float32Array(n);
+  const delta = diff ? new Float32Array(n) : undefined;
+  const names: string[] = [];
+  const locs: string[] = [];
+  const zoomed = layout.zoomPath.length > 1;
+  for (let i = 0; i < n; i++) {
+    const engineNode = layout.node[i] ?? 0;
+    const isRoot = engineNode === 0 && !zoomed;
+    node[i] = isRoot ? -1 : engineNode;
+    fn[i] = s.out(layout.fn[i] ?? 0);
+    if (isRoot) {
+      names.push('all samples');
+      locs.push('');
+    } else {
+      const info = s.info(fn[i] ?? 0);
+      names.push(info.name || '(anonymous)');
+      locs.push(info.synthetic ? '' : locationOf(info));
+    }
+    if (!diff) heat[i] = layout.intensity[i] ?? 0;
+    else if (delta) {
+      const change = layout.change[i] ?? 0;
+      const mag = layout.intensity[i] ?? 0;
+      delta[i] = change === -1 ? -mag : change === 0 ? 0 : mag || 0.5;
+    }
+  }
+  const crumbs = layout.zoomPath.slice(1).map((nd) => ({
+    node: nd,
+    name: s.info(s.out(s.view.tree.fn[nd] ?? 0)).name,
+  }));
+  return {
+    length: n,
+    node,
+    depth: layout.depth,
+    x: layout.x,
+    w: layout.w,
+    fn,
+    origin: layout.origin,
+    heat,
+    totalUs: layout.total,
+    selfUs: layout.self,
+    delta,
+    names,
+    locs,
+    rootUs: layout.totalUs,
+    maxDepth: layout.maxDepth,
+    crumbs,
+  };
+}
+
+// ---- Functions table, details, sandwich ----
+
+/** Share is relative to the wall time of the track (or range), as the column promises. */
+export function baseTimeUs(s: Scoped, range: readonly [number, number] | null): number {
+  return Math.max(1, range ? range[1] - range[0] : s.track.durationUs);
+}
+
+export function functionsTable(
+  model: ExecutionModel,
+  s: Scoped,
+  range: readonly [number, number] | null,
+  filter: string,
+): FunctionsResult {
+  const base = baseTimeUs(s, range);
+  const q = filter.trim();
+  const toRow = (r: ReturnType<typeof functionRows>[number]): FnRow => {
+    const fn = s.out(r.fn);
+    const info = s.info(fn);
+    return {
+      fn,
+      name: r.name || '(anonymous)',
+      origin: r.origin,
+      pkg: r.pkg,
+      selfUs: r.self,
+      totalUs: r.total,
+      share: r.self / base,
+      calls: r.calls,
+      loc: locationOf(info),
+    };
+  };
+  const all = functionRows(model, s.view);
+  const rows = q ? functionRows(model, s.view, { search: q }) : all;
+  return { rows: rows.map(toRow), totalFns: all.length, baseUs: base };
+}
+
+export function functionDetails(
+  model: ExecutionModel,
+  s: Scoped,
+  range: readonly [number, number] | null,
+  fn: number,
+): Details | null {
+  const engineFn = s.inn(fn);
+  if (engineFn < 0) return null;
+  const row = functionRows(model, s.view, { includeIdle: true }).find((r) => r.fn === engineFn);
+  if (!row) return null;
+  const info = s.info(fn);
+  const src = functionSource(model, s.view, engineFn);
+  const sw = sandwich(model, s.view, engineFn);
+  const denom = src.totalUs || 1;
+
+  const callerRows: RelatedRow[] = [];
+  let seen = 0;
+  for (let i = 0; i < sw.callers.length; i++) {
+    if (sw.callers.depth[i] !== 2) continue;
+    const f = s.out(sw.callers.fn[i] ?? 0);
+    const frac = sw.callers.total[i] ? (sw.callers.total[i] ?? 0) / denom : 0;
+    seen += frac;
+    callerRows.push({
+      fn: f,
+      name: s.info(f).name,
+      origin: s.info(f).origin,
+      frac,
+      kind: 'caller',
+    });
+  }
+  callerRows.sort((a, b) => b.frac - a.frac || a.name.localeCompare(b.name));
+  if (seen < 0.995)
+    callerRows.push({
+      fn: null,
+      name: '(root)',
+      origin: Origin.Native,
+      frac: 1 - seen,
+      kind: 'caller',
+    });
+
+  const calleeRows: RelatedRow[] = src.callSites.slice(0, 6).map((c) => {
+    const f = s.out(c.callee);
+    return {
+      fn: f,
+      name: s.info(f).name,
+      origin: s.info(f).origin,
+      frac: c.calleeUs / denom,
+      kind: 'callee',
+    };
+  });
+  calleeRows.push({ fn: null, name: 'self', origin: -1, frac: row.self / denom, kind: 'self' });
+  calleeRows.sort((a, b) => b.frac - a.frac);
+
+  const base = baseTimeUs(s, range);
+  return {
+    fn,
+    name: info.name || '(anonymous)',
+    loc: locationOf(info),
+    origin: info.origin,
+    pkg: info.pkg,
+    totalUs: row.total,
+    selfUs: row.self,
+    share: row.total / base,
+    calls: row.calls,
+    callers: callerRows.slice(0, 6),
+    callees: calleeRows,
+  };
+}
+
+/** Callers inverted above (engine `sandwich().callers`), callees below, as fractions of the function. */
+export function sandwichRows(model: ExecutionModel, s: Scoped, fn: number): SandwichRow[] {
+  const engineFn = s.inn(fn);
+  if (engineFn < 0) return [];
+  const sw = sandwich(model, s.view, engineFn);
+  const total = sw.callees.total[1] ?? 0;
+  if (total <= 0) return [];
+  const rows: SandwichRow[] = [];
+  const push = (layout: FlameLayout, i: number, level: number, isSelf = false): void => {
+    const f = s.out(layout.fn[i] ?? 0);
+    const x = layout.x[i] ?? 0;
+    rows.push({
+      level,
+      name: s.info(f).name,
+      origin: s.info(f).origin,
+      fn: f,
+      start: x,
+      end: x + (layout.w[i] ?? 0),
+      isSelf,
+    });
+  };
+  for (let i = 0; i < sw.callers.length; i++) {
+    const level = -((sw.callers.depth[i] ?? 0) - 1);
+    if (level < 0 && level >= -SANDWICH_CALLER_LEVELS) push(sw.callers, i, level);
+  }
+  rows.push({
+    level: 0,
+    name: s.info(fn).name,
+    origin: s.info(fn).origin,
+    fn,
+    start: 0,
+    end: 1,
+    isSelf: false,
+  });
+  let childEnd = 0;
+  for (let i = 0; i < sw.callees.length; i++) {
+    const level = (sw.callees.depth[i] ?? 0) - 1;
+    if (level < 1 || level > SANDWICH_CALLEE_LEVELS) continue;
+    if ((sw.callees.w[i] ?? 0) < MIN_SANDWICH_WIDTH) continue;
+    push(sw.callees, i, level);
+    if (level === 1) childEnd = Math.max(childEnd, (sw.callees.x[i] ?? 0) + (sw.callees.w[i] ?? 0));
+  }
+  const selfFrac = (sw.callees.self[1] ?? 0) / total;
+  if (selfFrac > 0) {
+    rows.push({
+      level: 1,
+      name: 'self',
+      origin: -1,
+      fn: null,
+      start: childEnd,
+      end: Math.min(1, childEnd + selfFrac),
+      isSelf: true,
+    });
+  }
+  return rows;
+}
+
+// ---- Call graph ----
+
+export function callGraphData(
+  model: ExecutionModel,
+  s: Scoped,
+  query: { all: boolean; revealed: number[] },
+  memberCount: (pkg: string) => number,
+): CallGraphData {
+  const options = {
+    ...(query.all ? { coverage: 1, maxNodes: 200 } : {}),
+    expanded: query.revealed.map((f) => s.inn(f)).filter((f) => f >= 0),
+  };
+  let g = callGraph(model, s.view, options);
+  // The engine prunes by self time only, so one dominant function can leave nodes without a
+  // single edge. Open the heaviest node's neighbours so the graph shows how it is reached.
+  const heaviest = g.nodes[0];
+  if (g.edges.length === 0 && heaviest) {
+    g = callGraph(model, s.view, { ...options, expanded: [...options.expanded, heaviest.fn] });
+  }
+  const byFn = new Map(g.nodes.map((n) => [s.out(n.fn), n]));
+  const nodes: CgNode[] = g.nodes.map((n) => {
+    const fn = s.out(n.fn);
+    const info = s.info(fn);
+    const loc = info.synthetic
+      ? ''
+      : info.origin === Origin.User || info.origin === Origin.Dependency
+        ? locationOf(info)
+        : '';
+    const sub = info.synthetic
+      ? 'package'
+      : loc
+        ? (loc.split('/').pop() ?? loc)
+        : info.origin === Origin.Node
+          ? 'node'
+          : info.origin === Origin.Native
+            ? 'native'
+            : info.origin === Origin.Gc
+              ? 'V8'
+              : '';
+    return {
+      fn,
+      name: info.name || '(anonymous)',
+      sub,
+      origin: info.origin,
+      isPackage: n.isPackage,
+      selfUs: n.self,
+      totalUs: n.total,
+      hiddenCallers: n.hiddenCallers,
+      hiddenCallees: n.hiddenCallees,
+      members: n.isPackage ? memberCount(info.name) : 0,
+    };
+  });
+  const edges: CgEdge[] = g.edges.map((e) => {
+    const from = s.out(e.from);
+    return {
+      from,
+      to: s.out(e.to),
+      timeUs: e.weight,
+      share: e.weight / (byFn.get(from)?.total || 1),
+      calls: e.count,
+      back: e.back,
+    };
+  });
+  return {
+    nodes,
+    edges,
+    loops: g.nodes
+      .filter((n) => n.recursion > 0)
+      .map((n) => ({ fn: s.out(n.fn), count: n.recursion })),
+    shownFns: g.nodes.length,
+    totalFns: g.nodes.length + g.hiddenNodes,
+    maxSelfUs: Math.max(1, ...nodes.map((n) => n.selfUs)),
+    maxTotalUs: Math.max(1, ...nodes.map((n) => n.totalUs)),
+    maxEdgeUs: Math.max(1, ...edges.map((e) => e.timeUs)),
+  };
+}
+
+/** Functions inside the engine's ego neighbourhood (2 callers up, 2 callees down). */
+export function egoNeighbourhood(model: ExecutionModel, s: Scoped, fn: number): number[] | null {
+  const engineFn = s.inn(fn);
+  if (engineFn < 0) return null;
+  const g = callGraph(model, s.view, { ego: engineFn, maxNodes: 1000 });
+  return g.nodes.filter((n) => !n.faded).map((n) => s.out(n.fn));
+}
+
+// ---- Source ----
+
+export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): SourceInfo | null {
+  const engineFn = s.inn(fn);
+  if (engineFn < 0 || engineFn >= model.functions.length) return null;
+  const src = functionSource(model, s.view, engineFn);
+  const peak = Math.max(1e-9, ...src.sparkline);
+  return {
+    fn,
+    path: src.file,
+    startLine: src.line,
+    lineSelf: src.lines.map((l) => ({ line: l.line, selfUs: l.selfUs })),
+    hottestLine: src.hottestLine,
+    spark: Array.from(src.sparkline, (v) => v / peak),
+    sparkTrack: s.track.label,
+    durationUs: Math.max(1, model.meta.durationUs),
+    mapMissing: src.mapMissing,
+    mapped: model.functions.mapped[engineFn] === 1,
+    loc: src.file ? (src.line > 0 ? `${src.file}:${src.line}` : src.file) : '',
+  };
+}
+
+// ---- Overview lanes ----
+
+/** Track labels look like "main · pid 4182": the part before the dot is the lane title. */
+function laneText(model: ExecutionModel, track: Track): { title: string; meta: string } {
+  const [title = track.label, ...rest] = track.label.split(' · ');
+  const detail = rest.join(' · ');
+  if (track.kind === 'process') {
+    const script = model.meta.command[1] ?? model.meta.command[0] ?? '';
+    const base = script.split(/[/\\]/).pop() ?? script;
+    return { title, meta: [detail, base].filter(Boolean).join(' · ') || 'node process' };
+  }
+  return { title, meta: detail || (track.kind === 'worker' ? 'worker thread' : track.kind) };
+}
+
+/**
+ * Dominant origin per task for the lane colors. The engine has no per-task origin summary, so this
+ * reads the samples of each task: your code when it is at least 20% of busy time, else the
+ * largest other origin.
+ */
+function dominantOrigins(model: ExecutionModel, track: Track): Uint8Array {
+  const { tasks, samples, callTree } = track;
+  const out = new Uint8Array(tasks.length);
+  let si = 0;
+  for (let ti = 0; ti < tasks.length; ti++) {
+    const start = tasks.start[ti] ?? 0;
+    const end = tasks.end[ti] ?? 0;
+    while (si < samples.length && (samples.time[si] ?? 0) < start) si++;
+    const w = new Float64Array(7);
+    for (let j = si; j < samples.length && (samples.time[j] ?? 0) < end; j++) {
+      const o = model.functions.origin[callTree.fn[samples.node[j] ?? 0] ?? 0] ?? 0;
+      w[o] = (w[o] ?? 0) + 1;
+    }
+    let busy = 0;
+    for (let o = 0; o < 7; o++) if (o !== Origin.Idle) busy += w[o] ?? 0;
+    let best = 0;
+    if ((w[Origin.User] ?? 0) < busy * 0.2) {
+      let bw = -1;
+      for (let o = 1; o < 7; o++) {
+        if (o !== Origin.Idle && (w[o] ?? 0) > bw) {
+          bw = w[o] ?? 0;
+          best = o;
+        }
+      }
+    }
+    out[ti] = best;
+  }
+  return out;
+}
+
+export function overviewData(
+  model: ExecutionModel,
+  bins = 240,
+): { durationUs: number; bins: number; lanes: LaneData[] } {
+  const durationUs = Math.max(model.meta.durationUs, ...model.tracks.map((t) => t.durationUs), 1);
+  const lanes = model.tracks.map((track, index): LaneData => {
+    const lane = timelineLane(model, index, { buckets: bins, start: 0, end: durationUs });
+    const n = track.tasks.length;
+    const taskStart = new Float64Array(n);
+    const taskEnd = new Float64Array(n);
+    const taskLong = new Uint8Array(n);
+    const taskLabels: string[] = new Array<string>(n).fill('');
+    for (const b of lane.tasks) {
+      taskStart[b.task] = b.start;
+      taskEnd[b.task] = b.end;
+      taskLong[b.task] = b.long ? 1 : 0;
+      taskLabels[b.task] = b.label;
+    }
+    const binW = durationUs / bins;
+    const delay = new Float32Array(bins);
+    let peak = 0;
+    let peakAt = 0;
+    for (const m of lane.loopDelay) {
+      const b = Math.min(bins - 1, Math.max(0, Math.floor(m.time / binW)));
+      delay[b] = Math.max(delay[b] ?? 0, m.durationUs);
+      if (m.durationUs > peak) {
+        peak = m.durationUs;
+        peakAt = m.time;
+      }
+    }
+    const text = laneText(model, track);
+    return {
+      id: track.id,
+      label: text.title,
+      meta: text.meta,
+      durationUs,
+      cpu: lane.cpu,
+      taskStart,
+      taskEnd,
+      taskLong,
+      taskOrigin: dominantOrigins(model, track),
+      taskLabels,
+      gcTime: Float64Array.from(lane.gc, (g) => g.time),
+      gcDuration: Float64Array.from(lane.gc, (g) => g.durationUs),
+      delay,
+      peakDelayUs: peak,
+      peakDelayAtUs: peakAt,
+      hasLoopData: lane.loopDelay.length > 0,
+    };
+  });
+  return { durationUs, bins, lanes };
+}

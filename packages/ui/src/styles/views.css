@@ -93,7 +93,8 @@
 }
 
 .wf-row.is-selected {
-  background: var(--c-accent-soft);
+  /* Translucent so the canvas bar of the selected row stays visible under it. */
+  background: var(--c-accent-tint);
   box-shadow: inset 0 0 0 2px var(--c-accent);
 }
 

@@ -1,8 +1,10 @@
-import type { LaneData } from '../data/overview';
-import { LONG_TASK_US } from '../data/overview';
+import type { LaneData } from '../data/types';
 import type { Palette } from '../theme/palette';
 import { packBlocks } from './lod';
 import { linearScale, niceTicks } from './scale';
+
+/** GC pauses over this get the heavier mark; matches the engine's long-task threshold. */
+export const LONG_PAUSE_US = 50_000;
 
 export interface LaneDrawOptions {
   /** Index of the selected task, or -1. */
@@ -108,8 +110,7 @@ export function drawLane(
   }
 
   for (let i = 0; i < lane.taskStart.length; i++) {
-    const dur = (lane.taskEnd[i] ?? 0) - (lane.taskStart[i] ?? 0);
-    if (dur > LONG_TASK_US) {
+    if (lane.taskLong[i] === 1) {
       const px = x(lane.taskEnd[i] ?? 0);
       ctx.fillStyle = pal.sevMedium;
       ctx.strokeStyle = pal.outline;
@@ -131,7 +132,7 @@ export function drawLane(
   // GC pauses as thin ticks; pauses over 50 ms get a heavier mark.
   for (let i = 0; i < lane.gcTime.length; i++) {
     const px = x(lane.gcTime[i] ?? 0);
-    const long = (lane.gcDuration[i] ?? 0) > LONG_TASK_US;
+    const long = (lane.gcDuration[i] ?? 0) > LONG_PAUSE_US;
     ctx.fillStyle = long ? pal.gcLong : pal.gcTick;
     ctx.fillRect(px, long ? 45 : 47, long ? 4 : 2, long ? 16 : 12);
   }

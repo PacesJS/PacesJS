@@ -25,6 +25,22 @@ describe('Show me', () => {
     expect(next.options.critical).toBe(true);
   });
 
+  it('switches to the track the finding names', () => {
+    const state = createState(initialSnapshot());
+    const action = showMeAction(
+      { view: 'functions', track: 'p1-w1', fn: 315 },
+      snapshotOf(state),
+      'p1',
+    );
+    expect(snapshotOf(reducer(state, action)).track).toBe('p1-w1');
+  });
+
+  it('keeps the current track when the finding names none', () => {
+    const state = createState({ ...initialSnapshot(), track: 'p1-w2' });
+    const action = showMeAction({ view: 'flame' }, snapshotOf(state), 'p1');
+    expect(snapshotOf(reducer(state, action)).track).toBe('p1-w2');
+  });
+
   it('keeps the current view for a track-timeline target', () => {
     const state = createState({ ...initialSnapshot(), view: 'flame' });
     const action = showMeAction({ view: 'timeline', range: [1, 2] }, snapshotOf(state), 'main');

@@ -1,82 +1,65 @@
-import type { ExecutionModel, Finding, Track } from '@pacesjs/engine';
-import type { Selection, TimeRange, Transform } from '../state/types';
-import { at, fnLocation, fnName, selectTracks, str } from './access';
-import { pathKeys, withDelta } from './diff';
-import { buildCallGraph } from './callgraph';
-import type { CallGraphData, CallGraphOptions } from './callgraph';
-import { flameData } from './flame';
-import type { FlameData, FlameOptions } from './flame';
-import { functionDetails, functionsTable, sandwich } from './functions';
-import type { Details, FunctionsResult, SandwichRow } from './functions';
+import { diffModels } from '@pacesjs/engine';
+import type { ExecutionModel, ModelDiff } from '@pacesjs/engine';
+import type { Selection } from '../state/types';
+import {
+  callGraphData,
+  egoNeighbourhood,
+  flameData,
+  functionDetails,
+  functionsTable,
+  overviewData,
+  sandwichRows,
+  sourceInfo,
+  taskOptions,
+  waterfallData,
+} from './adapt';
+import { browserElk } from './elk-browser';
 import { layoutGraph } from './layout';
 import type { ElkProvider, GraphLayout } from './layout';
-import { browserElk } from './elk-browser';
-import { buildOverview } from './overview';
-import type { OverviewData } from './overview';
-import { sourceInfo } from './source';
-import type { SourceInfo } from './source';
-import { allPackages, buildTView } from './tview';
-import type { TView } from './tview';
-import { buildWaterfall, taskLabel, taskOptions } from './waterfall';
-import type { TaskOption, WaterfallData } from './waterfall';
+import { locationOf, modelCtx, scopeView, toEngineStack, trackIndexOf } from './scope';
+import type { Scoped } from './scope';
+import type {
+  CallGraphData,
+  CallGraphQuery,
+  Details,
+  FlameData,
+  FlameOptions,
+  FunctionsResult,
+  ModelSummary,
+  OverviewData,
+  SandwichRow,
+  Scope,
+  SelectionInfo,
+  SourceInfo,
+  TaskOption,
+  WaterfallData,
+} from './types';
 
-/** What every aggregate query is scoped by. */
-export interface Scope {
-  track: string;
-  transforms: Transform[];
-  range: TimeRange | null;
-}
-
-export interface TrackSummary {
-  id: string;
-  label: string;
-  kind: string;
-  samples: number;
-  durationUs: number;
-}
-
-export interface ModelSummary {
-  command: string[];
-  durationUs: number;
-  intervalUs: number;
-  precisionUs: number;
-  endedBy: string;
-  mode: string;
-  tracks: TrackSummary[];
-  findings: Finding[];
-  warnings: string[];
-  totalSamples: number;
-  projectRoot: string;
-  /** Function names for chips, indexed by function id (only those needed are read lazily). */
-  functionCount: number;
-  hasBaseline: boolean;
-}
-
-export interface TaskInfo {
-  index: number;
-  label: string;
-  startUs: number;
-  durationUs: number;
-  busyUs: number;
-  kind: number;
-}
-
-export interface SelectionInfo {
-  fn: number | null;
-  /** Original call-tree node for node and span selections. */
-  node: number | null;
-  name: string;
-  track: string | null;
-  /** Task selection details when the selection is a task. */
-  task: TaskInfo | null;
-  loc: string;
-}
+export type {
+  CallGraphData,
+  CallGraphQuery,
+  Details,
+  FlameData,
+  FlameOptions,
+  FunctionsResult,
+  ModelSummary,
+  OverviewData,
+  SandwichRow,
+  Scope,
+  SelectionInfo,
+  SourceInfo,
+  TaskOption,
+  WaterfallData,
+} from './types';
 
 export interface GraphResult {
   graph: CallGraphData;
   layout: GraphLayout;
+  /** Functions inside the ego neighbourhood of the selected function, or null without ego. */
+  near: number[] | null;
 }
 
+/** Everything the views ask for. Names and shapes are the views'; the numbers are the engine's. */
 export interface Queries {
   summary(): ModelSummary;
   overview(): OverviewData;
@@ -86,51 +69,64 @@ export interface Queries {
   functions(scope: Scope, filter: string): FunctionsResult;
   details(scope: Scope, fn: number): Details | null;
   sandwich(scope: Scope, fn: number): SandwichRow[];
-  callGraph(scope: Scope, opts: CallGraphOptions, expanded: string[]): Promise<GraphResult>;
+  callGraph(scope: Scope, query: CallGraphQuery, expandedPackages: string[]): Promise<GraphResult>;
   source(scope: Scope, fn: number): SourceInfo | null;
-  describe(selection: Selection): SelectionInfo;
-  /** Function ids matching a transformed-tree node, for flame clicks. */
-  fnOfNode(scope: Scope, node: number): number;
+  describe(scope: Scope, selection: Selection): SelectionInfo;
   /** Package name of a function, '' for user code. */
   packageOf(fn: number): string;
-  fnName(fn: number): string;
 }
 
 const CACHE_SIZE = 6;
+const NO_SELECTION: SelectionInfo = {
+  fn: null,
+  path: null,
+  name: '',
+  track: null,
+  task: null,
+  loc: '',
+};
 
 export function createQueries(
   model: ExecutionModel,
   baseline: ExecutionModel | null = null,
   elk: ElkProvider = browserElk,
 ): Queries {
-  const hasBaseline = baseline !== null;
-  const cache = new Map<string, TView>();
+  const ctx = modelCtx(model);
+  const F = model.functions.length;
+  const cache = new Map<string, Scoped>();
+  const layouts = new Map<string, GraphLayout>();
+  let diff: ModelDiff | null = null;
+  let overviewCache: OverviewData | null = null;
 
-  function tracksOf(scope: Scope): Track[] {
-    return selectTracks(model, scope.track);
-  }
-
-  function tview(scope: Scope, expanded: readonly string[] = []): TView {
-    const key = JSON.stringify([scope.track, scope.transforms, scope.range, expanded]);
+  /** The scoped view for the aggregate views: stack plus time range. */
+  function scoped(scope: Scope, expanded: readonly string[] = [], withRange = true): Scoped {
+    const key = JSON.stringify([
+      scope.track,
+      scope.transforms,
+      withRange ? scope.range : null,
+      expanded,
+    ]);
     const hit = cache.get(key);
     if (hit) {
       cache.delete(key);
       cache.set(key, hit);
       return hit;
     }
-    const built = buildTView({
-      model,
-      tracks: tracksOf(scope),
-      transforms: scope.transforms,
-      range: scope.range,
-      expandedPkgs: expanded,
-    });
+    const built = scopeView(
+      ctx,
+      trackIndexOf(model, scope.track),
+      toEngineStack(ctx, scope.transforms, expanded, withRange ? scope.range : null),
+    );
     cache.set(key, built);
     if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value as string);
     return built;
   }
 
-  let overviewCache: OverviewData | null = null;
+  const memberCount = (pkg: string): number => {
+    let n = 0;
+    for (let f = 0; f < F; f++) if ((model.strings[model.functions.pkg[f] ?? 0] ?? '') === pkg) n++;
+    return n;
+  };
 
   return {
     summary() {
@@ -153,145 +149,98 @@ export function createQueries(
         warnings: model.meta.warnings,
         totalSamples: tracks.reduce((a, t) => a + t.samples, 0),
         projectRoot: model.meta.projectRoot,
-        functionCount: model.functions.length,
-        hasBaseline,
+        functionCount: F,
+        hasBaseline: baseline !== null,
       };
     },
     overview() {
-      overviewCache ??= buildOverview(model);
+      overviewCache ??= overviewData(model);
       return overviewCache;
     },
     tasks(scope) {
-      const t = tracksOf(scope)[0];
-      return t ? taskOptions(model, t) : [];
+      const track = model.tracks[trackIndexOf(model, scope.track)];
+      return track ? taskOptions(model, track) : [];
     },
     waterfall(scope, task) {
-      const t = tracksOf(scope)[0];
-      return t ? buildWaterfall(model, t, { transforms: scope.transforms, task }) : null;
+      return waterfallData(model, scoped(scope, [], false), { task, range: scope.range });
     },
     flame(scope, opts) {
-      const now = tview(scope);
-      const data = flameData(model, now, opts);
-      if (!baseline) return data;
-      // Function ids belong to one model, so only id-free transforms carry over to the baseline.
-      const generic = scope.transforms.filter((t) =>
-        ['collapse-deps', 'merge-plumbing', 'drop-idle', 'invert', 'collapse-pkg'].includes(t.k),
-      );
-      const base = buildTView({
-        model: baseline,
-        tracks: selectTracks(baseline, scope.track),
-        transforms: generic,
-        range: null,
-      });
-      return withDelta(
-        data,
-        pathKeys(model, now),
-        now.keptUs,
-        pathKeys(baseline, base),
-        base.total,
-        base.keptUs,
-      );
+      if (baseline && !diff) diff = diffModels(baseline, model);
+      return flameData(model, scoped(scope), opts, diff);
     },
     functions(scope, filter) {
-      return functionsTable(model, tview(scope), tracksOf(scope), scope.range, filter);
+      return functionsTable(model, scoped(scope), scope.range, filter);
     },
     details(scope, fn) {
-      return functionDetails(model, tview(scope), tracksOf(scope), scope.range, fn);
+      return functionDetails(model, scoped(scope), scope.range, fn);
     },
     sandwich(scope, fn) {
-      return sandwich(model, tview(scope), fn);
+      return sandwichRows(model, scoped(scope), fn);
     },
-    async callGraph(scope, opts, expanded) {
-      const t = tview(scope, expanded);
-      const graph = buildCallGraph(model, t, tracksOf(scope), scope.range, opts);
-      return { graph, layout: await layoutGraph(graph, elk()) };
+    async callGraph(scope, query, expandedPackages) {
+      const s = scoped(scope, expandedPackages);
+      const graph = callGraphData(model, s, query, memberCount);
+      const key = JSON.stringify([
+        graph.nodes.map((n) => [n.fn, n.selfUs]),
+        graph.edges.map((e) => [e.from, e.to]),
+      ]);
+      let layout = layouts.get(key);
+      if (!layout) {
+        layout = await layoutGraph(graph, elk());
+        layouts.set(key, layout);
+        if (layouts.size > CACHE_SIZE) layouts.delete(layouts.keys().next().value as string);
+      }
+      const near =
+        query.ego !== null && graph.nodes.some((n) => n.fn === query.ego)
+          ? egoNeighbourhood(model, s, query.ego)
+          : null;
+      return { graph, layout, near };
     },
     source(scope, fn) {
-      return sourceInfo(model, tracksOf(scope), fn);
+      return sourceInfo(model, scoped(scope), fn);
     },
-    describe(selection) {
-      const none: SelectionInfo = {
-        fn: null,
-        node: null,
-        name: '',
-        track: null,
-        task: null,
-        loc: '',
+    describe(scope, selection) {
+      const s = scoped(scope);
+      const named = (fn: number): Pick<SelectionInfo, 'fn' | 'name' | 'loc'> => {
+        const info = s.info(fn);
+        return { fn, name: info.name || '(anonymous)', loc: locationOf(info) };
       };
       switch (selection.kind) {
         case 'fn':
-          return {
-            ...none,
-            fn: selection.fn,
-            name: viewFnNameSafe(selection.fn),
-            loc: fnLocation(model, selection.fn),
-          };
+          return { ...NO_SELECTION, ...named(selection.fn) };
         case 'node': {
-          const track = model.tracks.find((t) => t.id === selection.track);
-          const fn = track ? at(track.callTree.fn, selection.node) : null;
-          return fn === null
-            ? none
-            : {
-                ...none,
-                fn,
-                node: selection.node,
-                track: selection.track,
-                name: viewFnNameSafe(fn),
-                loc: fnLocation(model, fn),
-              };
-        }
-        case 'span': {
-          const track = model.tracks.find((t) => t.id === selection.track);
-          const fn = track ? at(track.spans.fn, selection.span) : null;
-          const node = track ? at(track.spans.node, selection.span) : null;
-          return fn === null
-            ? none
-            : {
-                ...none,
-                fn,
-                node,
-                track: selection.track,
-                name: viewFnNameSafe(fn),
-                loc: fnLocation(model, fn),
-              };
+          const fn = selection.path[selection.path.length - 1];
+          if (fn === undefined) return NO_SELECTION;
+          return { ...NO_SELECTION, ...named(fn), path: selection.path, track: selection.track };
         }
         case 'task': {
           const track = model.tracks.find((t) => t.id === selection.track);
-          if (!track || selection.task >= track.tasks.length) return none;
           const i = selection.task;
+          if (!track || i < 0 || i >= track.tasks.length) return NO_SELECTION;
+          const label = model.strings[track.tasks.label[i] ?? 0] || 'task';
+          const start = track.tasks.start[i] ?? 0;
           return {
-            ...none,
+            ...NO_SELECTION,
             track: selection.track,
-            name: taskLabel(model, track, i),
+            name: label,
             task: {
               index: i,
-              label: taskLabel(model, track, i),
-              startUs: at(track.tasks.start, i),
-              durationUs: at(track.tasks.end, i) - at(track.tasks.start, i),
-              busyUs: at(track.tasks.busy, i),
-              kind: at(track.tasks.kind, i),
+              label,
+              startUs: start,
+              durationUs: (track.tasks.end[i] ?? 0) - start,
+              busyUs: track.tasks.busy[i] ?? 0,
+              kind: track.tasks.kind[i] ?? 0,
             },
           };
         }
         default:
-          return none;
+          return NO_SELECTION;
       }
     },
-    fnOfNode(scope, node) {
-      const t = tview(scope);
-      return at(t.fn, node);
-    },
     packageOf(fn) {
-      return str(model, at(model.functions.pkg, fn));
-    },
-    fnName(fn) {
-      return viewFnNameSafe(fn);
+      return fn < F
+        ? (model.strings[model.functions.pkg[fn] ?? 0] ?? '')
+        : (ctx.pkgs[fn - F] ?? '');
     },
   };
-
-  function viewFnNameSafe(fn: number): string {
-    return fn < model.functions.length
-      ? fnName(model, fn)
-      : (allPackages(model)[fn - model.functions.length] ?? '(package)');
-  }
 }

@@ -44,6 +44,7 @@ export function showMeAction(showMe: ShowMe, current: Snapshot, defaultTrack: st
       selection,
       range,
       transforms,
+      track: showMe.track ?? current.track,
     },
     options: {
       ...(typeof opts['criticalPath'] === 'boolean' ? { critical: opts['criticalPath'] } : {}),

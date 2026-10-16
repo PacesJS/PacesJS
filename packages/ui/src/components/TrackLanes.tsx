@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync, useCanvas, usePalette } from '../app/hooks';
-import type { LaneData } from '../data/overview';
+import type { LaneData } from '../data/types';
 import { drawDelay, laneTicks } from '../view/draw-lane';
 import { fmtAxis, fmtDuration, fmtRange } from '../util/format';
 import { Icon } from './Icon';

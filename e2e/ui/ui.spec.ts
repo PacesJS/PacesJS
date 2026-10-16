@@ -16,6 +16,51 @@ test.describe('paces UI on the orders-server fixture', () => {
     await expect(app.locator('.finding-card.is-active')).toHaveCount(1);
   });
 
+  test('opens with the top-ranked finding active, its function selected and its source docked', async ({
+    app,
+  }) => {
+    await settled(app);
+    const active = app.locator('.finding-card.is-active');
+    await expect(active).toContainText('#1');
+    await expect(active).toContainText('lineTotal');
+    await expect(
+      app.getByRole('region', { name: 'Source' }).getByRole('heading', { name: 'lineTotal' }),
+    ).toBeVisible();
+    await expect(app.getByText('No function selected')).toHaveCount(0);
+    await expect(
+      app
+        .getByRole('region', { name: 'Selection details' })
+        .getByRole('heading', { name: 'lineTotal' }),
+    ).toBeVisible();
+  });
+
+  test('roots the waterfall at the task and collapses to the critical path with p', async ({
+    app,
+  }) => {
+    await app.getByRole('button', { name: 'Show me: Event loop blocked' }).click();
+    await settled(app);
+    const rows = app.getByRole('table', { name: 'Waterfall rows' }).getByRole('row');
+    await expect(rows.first()).toHaveAttribute('aria-label', /^GET \/orders,/);
+    await expect(rows.nth(1)).toHaveAttribute('aria-label', /^getOrders,/);
+    const all = await rows.count();
+    await app.keyboard.press('p');
+    await expect(app).toHaveURL(/cpo%3A1|cpo:1/);
+    await expect.poll(() => rows.count()).toBeLessThan(all);
+    await expect(rows.first()).toHaveAttribute('aria-label', /critical path/);
+    await app.keyboard.press('p');
+    await expect.poll(() => rows.count()).toBe(all);
+  });
+
+  test('Compare with… is disabled and explains itself when the host has no baseline', async ({
+    app,
+  }) => {
+    const compare = app.getByRole('button', { name: 'Compare with…' });
+    await expect(compare).toHaveAttribute('aria-disabled', 'true');
+    await compare.focus();
+    await expect(app.getByRole('tooltip')).toContainText('paces diff a.paces b.paces');
+    await expect(app.getByRole('tooltip')).toBeVisible();
+  });
+
   test('switches views with the number keys', async ({ app }) => {
     await app.keyboard.press('1');
     await expect(view(app, /Waterfall/)).toHaveAttribute('aria-current', 'page');

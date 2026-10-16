@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { useCanvas, usePalette } from '../app/hooks';
-import type { LaneData } from '../data/overview';
-import { LONG_TASK_US } from '../data/overview';
+import type { LaneData } from '../data/types';
 import { drawLane, taskAtTime } from '../view/draw-lane';
 import { fmtDuration } from '../util/format';
 
@@ -110,7 +109,8 @@ export function LanePlot({
             {lane.taskLabels[tipTask] || 'task'} · {fmtDuration(tipDur)}
           </span>
           <span className="tooltip-sub">
-            at {(tipStart / 1_000_000).toFixed(2)} s{tipDur > LONG_TASK_US ? ' · long task' : ''}
+            at {(tipStart / 1_000_000).toFixed(2)} s
+            {lane.taskLong[tipTask] === 1 ? ' · long task' : ''}
             {tipTask === selectedTask ? ' · selected' : ''}
           </span>
         </div>

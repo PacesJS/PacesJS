@@ -13,8 +13,8 @@ export const VIEW_LABELS: Record<ViewId, string> = {
 export type Selection =
   | { kind: 'none' }
   | { kind: 'fn'; fn: number }
-  | { kind: 'node'; track: string; node: number }
-  | { kind: 'span'; track: string; span: number }
+  /** A call: function ids from the root's child down, in the current track and transform stack. */
+  | { kind: 'node'; track: string; path: number[] }
   | { kind: 'task'; track: string; task: number }
   | { kind: 'range'; from: number; to: number };
 
@@ -27,10 +27,10 @@ export type Transform =
   | { k: 'drop-idle' }
   | { k: 'collapse-pkg'; pkg: string }
   | { k: 'merge-fn'; fn: number }
-  | { k: 'merge-node'; track: string; node: number }
+  | { k: 'merge-node'; path: number[] }
   | { k: 'focus-fn'; fn: number }
   | { k: 'focus-self'; fn: number }
-  | { k: 'focus-node'; track: string; node: number }
+  | { k: 'focus-node'; path: number[] }
   | { k: 'collapse-rec'; fn: number }
   | { k: 'drop-fn'; fn: number }
   | { k: 'invert' };
@@ -42,7 +42,10 @@ export type FlameColor = 'origin' | 'self';
 export type FlameLayout = 'icicle' | 'flames';
 
 export interface ViewOptions {
+  /** Outline the widest-child chain in the waterfall. */
   critical: boolean;
+  /** Collapse every waterfall row except the critical chain (`p`). */
+  pathOnly: boolean;
   logical: boolean;
   sort: FlameSort;
   color: FlameColor;
@@ -70,6 +73,7 @@ export interface Snapshot {
 
 export const DEFAULT_OPTIONS: ViewOptions = {
   critical: true,
+  pathOnly: false,
   logical: true,
   sort: 'heavy',
   color: 'origin',
@@ -81,12 +85,14 @@ export const DEFAULT_OPTIONS: ViewOptions = {
   line: 0,
 };
 
+/** The default stack, in UI form; the engine's `DEFAULT_TRANSFORMS` is its twin. */
 export const DEFAULT_TRANSFORMS: readonly Transform[] = [
   { k: 'collapse-deps' },
   { k: 'merge-plumbing' },
   { k: 'drop-idle' },
 ];
 
+/** The default track: resolves to the first (main) track; the engine has no cross-track view. */
 export const ALL_TRACKS = 'all';
 
 export function initialSnapshot(): Snapshot {

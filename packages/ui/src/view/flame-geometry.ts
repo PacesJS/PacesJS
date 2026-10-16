@@ -1,4 +1,4 @@
-import type { FlameData } from '../data/flame';
+import type { FlameData } from '../data/types';
 import type { FlameLayout } from '../state/types';
 import { charBudget, fitLabel } from './truncate';
 

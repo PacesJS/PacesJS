@@ -1,4 +1,4 @@
-import { decodeModel } from './engine-bridge';
+import { deserializeModel } from '@pacesjs/engine';
 import { createQueries } from './queries';
 import type { Queries } from './queries';
 import type { WorkerRequest, WorkerResponse } from './protocol';
@@ -15,8 +15,8 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     try {
       if (req.kind === 'init') {
         queries = createQueries(
-          decodeModel(req.model),
-          req.baseline ? decodeModel(req.baseline) : null,
+          deserializeModel(req.model),
+          req.baseline ? deserializeModel(req.baseline) : null,
         );
         reply({ id: req.id, ok: true, result: null });
         return;

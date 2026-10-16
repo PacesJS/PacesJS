@@ -1,42 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { createQueries } from '../../src/data/queries';
 import { DEFAULT_TRANSFORMS } from '../../src/state/types';
-import type { N } from '../helpers/model-builder';
-import { ORDERS, buildModel } from '../helpers/model-builder';
+import { nodeElk } from '../helpers/node-elk';
+import { fixtureModel, ordersModel } from '../helpers/real-model';
 
-function withLineTotalSelf(self: number): N[] {
-  const clone = structuredClone(ORDERS);
-  const walk = (n: N): void => {
-    if (n.fn === 'lineTotal') n.self = self;
-    n.kids?.forEach(walk);
-  };
-  clone.forEach(walk);
-  return clone;
-}
+const head = ordersModel();
+const scope = { track: head.tracks[0]?.id ?? '', transforms: [...DEFAULT_TRANSFORMS], range: null };
+const opts = { sort: 'heavy' as const, color: 'origin' as const, zoom: [] as number[] };
+const indexOf = (names: string[], name: string): number => names.indexOf(name);
 
 describe('differential flame graph', () => {
-  const baseline = buildModel({ roots: withLineTotalSelf(8) });
-  const now = buildModel({ roots: withLineTotalSelf(40) });
-  const q = createQueries(now, baseline);
-  const scope = { track: 'all', transforms: [...DEFAULT_TRANSFORMS], range: null };
-  const data = q.flame(scope, { sort: 'heavy', color: 'origin', zoom: [] });
-  const index = (name: string): number => data.names.indexOf(name);
+  const against = (base: string) =>
+    createQueries(head, fixtureModel(base), nodeElk).flame(scope, opts);
 
-  it('marks a function that got slower with a positive change', () => {
-    expect(data.delta?.[index('lineTotal')]).toBeGreaterThan(0.5);
+  it('marks work absent from the baseline as slower', () => {
+    const data = against('sync-io');
+    expect(data.delta?.[indexOf(data.names, 'lineTotal')]).toBeGreaterThan(0);
   });
 
-  it('marks work that did not grow as faster in relative terms', () => {
-    expect(data.delta?.[index('fs.readFileSync')]).toBeLessThan(0);
+  it('shows no change against the same run', () => {
+    const data = against('orders-server');
+    expect(Math.max(...(data.delta ?? [1]).map(Math.abs))).toBe(0);
   });
 
-  it('leaves width from the newer run', () => {
-    expect(data.w[0]).toBe(1);
+  it('keeps width from the newer run', () => {
+    expect(against('sync-io').w[0]).toBe(1);
   });
 
   it('has no change data without a baseline', () => {
-    expect(
-      createQueries(now).flame(scope, { sort: 'heavy', color: 'origin', zoom: [] }).delta,
-    ).toBeUndefined();
+    expect(createQueries(head, null, nodeElk).flame(scope, opts).delta).toBeUndefined();
   });
 });

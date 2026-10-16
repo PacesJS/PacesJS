@@ -12,6 +12,7 @@ import { hashToSnapshot, snapshotToHash } from '../state/hash';
 import { resolveKey } from '../state/keymap';
 import { createState, reducer, snapshotOf } from '../state/reducer';
 import { addTransform } from '../state/transforms';
+import { ALL_TRACKS } from '../state/types';
 import type { Selection, Snapshot } from '../state/types';
 import { AppContext } from './context';
 import type { AppContextValue } from './context';
@@ -53,13 +54,13 @@ export function Shell({
   const scopeKey = useMemo(() => JSON.stringify(scope), [scope]);
 
   const describeQ = useAsync(
-    () => client.describe(snap.selection),
-    `describe:${JSON.stringify(snap.selection)}`,
+    () => client.describe(scope, snap.selection),
+    `describe:${scopeKey}:${JSON.stringify(snap.selection)}`,
   );
   const selection = useMemo(() => {
     const base = describeQ.data ?? {
       fn: null,
-      node: null,
+      path: null,
       name: '',
       track: null,
       task: null,
@@ -68,7 +69,7 @@ export function Shell({
     return snap.selection.kind === 'fn' ? { ...base, fn: snap.selection.fn } : base;
   }, [describeQ.data, snap.selection]);
   const hoverFn = state.hover.kind === 'fn' ? state.hover.fn : null;
-  const primaryTrack = snap.track !== 'all' ? snap.track : (summary.tracks[0]?.id ?? 'main');
+  const primaryTrack = snap.track !== ALL_TRACKS ? snap.track : (summary.tracks[0]?.id ?? '');
 
   const stateRef = useRef(state);
   useEffect(() => {
@@ -138,12 +139,9 @@ export function Shell({
           searchRef.current?.focus();
           break;
         case 'focus-subtree':
-          if (sel.node !== null && sel.track) {
+          if (sel.path !== null) {
             swallow();
-            dispatch({
-              type: 'add-transform',
-              transform: { k: 'focus-node', track: sel.track, node: sel.node },
-            });
+            dispatch({ type: 'add-transform', transform: { k: 'focus-node', path: sel.path } });
           } else if (sel.fn !== null) {
             swallow();
             dispatch({ type: 'add-transform', transform: { k: 'focus-fn', fn: sel.fn } });
@@ -172,7 +170,11 @@ export function Shell({
           break;
         case 'critical':
           swallow();
-          dispatch({ type: 'options', options: { critical: !s.options.critical } });
+          dispatch({
+            type: 'go',
+            patch: { view: 'waterfall' },
+            options: { pathOnly: !s.options.pathOnly },
+          });
           break;
         case 'shortcuts':
           swallow();

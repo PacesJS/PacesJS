@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { flameData } from '../../src/data/flame';
-import { buildTView } from '../../src/data/tview';
+import { createQueries } from '../../src/data/queries';
 import { DEFAULT_TRANSFORMS } from '../../src/state/types';
 import { FLAME, flameRects, hitRect } from '../../src/view/flame-geometry';
-import { ORDERS, buildModel } from '../helpers/model-builder';
+import { ordersModel } from '../helpers/real-model';
 
-const model = buildModel({ roots: ORDERS });
-const tv = buildTView({ model, tracks: model.tracks, transforms: DEFAULT_TRANSFORMS, range: null });
-const data = flameData(model, tv, { sort: 'heavy', color: 'origin', zoom: [] });
+const model = ordersModel();
+const scope = {
+  track: model.tracks[0]?.id ?? '',
+  transforms: [...DEFAULT_TRANSFORMS],
+  range: null,
+};
+const data = createQueries(model).flame(scope, { sort: 'heavy', color: 'origin', zoom: [] });
 const labelOf = (): { name: string; loc: string } => ({
   name: 'getOrders',
   loc: 'src/routes/orders.ts:18',

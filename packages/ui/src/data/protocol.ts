@@ -30,7 +30,5 @@ export const QUERY_NAMES: readonly QueryName[] = [
   'callGraph',
   'source',
   'describe',
-  'fnOfNode',
   'packageOf',
-  'fnName',
 ];

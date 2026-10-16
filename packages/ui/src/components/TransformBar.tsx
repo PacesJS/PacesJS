@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import { fmtRange } from '../util/format';
@@ -23,6 +23,7 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
   const { snap, dispatch, selection, client } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  const compareTipId = useId();
   const fnId = selection.fn;
   const names = (fn: number): string => (fn === fnId ? selection.name : `function ${fn}`);
   const pkgQuery = useAsync(
@@ -171,17 +172,27 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
       </div>
       <div className="header-spacer" />
       {sessionPath ? <span className="session-path">{sessionPath}</span> : null}
-      <div className="menu-anchor">
+      <div className="menu-anchor compare-anchor">
         <button
           type="button"
           className="btn btn-sm"
-          aria-haspopup="dialog"
-          aria-expanded={compareOpen}
-          onClick={() => setCompareOpen((v) => !v)}
+          aria-haspopup={hasBaseline ? 'dialog' : undefined}
+          aria-expanded={hasBaseline ? compareOpen : undefined}
+          aria-disabled={hasBaseline ? undefined : true}
+          aria-describedby={hasBaseline ? undefined : compareTipId}
+          onClick={() => {
+            if (hasBaseline) setCompareOpen((v) => !v);
+          }}
         >
           Compare with…
         </button>
-        {compareOpen ? (
+        {hasBaseline ? null : (
+          <span role="tooltip" id={compareTipId} className="compare-tip">
+            No baseline in this session. Run paces diff a.paces b.paces to open two sessions in
+            differential mode.
+          </span>
+        )}
+        {hasBaseline && compareOpen ? (
           <div
             className="menu"
             role="dialog"
@@ -189,9 +200,8 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
             style={{ top: 38, right: 0, width: 320 }}
           >
             <p className="section-sub" style={{ padding: 8, lineHeight: '20px' }}>
-              {hasBaseline
-                ? 'A baseline session is loaded: the flame graph shows the difference (blue = faster, orange = slower).'
-                : 'Run paces diff a.paces b.paces to open two sessions in differential mode.'}
+              A baseline session is loaded: the flame graph shows the difference (blue = faster,
+              orange = slower).
             </p>
           </div>
         ) : null}

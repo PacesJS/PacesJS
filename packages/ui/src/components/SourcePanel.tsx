@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
-import { matchCallSites } from '../data/source';
+import { matchCallSites } from '../view/call-sites';
 import { originColor } from '../theme/origin';
 import { fmtCount, fmtDuration } from '../util/format';
 import { gutterWidth, lineWindow, tokenize } from '../view/source-lines';

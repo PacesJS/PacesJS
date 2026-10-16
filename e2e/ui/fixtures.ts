@@ -43,6 +43,8 @@ async function waitForServer(url: string, child: ChildProcess, timeoutMs = 30_00
 
 interface Workers {
   baseUrl: string;
+  /** Zoo capture the dev host serves as the baseline session (differential mode); null for none. */
+  baselineFixture: string | null;
 }
 
 /**
@@ -50,10 +52,9 @@ interface Workers {
  * Build first: `pnpm --filter @pacesjs/ui build`.
  */
 export const test = base.extend<{ app: Page }, Workers>({
+  baselineFixture: [null, { option: true, scope: 'worker' }],
   baseUrl: [
-    // Playwright needs a destructuring pattern here even though no fixture is used.
-    // eslint-disable-next-line no-empty-pattern
-    async ({}, use) => {
+    async ({ baselineFixture }, use) => {
       if (!existsSync(resolve(UI_DIR, 'dist/index.html'))) {
         throw new Error('The UI is not built. Run `pnpm --filter @pacesjs/ui build` first.');
       }
@@ -64,7 +65,11 @@ export const test = base.extend<{ app: Page }, Workers>({
         {
           cwd: UI_DIR,
           stdio: 'ignore',
-          env: { ...process.env, VITE_CONFIG_NATIVE_IGNORE_WARNING: 'true' },
+          env: {
+            ...process.env,
+            VITE_CONFIG_NATIVE_IGNORE_WARNING: 'true',
+            ...(baselineFixture ? { PACES_DEV_BASELINE: baselineFixture } : {}),
+          },
         },
       );
       const baseUrl = `http://127.0.0.1:${PORT}`;
@@ -80,6 +85,13 @@ export const test = base.extend<{ app: Page }, Workers>({
   app: async ({ page, baseUrl }, use) => {
     await page.goto(`${baseUrl}/`);
     await expect(page.getByRole('heading', { name: 'Findings' })).toBeVisible();
+    // Passive effects (key listeners) can land a frame after first paint; let them flush.
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => done())),
+        ),
+    );
     await use(page);
   },
 });

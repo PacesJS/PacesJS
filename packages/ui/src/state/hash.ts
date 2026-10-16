@@ -24,11 +24,9 @@ export function encodeSelection(sel: Selection): string {
     case 'fn':
       return `fn:${sel.fn}`;
     case 'node':
-    case 'span':
-    case 'task': {
-      const idx = sel.kind === 'node' ? sel.node : sel.kind === 'span' ? sel.span : sel.task;
-      return `${sel.kind}:${enc(sel.track)}:${idx}`;
-    }
+      return `node:${enc(sel.track)}:${sel.path.join('.')}`;
+    case 'task':
+      return `task:${enc(sel.track)}:${sel.task}`;
     case 'range':
       return `range:${Math.round(sel.from)}:${Math.round(sel.to)}`;
   }
@@ -39,19 +37,25 @@ function int(s: string | undefined): number | null {
   return Number(s);
 }
 
+function decodePath(text: string | undefined): number[] | null {
+  if (!text) return null;
+  const ids = text.split('.').map((n) => int(n));
+  return ids.every((n): n is number => n !== null) ? (ids as number[]) : null;
+}
+
 export function decodeSelection(text: string): Selection {
   const [kind, a, b] = text.split(':');
   if (kind === 'fn') {
     const fn = int(a);
     return fn === null ? NO_SELECTION : { kind: 'fn', fn };
   }
-  if (kind === 'node' || kind === 'span' || kind === 'task') {
+  if (kind === 'node') {
+    const path = decodePath(b);
+    return a === undefined || path === null ? NO_SELECTION : { kind, track: dec(a), path };
+  }
+  if (kind === 'task') {
     const idx = int(b);
-    if (a === undefined || idx === null) return NO_SELECTION;
-    const track = dec(a);
-    if (kind === 'node') return { kind, track, node: idx };
-    if (kind === 'span') return { kind, track, span: idx };
-    return { kind, track, task: idx };
+    return a === undefined || idx === null ? NO_SELECTION : { kind, track: dec(a), task: idx };
   }
   if (kind === 'range') {
     const from = int(a);
@@ -81,14 +85,14 @@ export function encodeTransform(t: Transform): string {
     case 'drop-fn':
       return `drop:${t.fn}`;
     case 'merge-node':
-      return `mnode:${enc(t.track)}:${t.node}`;
+      return `mnode:${t.path.join('.')}`;
     case 'focus-node':
-      return `fnode:${enc(t.track)}:${t.node}`;
+      return `fnode:${t.path.join('.')}`;
   }
 }
 
 export function decodeTransform(text: string): Transform | null {
-  const [kind, a, b] = text.split(':');
+  const [kind, a] = text.split(':');
   switch (kind) {
     case 'collapse-deps':
     case 'merge-plumbing':
@@ -115,9 +119,8 @@ export function decodeTransform(text: string): Transform | null {
     }
     case 'mnode':
     case 'fnode': {
-      const node = int(b);
-      if (a === undefined || node === null) return null;
-      return { k: kind === 'mnode' ? 'merge-node' : 'focus-node', track: dec(a), node };
+      const path = decodePath(a);
+      return path === null ? null : { k: kind === 'mnode' ? 'merge-node' : 'focus-node', path };
     }
     default:
       return null;
@@ -127,6 +130,7 @@ export function decodeTransform(text: string): Transform | null {
 function encodeOptions(o: ViewOptions): string {
   const parts: string[] = [];
   if (o.critical !== DEFAULT_OPTIONS.critical) parts.push(`crit:${o.critical ? 1 : 0}`);
+  if (o.pathOnly !== DEFAULT_OPTIONS.pathOnly) parts.push(`cpo:${o.pathOnly ? 1 : 0}`);
   if (o.logical !== DEFAULT_OPTIONS.logical) parts.push(`logical:${o.logical ? 1 : 0}`);
   if (o.sort !== DEFAULT_OPTIONS.sort) parts.push(`sort:${o.sort}`);
   if (o.color !== DEFAULT_OPTIONS.color) parts.push(`color:${o.color}`);
@@ -147,6 +151,7 @@ function decodeOptions(text: string): ViewOptions {
     const key = part.slice(0, i);
     const val = part.slice(i + 1);
     if (key === 'crit') o.critical = val === '1';
+    else if (key === 'cpo') o.pathOnly = val === '1';
     else if (key === 'logical') o.logical = val === '1';
     else if (key === 'sort' && (val === 'heavy' || val === 'alpha')) o.sort = val;
     else if (key === 'color' && (val === 'origin' || val === 'self')) o.color = val;

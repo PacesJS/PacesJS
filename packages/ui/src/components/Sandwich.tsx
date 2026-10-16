@@ -1,6 +1,6 @@
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
-import type { SandwichRow } from '../data/functions';
+import type { SandwichRow } from '../data/types';
 import { originColor } from '../theme/origin';
 import { fmtDuration, fmtShare } from '../util/format';
 

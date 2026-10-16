@@ -16,18 +16,20 @@ describe('url hash', () => {
     const snap: Snapshot = {
       view: 'flame',
       track: 'worker 1',
-      selection: { kind: 'node', track: 'worker 1', node: 42 },
+      selection: { kind: 'node', track: 'worker 1', path: [271, 279, 282] },
       range: [18_000_000, 19_600_000],
       transforms: [
         { k: 'collapse-deps' },
         { k: 'collapse-pkg', pkg: '@scope/pkg & co' },
         { k: 'merge-fn', fn: 7 },
-        { k: 'focus-node', track: 'main', node: 3 },
+        { k: 'focus-node', path: [3, 4] },
+        { k: 'merge-node', path: [3] },
         { k: 'invert' },
       ],
       options: {
         ...DEFAULT_OPTIONS,
         critical: false,
+        pathOnly: true,
         sort: 'alpha',
         zoom: [1, 5, 9],
         task: 4,
@@ -40,7 +42,7 @@ describe('url hash', () => {
 
   const selections: Selection[] = [
     { kind: 'fn', fn: 12 },
-    { kind: 'span', track: 'main', span: 3 },
+    { kind: 'node', track: 'main', path: [4, 5, 6] },
     { kind: 'task', track: 'main', task: 0 },
     { kind: 'range', from: 5, to: 99 },
   ];
