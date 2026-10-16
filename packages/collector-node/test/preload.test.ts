@@ -95,4 +95,31 @@ describe('request events', () => {
     expect(req).toMatchObject({ method: 'GET', url: '/orders', status: 201 });
     expect(req.duration).toBeGreaterThanOrEqual(0);
   });
+
+  it('records async init/before/after links only with PACES_ASYNC=1', async () => {
+    const code = `${BUSY};Promise.resolve().then(()=>busy()).then(()=>setTimeout(()=>{},5))`;
+    const on = await runWithPreload(['-e', code], { PACES_ASYNC: '1' });
+    const off = await runWithPreload(['-e', code]);
+    const parse = (r: { dir: string }) =>
+      readRaw(
+        r.dir,
+        rawFiles(r.dir).find((f) => f.endsWith('.events'))!,
+      )
+        .split('\n')
+        .filter(Boolean)
+        .map(
+          (l) =>
+            JSON.parse(l) as {
+              type: string;
+              phase?: string;
+              asyncType?: string;
+              triggerAsyncId?: number;
+            },
+        );
+    const asyncOn = parse(on).filter((e) => e.type === 'async');
+    expect(asyncOn.some((e) => e.phase === 'init' && e.asyncType === 'PROMISE')).toBe(true);
+    expect(asyncOn.some((e) => e.phase === 'before')).toBe(true);
+    expect(asyncOn.some((e) => e.phase === 'init' && (e.triggerAsyncId ?? 0) > 0)).toBe(true);
+    expect(parse(off).filter((e) => e.type === 'async')).toHaveLength(0);
+  });
 });

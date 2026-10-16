@@ -1,11 +1,17 @@
 // Planted problem: allocation churn that keeps the garbage collector busy.
 const { serve } = require('./_drive.cjs');
 
+// The churn happens inside the native structured clone, so the time shows up as GC rather than
+// as a hot user function.
+const template = Array.from({ length: 16000 }, (_, i) => ({
+  id: i,
+  tags: [String(i), String(i + 1)],
+  payload: new Array(8).fill(i),
+}));
+
 let keep = [];
 serve(async () => {
-  for (let i = 0; i < 60000; i++) {
-    keep.push({ id: i, tags: [String(i), String(i + 1)], payload: new Array(8).fill(i) });
-    if (keep.length > 20000) keep = [];
-  }
+  keep.push(structuredClone(template));
+  if (keep.length > 40) keep = [];
   return keep.length;
-}, 40);
+}, 50);

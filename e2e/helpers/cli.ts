@@ -1,0 +1,95 @@
+import { spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+export const ROOT = resolve(import.meta.dirname, '..', '..');
+export const PACES_CLI = join(ROOT, 'packages', 'paces', 'dist', 'cli.js');
+export const ZOO = join(ROOT, 'zoo');
+
+export interface PacesRun {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  /** The UI URL the CLI printed, if it got that far. */
+  url?: string;
+}
+
+export interface RunOptions {
+  cwd?: string;
+  env?: Record<string, string>;
+  /** Called once with the printed UI URL; the CLI exits after its grace period once you "close the window". */
+  onUrl?: (url: string) => Promise<void> | void;
+  timeoutMs?: number;
+}
+
+export function tempDir(prefix = 'paces-e2e-'): string {
+  return mkdtempSync(join(tmpdir(), prefix));
+}
+
+export function removeDir(dir: string): void {
+  rmSync(dir, { recursive: true, force: true });
+}
+
+/** Spawns `node dist/cli.js ...args`, returns when it exits. Fails loudly if the bundle is missing. */
+export function runPaces(args: string[], options: RunOptions = {}): Promise<PacesRun> {
+  if (!existsSync(PACES_CLI)) throw new Error('packages/paces is not built: run pnpm build first.');
+  const config = tempDir('paces-config-');
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [PACES_CLI, ...args], {
+      cwd: options.cwd ?? ROOT,
+      env: {
+        ...process.env,
+        PACES_GRACE_MS: '300',
+        PACES_CONFIG_DIR: config,
+        ...options.env,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const run: PacesRun = { code: null, stdout: '', stderr: '' };
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`paces timed out.\nstdout:\n${run.stdout}\nstderr:\n${run.stderr}`));
+    }, options.timeoutMs ?? 90_000);
+    child.stdout.on('data', (d: Buffer) => (run.stdout += d));
+    child.stderr.on('data', (d: Buffer) => {
+      run.stderr += d;
+      if (!run.url) {
+        const m = /(http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(run.stderr);
+        if (m) {
+          run.url = m[1];
+          void Promise.resolve(options.onUrl?.(run.url as string)).catch(reject);
+        }
+      }
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      removeDir(config);
+      run.code = code;
+      resolvePromise(run);
+    });
+  });
+}
+
+/** Behaves like a UI that loaded once and was then closed: one heartbeat, then silence. */
+export async function openAndClose(url: string): Promise<{ session: unknown }> {
+  const u = new URL(url);
+  const headers = { 'x-paces-token': u.searchParams.get('token') ?? '' };
+  const session = await (await fetch(`${u.origin}/api/session`, { headers })).json();
+  await fetch(`${u.origin}/api/heartbeat`, { method: 'POST', headers });
+  return { session };
+}
+
+/** Polls a condition with a bounded timeout; no fixed sleeps. */
+export async function waitFor(
+  cond: () => boolean | Promise<boolean>,
+  timeoutMs = 15_000,
+  what = 'condition',
+): Promise<void> {
+  const end = Date.now() + timeoutMs;
+  while (!(await cond())) {
+    if (Date.now() > end) throw new Error(`Timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}

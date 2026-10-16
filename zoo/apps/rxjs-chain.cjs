@@ -6,7 +6,7 @@ const { serve } = require('./_drive.cjs');
 serve(
   () =>
     new Promise((resolve) => {
-      range(0, 12000)
+      range(0, 40000)
         .pipe(
           m((x) => x * 2),
           f((x) => x % 3 !== 0),

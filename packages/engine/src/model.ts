@@ -18,7 +18,15 @@ export const Origin = {
   Gc: 6,
 } as const;
 export type OriginId = (typeof Origin)[keyof typeof Origin];
-export const ORIGIN_NAMES = ['user', 'dependency', 'framework', 'node', 'native', 'idle', 'gc'] as const;
+export const ORIGIN_NAMES = [
+  'user',
+  'dependency',
+  'framework',
+  'node',
+  'native',
+  'idle',
+  'gc',
+] as const;
 
 export const TaskKind = {
   Main: 0,
@@ -30,7 +38,15 @@ export const TaskKind = {
   Other: 6,
 } as const;
 export type TaskKindId = (typeof TaskKind)[keyof typeof TaskKind];
-export const TASK_KIND_NAMES = ['main', 'request', 'timer', 'immediate', 'microtask', 'io', 'other'] as const;
+export const TASK_KIND_NAMES = [
+  'main',
+  'request',
+  'timer',
+  'immediate',
+  'microtask',
+  'io',
+  'other',
+] as const;
 
 export interface SessionMeta extends CaptureMeta {
   /** ± measurement precision in microseconds (one sampling interval). */
@@ -79,6 +95,8 @@ export interface Samples {
   /** Microseconds since `meta.startedAt`. */
   time: Float64Array;
   node: Uint32Array;
+  /** Microseconds each sample stands for: the gap to the next sample (the last one uses the median gap). */
+  dur: Float64Array;
 }
 
 /** Reconstructed calls: consecutive samples sharing a call path. Sorted by start, then depth. */
@@ -132,6 +150,43 @@ export interface LineTicks {
   self: Float64Array;
 }
 
+/** Edges of the function-level call graph of one track, sorted by (caller, callee). */
+export interface EdgeTable {
+  length: number;
+  caller: Uint32Array;
+  callee: Uint32Array;
+  /** Microseconds of callee total time reached through this caller. */
+  weight: Float64Array;
+  /** Estimated number of calls: contiguous runs seen in the samples. */
+  count: Uint32Array;
+}
+
+/** Aggregates per track. Function arrays are aligned with `Track.fnIds`. */
+export interface TrackAggregates {
+  fnSelf: Float64Array;
+  /** Total time per function, counting recursion once. */
+  fnTotal: Float64Array;
+  /** Estimated calls per function: spans seen in the samples. */
+  fnCalls: Uint32Array;
+  edges: EdgeTable;
+}
+
+/** Whole-run totals per npm package (all tracks), sorted by total time descending. */
+export interface PackageTable {
+  length: number;
+  name: Uint32Array;
+  self: Float64Array;
+  total: Float64Array;
+}
+
+/** Whole-run busy time per task kind, indexed by `TaskKind`. */
+export interface TaskKindStats {
+  count: Uint32Array;
+  busy: Float64Array;
+  /** Self time of plumbing functions inside tasks of this kind. */
+  plumbing: Float64Array;
+}
+
 export interface Track {
   id: TrackId;
   kind: TrackKind;
@@ -144,7 +199,8 @@ export interface Track {
   asyncEdges: AsyncEdgeTable;
   events: EventTable;
   lines: LineTicks;
-  /** Function ids present in this track. */
+  agg: TrackAggregates;
+  /** Function ids present in this track, ascending. */
   fnIds: Uint32Array;
   /** Whole-track busy time (non-idle self), microseconds. */
   busyUs: number;
@@ -203,5 +259,7 @@ export interface ExecutionModel {
   strings: string[];
   functions: FunctionTable;
   tracks: Track[];
+  packages: PackageTable;
+  taskKinds: TaskKindStats;
   findings: Finding[];
 }

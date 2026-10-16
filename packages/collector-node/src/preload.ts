@@ -1,5 +1,6 @@
 // Injected into every Node process of the target through NODE_OPTIONS (--require).
 // Runs inside the user's process: keep it small, dependency-free and behavior-neutral.
+import { createHook } from 'node:async_hooks';
 import { Server } from 'node:http';
 import { connect } from 'node:net';
 import { Session } from 'node:inspector';
@@ -25,6 +26,14 @@ type RuntimeEvent =
       method: string;
       url: string;
       status: number;
+    }
+  | {
+      type: 'async';
+      time: number;
+      phase: 'init' | 'before' | 'after';
+      asyncId: number;
+      triggerAsyncId: number;
+      asyncType: string;
     };
 
 const FLAG = Symbol.for('paces.preload.active');
@@ -105,11 +114,69 @@ function start(): void {
     return (emit as (...a: unknown[]) => boolean).call(this, event, ...args);
   } as typeof Server.prototype.emit;
 
+  // Opt-in async causality (--async): fixed typed-array ring, no allocation per event. Only
+  // (asyncId, triggerAsyncId, type, time) is stored; strings are interned once per async type.
+  let drainAsync: () => void = () => {};
+  if (process.env.PACES_ASYNC === '1') {
+    const CAP = 1 << 19;
+    const time = new Float64Array(CAP);
+    const ids = new Uint32Array(CAP);
+    const triggers = new Uint32Array(CAP);
+    const phases = new Uint8Array(CAP);
+    const kinds = new Uint16Array(CAP);
+    const typeIndex = new Map<string, number>();
+    const typeNames: string[] = [];
+    let count = 0;
+    const record = (phase: number, asyncId: number, trigger: number, kind: number): void => {
+      const i = count++ % CAP;
+      time[i] = performance.now();
+      ids[i] = asyncId;
+      triggers[i] = trigger;
+      phases[i] = phase;
+      kinds[i] = kind;
+    };
+    const hook = createHook({
+      init(asyncId, type, triggerAsyncId) {
+        let k = typeIndex.get(type);
+        if (k === undefined) {
+          k = typeNames.length;
+          typeNames.push(type);
+          typeIndex.set(type, k);
+        }
+        record(0, asyncId, triggerAsyncId, k);
+      },
+      before(asyncId) {
+        record(1, asyncId, 0, 0);
+      },
+      after(asyncId) {
+        record(2, asyncId, 0, 0);
+      },
+    });
+    hook.enable();
+    const PHASES = ['init', 'before', 'after'] as const;
+    drainAsync = () => {
+      hook.disable();
+      const n = Math.min(count, CAP);
+      const first = count > CAP ? count % CAP : 0;
+      for (let j = 0; j < n; j++) {
+        const i = (first + j) % CAP;
+        const phase = PHASES[phases[i] as number] ?? 'init';
+        events.push({
+          type: 'async',
+          time: t0 + (time[i] as number),
+          phase,
+          asyncId: ids[i] as number,
+          triggerAsyncId: triggers[i] as number,
+          asyncType: phase === 'init' ? (typeNames[kinds[i] as number] ?? '') : '',
+        });
+      }
+    };
+  }
+
   let started = false;
   const startProfiler = (): void => {
     if (started) return;
     started = true;
-    session.post('Debugger.enable');
     session.post('Profiler.enable');
     session.post('Profiler.setSamplingInterval', { interval });
     session.post('Profiler.start');
@@ -126,6 +193,11 @@ function start(): void {
       session.post('Profiler.stop', (err, result) => {
         if (!err) profile = (result as { profile: unknown }).profile;
       });
+      drainAsync();
+      // Keeping the Debugger domain enabled slows promise-heavy code about 9x (V8 instruments every
+      // promise). Enabling it here replays `scriptParsed` for every live script, which is all we need.
+      session.post('Debugger.enable');
+      session.post('Debugger.disable');
       clearInterval(loopTimer);
       histogram.disable();
       gcObserver.takeRecords();

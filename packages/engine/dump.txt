@@ -1,0 +1,17 @@
+== orders-server
+  [high] hot-function impact=0.52 track=p90608 :: lineTotal takes 52% of all CPU time (~2215 ms of its own work).
+  [medium] event-loop-blocked impact=0.60 track=p90608 :: 14 tasks ran longer than 50 ms; the worst held the event loop for ~200 ms.
+  [medium] hot-function impact=0.31 track=p90608-w1 :: crunch takes 31% of all CPU time (~1338 ms of its own work).
+  [medium] sync-io impact=0.10 track=p90608 :: fs.readFileSync runs synchronously inside request and timer tasks: ~272 ms in total (10% of their time).
+  [low] event-loop-lag impact=0.07 track=p90608 :: Event loop delay peaked at 205 ms (p99 over a 100 ms window).
+== sync-io
+  [high] sync-io impact=0.81 track=p87616 :: fs.readFileSync runs synchronously inside request and timer tasks: ~137 ms in total (81% of their time).
+== hot-regex
+  [high] hot-function impact=0.86 track=p92812 :: looksValid takes 86% of all CPU time (~524 ms of its own work).
+== gc-heavy
+== late-require
+  [high] late-module-loading impact=0.89 track=p90472 :: Modules are loaded while serving requests: ~67 ms in total (89% of request time).
+== rxjs-chain
+  [high] async-overhead impact=0.46 track=p70052 :: Async and framework plumbing takes 79% of the time in request tasks.
+== worker-imbalance
+  [high] hot-function impact=0.87 track=p93040-w1 :: crunch takes 87% of all CPU time (~200 ms of its own work).

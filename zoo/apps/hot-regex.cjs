@@ -1,7 +1,7 @@
 // Planted problem: a backtracking-heavy regex that dominates self time, in many short tasks.
 const { serve } = require('./_drive.cjs');
 
-const input = 'a'.repeat(22) + '!';
+const input = 'a'.repeat(19) + '!';
 function looksValid(text) {
   return /^(a+)+$/.test(text);
 }
