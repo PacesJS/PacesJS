@@ -57,6 +57,8 @@ Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bar
 - Test the tool on real third-party CLIs, not only the zoo. `paces -- npx eslint .` is the reference scenario: you must be able to name ESLint's own hot paths and the slow plugin functions from the UI and from `paces mcp`.
 - Warnings are aggregated (one note per kind); never print one line per file.
 - Live zoo runs vary with machine load: assert committed captures exactly (engine tests), assert only the planted finding's presence on live runs (e2e).
+- **Cached models carry a column fingerprint** (`packages/engine/src/model-shape.ts`). Any added model column is picked up automatically; never ship a model change with a stale cache still loadable. UI query failures must log their stack (`console.error` in `app/hooks.ts`).
+- **Verify on a real session, not only fixtures.** Fixtures analyze fresh and hide cache, scale and shape problems. Before calling UI work done, open a real `.paces` of `npx eslint .` through the built CLI (`paces open <file> --no-open`) and look at it.
 
 ## Git
 
