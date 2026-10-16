@@ -158,6 +158,36 @@ dominant one. `packageBreakdown(model, i, 'eslint-plugin-react-hooks')` answers 
 (or of the target package) are hot. `callersOf` follows the function-level call edges, heaviest first, cutting
 recursion.
 
+### Timed call trees and selectors
+
+```ts
+callTreeQuery(model, trackIndex, { from?, depth = 6, minUs?, minShare = 0.01, sort = 'total',
+  origins?, expandPkgs?, collapseDeps = true, task = 'whole', maxRows? }): TreeResult
+resolveSelector(model, trackIndex, text): { matches: { fn, path?, totalUs }[]; how: 'exact' | 'path' | 'location' | 'id' | 'substring' }
+```
+
+`callTreeQuery` returns depth-first rows `{ id, fn, depth, name, file, line, origin, pkg, synthetic, totalUs,
+selfUs, share, folded? }` on the same transform stack as the UI (`stitch-continuations`, `merge-plumbing`,
+`drop-idle`, then `collapse-dependencies`), so numbers match the views. Details:
+
+- `from` (a resolved selector) roots the tree at that function (all call sites merged) or, with `path`, at one
+  call chain. `share` is relative to the whole view (the run, or the task); `minShare`/`minUs` and
+  `depth` are relative to the root row. Rows below the threshold or past `depth`/`maxRows` are not returned;
+  `folded` on a row counts the descendants left out and `TreeResult.hidden` the total.
+- `sort: 'time'` orders siblings by first sample time (execution order), `'self'` by self time.
+- `origins` keeps only those origins (hidden frames fold into their nearest kept caller, like the UI's Show
+  filter). `expandPkgs` keeps those packages uncollapsed while the other dependencies stay collapsed
+  (`synthetic: true`, id `p:<pkg>`); `collapseDeps: false` shows everything. `task` is a task index of the
+  track (a `time-range` after stitching).
+- Function ids are `f<index in model.functions>`. The table is deterministic for a capture and engine
+  version, so ids are valid for the same session file (also after reopening it from the model cache) and
+  across invocations; they are not comparable between sessions or engine versions. Stitched entry roots
+  have ids too.
+- Selectors: `f123`; `path/suffix.js:1007` (definition line; a line inside a function resolves to the nearest
+  definition above it); `a,b,c` (each step a descendant of the previous, exact names if any exist, else
+  substring; one match per distinct last function, carrying the heaviest chain as `path`); a name (exact,
+  else substring; `(anonymous)` matches unnamed functions). Case-sensitive. Matches are sorted by total time.
+
 ### Embedded source
 
 `getEmbeddedSource(model, capture, file)` returns the original text of `file` (a model file path or its

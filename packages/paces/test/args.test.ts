@@ -81,3 +81,112 @@ describe('parseArgs', () => {
     expect(() => parseArgs(argv)).toThrow(message);
   });
 });
+
+describe('report flags', () => {
+  it('--report before -- puts the profile in report mode and keeps the command untouched', () => {
+    const p = parseArgs(['--report', '--tree', '--depth', '3', '--', 'node', 'a.js', '--tree']);
+    expect(p).toMatchObject({
+      kind: 'profile',
+      command: ['node', 'a.js', '--tree'],
+      flags: { report: { runMode: true, tree: true, depth: 3 } },
+    });
+  });
+
+  it('parses every drill-down flag', () => {
+    const p = parseArgs([
+      'report',
+      'a.paces',
+      '--callers',
+      'verify,runRules',
+      '--callees',
+      'f12',
+      '--lines',
+      'linter.js:1007',
+      '--pkg',
+      '@scope/pkg',
+      '--top',
+      'total',
+      '--from',
+      'x',
+      '--depth',
+      '4',
+      '--min-ms',
+      '2.5',
+      '--min-share',
+      '1%',
+      '--sort',
+      'time',
+      '--limit',
+      '9',
+      '--origin',
+      'user,dependency',
+      '--expand',
+      'a',
+      '--expand=b',
+      '--no-collapse',
+      '--task',
+      '3',
+      '--track',
+      'primary',
+      '--max-lines',
+      '30',
+      '--phases',
+      '--tasks',
+      '--no-color',
+      '--json',
+    ]);
+    expect(p).toMatchObject({
+      kind: 'report',
+      files: ['a.paces'],
+      flags: {
+        json: true,
+        report: {
+          callers: 'verify,runRules',
+          callees: 'f12',
+          lines: 'linter.js:1007',
+          pkg: '@scope/pkg',
+          top: 'total',
+          from: 'x',
+          depth: 4,
+          minMs: 2.5,
+          minShare: 0.01,
+          sort: 'time',
+          limit: 9,
+          origin: ['user', 'dependency'],
+          expand: ['a', 'b'],
+          noCollapse: true,
+          task: '3',
+          track: 'primary',
+          maxLines: 30,
+          phases: true,
+          tasks: true,
+          noColor: true,
+        },
+      },
+    });
+  });
+
+  it.each([
+    ['--min-share', '0.05', 0.05],
+    ['--min-share', '5', 0.05],
+    ['--min-share', '5%', 0.05],
+  ])('%s %s means %f of the root', (flag, value, expected) => {
+    const p = parseArgs(['report', 'a.paces', flag, value]);
+    expect(p).toMatchObject({ flags: { report: { minShare: expected } } });
+  });
+
+  it.each([
+    [['--top', 'sideways'], /--top must be one of/],
+    [['--sort', 'x'], /--sort must be one of/],
+    [['--origin', 'martian'], /--origin must be one of/],
+    [['--depth', '0'], /whole number/],
+    [['--task', 'two'], /whole number/],
+    [['--max-lines', '3'], /at least 8/],
+  ])('rejects %j', (flags, message) => {
+    expect(() => parseArgs(['report', 'a.paces', ...flags])).toThrow(message);
+  });
+
+  it('knows guide', () => {
+    expect(parseArgs(['guide'])).toEqual({ kind: 'guide' });
+  });
+});

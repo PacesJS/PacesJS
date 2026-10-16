@@ -10,11 +10,56 @@ export interface Flags {
   exclude: string[];
   json: boolean;
   focus: string[];
+  report: ReportFlags;
+}
+
+export type TopSort = 'self' | 'total';
+export type TreeSortFlag = 'total' | 'self' | 'time';
+
+/** Flags of `paces report` and `paces --report`: which view, and how to cut it down. */
+export interface ReportFlags {
+  /** `paces --report -- <cmd>`: print the report after profiling, open no window. */
+  runMode: boolean;
+  tree: boolean;
+  phases: boolean;
+  tasks: boolean;
+  callers?: string;
+  callees?: string;
+  lines?: string;
+  pkg?: string;
+  top?: TopSort;
+  from?: string;
+  depth?: number;
+  minMs?: number;
+  /** Fraction of the root, 0..1. */
+  minShare?: number;
+  sort?: TreeSortFlag;
+  limit?: number;
+  origin?: string[];
+  expand: string[];
+  noCollapse: boolean;
+  task?: string;
+  track?: string;
+  maxLines?: number;
+  noColor: boolean;
+}
+
+export function defaultReportFlags(): ReportFlags {
+  return {
+    runMode: false,
+    tree: false,
+    phases: false,
+    tasks: false,
+    expand: [],
+    noCollapse: false,
+    noColor: false,
+  };
 }
 
 export type Parsed =
   | { kind: 'profile'; flags: Flags; command: string[] }
-  | { kind: 'open' | 'summary' | 'mcp' | 'import'; flags: Flags; files: [string] }
+  | { kind: 'open' | 'summary' | 'mcp' | 'import' | 'report'; flags: Flags; files: [string] }
+  | { kind: 'guide' }
   | { kind: 'diff'; flags: Flags; files: [string, string] }
   | { kind: 'help' }
   | { kind: 'version' };
@@ -30,6 +75,9 @@ export const USAGE = `paces: profile a Node command and read what the JavaScript
 
 Usage
   paces [flags] -- <command...>     profile a command, then open the UI
+  paces --report [flags] -- <cmd>   profile, print a report with next: drill-down commands, exit
+  paces report <file> [flags]       drill into a saved session (.paces or .cpuprofile)
+  paces guide                       print a usage guide for coding agents
   paces open <file.paces>           reopen a saved session
   paces diff <a.paces> <b.paces>    compare two sessions (a is the baseline)
   paces import <file>               open a .cpuprofile or DevTools trace JSON
@@ -47,6 +95,14 @@ Flags (before --)
   --include <glob>       only profile matching processes (repeatable)
   --exclude <glob>       skip matching processes (repeatable)
   --focus <pkg|glob>     rank this package or path first in findings and summaries (repeatable)
+
+Report flags (paces report, paces --report)
+  views: --tree  --callers <sel>  --callees <sel>  --top self|total  --pkg <name>  --lines <sel>
+         --phases  --tasks            (default: summary)
+  shape: --from <sel>  --depth N  --min-ms N  --min-share 1%  --sort total|self|time  --limit N
+         --origin user,dependency,node,native,gc  --expand <pkg>  --no-collapse  --task <n|whole>
+         --track <id|primary>  --max-lines N  --json  --no-color
+  <sel>: a function name, a path a,b,c, file.js:123, or an id like f123 (see: paces guide)
 `;
 
 const VALUE_FLAGS = new Set([
@@ -58,8 +114,38 @@ const VALUE_FLAGS = new Set([
   '--exclude',
   '--focus',
 ]);
-const BOOL_FLAGS = new Set(['--async', '--embed-sources', '--no-open', '--json']);
-const COMMANDS = new Set(['open', 'diff', 'import', 'summary', 'mcp']);
+const REPORT_VALUE_FLAGS = new Set([
+  '--callers',
+  '--callees',
+  '--lines',
+  '--pkg',
+  '--top',
+  '--from',
+  '--depth',
+  '--min-ms',
+  '--min-share',
+  '--sort',
+  '--limit',
+  '--origin',
+  '--expand',
+  '--task',
+  '--track',
+  '--max-lines',
+]);
+const BOOL_FLAGS = new Set([
+  '--async',
+  '--embed-sources',
+  '--no-open',
+  '--json',
+  '--report',
+  '--tree',
+  '--phases',
+  '--tasks',
+  '--no-collapse',
+  '--no-color',
+]);
+const COMMANDS = new Set(['open', 'diff', 'import', 'summary', 'mcp', 'report', 'guide']);
+const ORIGINS = ['user', 'dependency', 'framework', 'node', 'native', 'idle', 'gc'];
 
 function positiveNumber(flag: string, raw: string): number {
   const n = Number(raw);
@@ -67,6 +153,52 @@ function positiveNumber(flag: string, raw: string): number {
     throw new UsageError(`${flag} needs a positive number, got "${raw}".`);
   }
   return n;
+}
+
+function integer(flag: string, raw: string, min = 0): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min)
+    throw new UsageError(`${flag} needs a whole number of at least ${min}, got "${raw}".`);
+  return n;
+}
+
+/** `1%` and `1` mean 1 percent; `0.01` means the same. */
+function share(flag: string, raw: string): number {
+  const pct = raw.endsWith('%');
+  const n = Number(pct ? raw.slice(0, -1) : raw);
+  if (!Number.isFinite(n) || n < 0)
+    throw new UsageError(`${flag} needs a share like 1% or 0.01, got "${raw}".`);
+  return pct || n > 1 ? n / 100 : n;
+}
+
+function oneOf<T extends string>(flag: string, raw: string, allowed: readonly T[]): T {
+  if (!allowed.includes(raw as T))
+    throw new UsageError(`${flag} must be one of: ${allowed.join(', ')}. Got "${raw}".`);
+  return raw as T;
+}
+
+function applyReportFlag(r: ReportFlags, name: string, value: string): void {
+  if (name === '--callers') r.callers = value;
+  else if (name === '--callees') r.callees = value;
+  else if (name === '--lines') r.lines = value;
+  else if (name === '--pkg') r.pkg = value;
+  else if (name === '--top') r.top = oneOf(name, value, ['self', 'total'] as const);
+  else if (name === '--from') r.from = value;
+  else if (name === '--depth') r.depth = integer(name, value, 1);
+  else if (name === '--min-ms') r.minMs = positiveNumber(name, value);
+  else if (name === '--min-share') r.minShare = share(name, value);
+  else if (name === '--sort') r.sort = oneOf(name, value, ['total', 'self', 'time'] as const);
+  else if (name === '--limit') r.limit = integer(name, value, 1);
+  else if (name === '--origin') {
+    r.origin = value
+      .split(',')
+      .map((o) => oneOf(name, o.trim(), ORIGINS as readonly string[] as readonly string[]));
+  } else if (name === '--expand') r.expand.push(value);
+  else if (name === '--task') {
+    if (value !== 'whole') integer(name, value, 0);
+    r.task = value;
+  } else if (name === '--track') r.track = value;
+  else if (name === '--max-lines') r.maxLines = integer(name, value, 8);
 }
 
 /** Flags come before `--`; everything after it is the target command, untouched. */
@@ -82,7 +214,9 @@ export function parseArgs(argv: string[]): Parsed {
     exclude: [],
     json: false,
     focus: [],
+    report: defaultReportFlags(),
   };
+  const r = flags.report;
   const positional: string[] = [];
   let help = false;
   let version = false;
@@ -108,10 +242,16 @@ export function parseArgs(argv: string[]): Parsed {
       if (name === '--async') flags.async = true;
       else if (name === '--embed-sources') flags.embedSources = true;
       else if (name === '--no-open') flags.noOpen = true;
-      else flags.json = true;
+      else if (name === '--json') flags.json = true;
+      else if (name === '--report') r.runMode = true;
+      else if (name === '--tree') r.tree = true;
+      else if (name === '--phases') r.phases = true;
+      else if (name === '--tasks') r.tasks = true;
+      else if (name === '--no-collapse') r.noCollapse = true;
+      else r.noColor = true;
       continue;
     }
-    if (!VALUE_FLAGS.has(name)) {
+    if (!VALUE_FLAGS.has(name) && !REPORT_VALUE_FLAGS.has(name)) {
       throw new UsageError(
         `Unknown flag ${name}. Flags go before "--"; everything after it is passed to your command. See paces --help.`,
       );
@@ -124,7 +264,8 @@ export function parseArgs(argv: string[]): Parsed {
     else if (name === '--out') flags.out = value;
     else if (name === '--include') flags.include.push(value);
     else if (name === '--focus') flags.focus.push(value);
-    else flags.exclude.push(value);
+    else if (name === '--exclude') flags.exclude.push(value);
+    else applyReportFlag(r, name, value);
   }
 
   if (help) return { kind: 'help' };
@@ -143,6 +284,7 @@ export function parseArgs(argv: string[]): Parsed {
 
   const first = positional[0];
   if (first === undefined) return { kind: 'help' };
+  if (first === 'guide') return { kind: 'guide' };
   if (!COMMANDS.has(first)) {
     throw new UsageError(
       `Unknown command "${first}". To profile a command, put it after "--": paces -- ${positional.join(' ')}`,
@@ -160,7 +302,7 @@ export function parseArgs(argv: string[]): Parsed {
   if (first === 'diff')
     return { kind: 'diff', flags, files: [files[0] as string, files[1] as string] };
   return {
-    kind: first as 'open' | 'summary' | 'mcp' | 'import',
+    kind: first as 'open' | 'summary' | 'mcp' | 'import' | 'report',
     flags,
     files: [files[0] as string],
   };

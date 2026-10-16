@@ -3,7 +3,7 @@ import type { ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ExecutionModel } from '@pacesjs/engine';
 import { loadModel, readSession, writeSession } from '@pacesjs/format';
@@ -37,6 +37,9 @@ import {
 } from './session-files.js';
 import { configDir } from './settings.js';
 import { formatSummary } from './summary.js';
+import { GUIDE } from './guide.js';
+import { ReportError, renderReport } from './report/report.js';
+import { createSourceResolver } from './source-resolver.js';
 
 declare const __PACES_VERSION__: string | undefined;
 
@@ -220,6 +223,12 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
     }
   }
 
+  if (model && engine && p.flags.report.runMode) {
+    const session = readSessionFile(out, engineVersion);
+    printReport(model, session, displayPath(out, cwd), p.flags, io);
+    await result.child?.stop();
+    return result.exitCode;
+  }
   if (model && engine) {
     const session = readSessionFile(out, engineVersion);
     await present(toHostSession(out, session, model, engine), p.flags, io);
@@ -230,6 +239,77 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
 
 function analyzeOptions(flags: Flags): Record<string, unknown> | undefined {
   return flags.focus.length > 0 ? { focus: flags.focus } : undefined;
+}
+
+function displayPath(file: string, cwd: string): string {
+  const rel = relative(cwd, file);
+  return rel && !rel.startsWith('..') && !isAbsolute(rel) ? rel : file;
+}
+
+function colorEnabled(flags: Flags): boolean {
+  return Boolean(process.stdout.isTTY) && !flags.report.noColor && !process.env.NO_COLOR;
+}
+
+function resolverFor(session: Session) {
+  const embedded = new Map<string, Uint8Array>();
+  for (const s of session.manifest.sources) {
+    const bytes = session.sources[s.hash];
+    if (bytes) embedded.set(s.path, bytes);
+  }
+  const scriptUrls = new Set<string>();
+  for (const t of session.capture.tracks) for (const sc of t.scripts) scriptUrls.add(sc.url);
+  return createSourceResolver({
+    projectRoot: session.manifest.projectRoot,
+    scriptUrls,
+    sourceMaps: session.capture.sourceMaps,
+    embedded,
+    startedAt: session.manifest.startedAt,
+  });
+}
+
+/** Prints one report view; returns false when the request was invalid (message goes to stderr). */
+function printReport(
+  model: ExecutionModel,
+  session: Session | undefined,
+  file: string,
+  flags: Flags,
+  io: Io,
+): boolean {
+  try {
+    const out = renderReport(
+      {
+        model,
+        file,
+        ...(session ? { resolver: resolverFor(session) } : {}),
+        color: colorEnabled(flags) && !flags.json,
+      },
+      flags,
+    );
+    io.out(flags.json ? JSON.stringify(out.json, null, 2) : out.text);
+    return true;
+  } catch (e) {
+    if (e instanceof ReportError) {
+      io.err(`paces: ${e.message}`);
+      return false;
+    }
+    throw e;
+  }
+}
+
+function cmdReport(file: string, flags: Flags, io: Io): number {
+  if (!existsSync(file)) throw new UsageError(`No such file: ${file}`);
+  const engine = loadEngine();
+  if (/\.(cpuprofile|json)$/i.test(file)) {
+    const capture = importProfile(readFileSync(file, 'utf8'), {
+      name: basename(file),
+      cwd: process.cwd(),
+      mtimeMs: statSync(file).mtimeMs,
+    });
+    const model = engine.analyze(capture, analyzeOptions(flags));
+    return printReport(model, undefined, file, flags, io) ? 0 : 1;
+  }
+  const { session, model } = modelOf(file, engine, flags);
+  return printReport(model, session, file, flags, io) ? 0 : 1;
 }
 
 function modelOf(
@@ -337,6 +417,11 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
         return cmdSummary(parsed.files[0], parsed.flags, io);
       case 'mcp':
         return await cmdMcp(parsed.files[0], parsed.flags);
+      case 'report':
+        return cmdReport(parsed.files[0], parsed.flags, io);
+      case 'guide':
+        io.out(GUIDE);
+        return 0;
     }
   } catch (e) {
     io.err(`paces: ${e instanceof Error ? e.message : String(e)}`);

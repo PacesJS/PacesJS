@@ -133,3 +133,80 @@ test('the CLI writes default sessions to ./.paces/ with a Windows-safe timestamp
     removeDir(dir);
   }
 });
+
+test.describe('report mode', () => {
+  test.beforeEach(async () => {
+    test.skip(!(await engineReady()), 'the engine does not export the model functions yet');
+  });
+
+  test('--report profiles, prints the report and exits without a window or server', async () => {
+    const dir = tempDir();
+    try {
+      const out = join(dir, 'r.paces');
+      const run = await runPaces(['--report', '--out', out, '--', ...APP]);
+      expect(run.code, run.stderr).toBe(0);
+      expect(run.url).toBeUndefined();
+      expect(run.stdout).toContain('next:');
+      expect(run.stdout).toContain(`paces report ${out}`);
+      expect(run.stdout).not.toContain('\u001b[');
+      expect(existsSync(out)).toBe(true);
+    } finally {
+      removeDir(dir);
+    }
+  });
+
+  test('--report mirrors the exit code of the target', async () => {
+    const dir = tempDir();
+    try {
+      const run = await runPaces([
+        '--report',
+        '--out',
+        join(dir, 'r.paces'),
+        '--',
+        'node',
+        '-e',
+        'let x=0;for(let i=0;i<3e6;i++)x+=i;process.exit(6)',
+      ]);
+      expect(run.code).toBe(6);
+      expect(run.stdout).toContain('next:');
+    } finally {
+      removeDir(dir);
+    }
+  });
+
+  test('drill-down commands on the saved session answer with exact ids', async () => {
+    const dir = tempDir();
+    try {
+      const out = join(dir, 'r.paces');
+      await runPaces(['--report', '--out', out, '--', ...APP]);
+      const tree = await runPaces(['report', out, '--tree', '--depth', '3', '--max-lines', '30']);
+      expect(tree.code, tree.stderr).toBe(0);
+      const id = /\[(f\d+)\]/.exec(tree.stdout)?.[1] as string;
+      const again = await runPaces(['report', out, '--lines', id]);
+      expect(again.code, again.stderr).toBe(0);
+      expect(again.stdout).toContain(`[${id}]`);
+      const bad = await runPaces(['report', out, '--callers', 'noSuchFunctionAnywhere']);
+      expect(bad.code).toBe(1);
+    } finally {
+      removeDir(dir);
+    }
+  });
+
+  test('report reads a .cpuprofile directly', async () => {
+    const dir = tempDir();
+    try {
+      const r = spawnSync(
+        process.execPath,
+        ['--cpu-prof', '--cpu-prof-dir', dir, join(ROOT, 'zoo', 'apps', 'hot-regex.cjs')],
+        { cwd: ROOT },
+      );
+      expect(r.status).toBe(0);
+      const prof = join(dir, readdirSync(dir).find((f) => f.endsWith('.cpuprofile')) as string);
+      const run = await runPaces(['report', prof, '--top', 'self', '--limit', '5']);
+      expect(run.code, run.stderr).toBe(0);
+      expect(run.stdout).toContain('top functions by self time');
+    } finally {
+      removeDir(dir);
+    }
+  });
+});

@@ -38,4 +38,13 @@ export { getEmbeddedSource } from './query/embedded-source.js';
 export { timelineLane } from './query/timeline.js';
 export { describeTasks } from './query/tasks.js';
 export { callersOf, hotPaths, packageBreakdown } from './query/paths.js';
+export { callTreeQuery, functionId, resolveSelector } from './query/tree.js';
+export type {
+  SelectorResult,
+  TreeQueryOptions,
+  TreeResult,
+  TreeRow,
+  TreeSelector,
+  TreeSort,
+} from './query/tree.js';
 export { hoverRelated, relatedIds } from './query/selection.js';

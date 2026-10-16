@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { defaultReportFlags } from '../src/args.js';
 import type { Flags } from '../src/args.js';
 import { nodeOptionsWith, runProfile } from '../src/profile.js';
 
@@ -15,6 +16,7 @@ const flags = (over: Partial<Flags> = {}): Flags => ({
   exclude: [],
   json: false,
   focus: [],
+  report: defaultReportFlags(),
   ...over,
 });
 const base = { cwd: resolve(import.meta.dirname, '..'), preload };
