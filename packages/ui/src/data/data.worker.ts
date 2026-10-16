@@ -25,7 +25,12 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       const fn = queries[req.method] as (...args: unknown[]) => unknown;
       reply({ id: req.id, ok: true, result: await fn.apply(queries, req.args) });
     } catch (e) {
-      reply({ id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) });
+      reply({
+        id: req.id,
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+        ...(e instanceof Error && e.stack ? { stack: e.stack } : {}),
+      });
     }
   })();
 };

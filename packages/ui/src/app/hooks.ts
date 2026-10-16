@@ -137,6 +137,9 @@ export function useAsync<T>(run: () => Promise<T>, key: string): AsyncState<T> {
         if (!cancelled) setState({ data, error: null, doneKey: key });
       })
       .catch((e: unknown) => {
+        // A query failure is shown in the view; the stack goes to the console for diagnosis.
+        // eslint-disable-next-line no-console
+        console.error('paces: a view query failed', e);
         if (!cancelled) {
           setState((s) => ({
             ...s,

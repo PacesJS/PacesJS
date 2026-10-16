@@ -16,7 +16,8 @@ export type WorkerBody =
 export type WorkerRequest = WorkerBody & { id: number };
 
 export type WorkerResponse =
-  { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
+  | { id: number; ok: true; result: unknown }
+  | { id: number; ok: false; error: string; stack?: string };
 
 export const QUERY_NAMES: readonly QueryName[] = [
   'summary',

@@ -3,6 +3,7 @@
 // analysis entirely. The header carries the engine version; a mismatch is reported, never guessed.
 
 import { ENGINE_VERSION } from './config.js';
+import { currentModelShape, modelShape } from './model-shape.js';
 import type { ExecutionModel } from './model.js';
 import { utf8Decode, utf8Encode } from './util/encoding.js';
 
@@ -36,6 +37,8 @@ interface BufferEntry {
 interface Header {
   formatVersion: number;
   engineVersion: string;
+  /** Column fingerprint of the model; see model-shape.ts. Absent in files from older engines. */
+  shape?: string;
   model: unknown;
   buffers: BufferEntry[];
 }
@@ -98,6 +101,7 @@ export function serializeModel(model: ExecutionModel): Uint8Array {
   const header: Header = {
     formatVersion: FORMAT_VERSION,
     engineVersion: ENGINE_VERSION,
+    shape: modelShape(model),
     model: encoded,
     buffers,
   };
@@ -142,6 +146,12 @@ export function deserializeModel(bytes: Uint8Array): ExecutionModel {
   const { header, bodyStart } = readHeader(bytes);
   if (header.engineVersion !== ENGINE_VERSION) {
     throw new ModelVersionError(header.engineVersion, ENGINE_VERSION);
+  }
+  if (header.shape !== currentModelShape()) {
+    throw new ModelVersionError(
+      `${header.engineVersion} (different model columns)`,
+      ENGINE_VERSION,
+    );
   }
   // Typed array views need aligned offsets; copy once when the input is a misaligned slice.
   const base = bytes.byteOffset % 8 === 0 ? bytes : bytes.slice();

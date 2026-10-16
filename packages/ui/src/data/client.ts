@@ -38,7 +38,11 @@ export async function workerClient(
     if (!p) return;
     pending.delete(msg.id);
     if (msg.ok) p.resolve(msg.result);
-    else p.reject(new Error(msg.error));
+    else {
+      const err = new Error(msg.error);
+      if (msg.stack) err.stack = msg.stack;
+      p.reject(err);
+    }
   };
   worker.onerror = (ev) => {
     const err = new Error(`The data worker failed: ${ev.message}`);
