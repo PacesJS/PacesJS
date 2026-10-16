@@ -23,9 +23,14 @@ describe('a cached model whose shape differs from this engine is rejected', () =
     expect(() => deserializeModel(serializeModel(model))).toThrow(ModelVersionError);
   });
 
-  it('rejects a model with an extra column this engine does not know', () => {
+  it('accepts optional columns that only some models have (e.g. a child process track parent)', () => {
+    const model = analyze(fixture('eslint-cli'));
+    expect(deserializeModel(serializeModel(model)).tracks).toHaveLength(model.tracks.length);
+  });
+
+  it('tolerates extra columns it does not know: older views ignore them', () => {
     const model = analyze(fixture('orders-server'));
     (model.tracks[0] as unknown as Record<string, unknown>)['fromTheFuture'] = new Uint8Array(1);
-    expect(() => deserializeModel(serializeModel(model))).toThrow(ModelVersionError);
+    expect(() => deserializeModel(serializeModel(model))).not.toThrow();
   });
 });

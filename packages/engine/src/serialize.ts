@@ -3,7 +3,7 @@
 // analysis entirely. The header carries the engine version; a mismatch is reported, never guessed.
 
 import { ENGINE_VERSION } from './config.js';
-import { currentModelShape, modelShape } from './model-shape.js';
+import { currentModelShape, modelShape, shapeCovers } from './model-shape.js';
 import type { ExecutionModel } from './model.js';
 import { utf8Decode, utf8Encode } from './util/encoding.js';
 
@@ -147,7 +147,7 @@ export function deserializeModel(bytes: Uint8Array): ExecutionModel {
   if (header.engineVersion !== ENGINE_VERSION) {
     throw new ModelVersionError(header.engineVersion, ENGINE_VERSION);
   }
-  if (header.shape !== currentModelShape()) {
+  if (!shapeCovers(header.shape, currentModelShape())) {
     throw new ModelVersionError(
       `${header.engineVersion} (different model columns)`,
       ENGINE_VERSION,

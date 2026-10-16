@@ -4,6 +4,7 @@
 // Edge `count` is the estimated number of calls: contiguous runs of samples inside the callee's
 // call nodes (a call shorter than the sampling interval cannot be seen).
 
+import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
 import type {
   CallGraph,
@@ -46,7 +47,8 @@ export function callGraph(
   const F = model.functions.length;
   const K = F + view.syntheticPackages.length + 1;
   const coverage = options.coverage ?? 0.8;
-  const maxNodes = options.maxNodes ?? 25;
+  const prioritize = options.prioritizeTarget !== false;
+  const maxNodes = options.maxNodes ?? (prioritize ? 40 : 25);
   const totalUs = view.totalUs;
   const runs = runsPerNode(tree, view.samples);
 
@@ -124,8 +126,20 @@ export function callGraph(
     }
   } else {
     let cumulative = 0;
+    if (prioritize) {
+      const entry = model.tracks[view.trackIndex]?.rootFn;
+      for (const f of all) {
+        if (shown.size >= maxNodes) break;
+        if (f >= F || f === entry || model.functions.origin[f] !== Origin.User) continue;
+        const big = (total.get(f) ?? 0) >= 0.01 * totalUs || (self.get(f) ?? 0) >= 0.005 * totalUs;
+        if (!big) continue;
+        shown.add(f);
+        cumulative += self.get(f) ?? 0;
+      }
+    }
     for (const f of all) {
       if (shown.size >= maxNodes || (totalUs > 0 && cumulative >= coverage * totalUs)) break;
+      if (shown.has(f)) continue;
       shown.add(f);
       cumulative += self.get(f) ?? 0;
     }

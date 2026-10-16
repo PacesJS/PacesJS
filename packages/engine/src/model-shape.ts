@@ -34,6 +34,13 @@ export function modelShape(model: ExecutionModel): string {
   return out.join(',');
 }
 
+/** True when every column the current engine needs is present (extras and optional keys are fine). */
+export function shapeCovers(found: string | undefined, required: string): boolean {
+  if (found === undefined) return false;
+  const have = new Set(found.split(','));
+  return required.split(',').every((column) => have.has(column));
+}
+
 // The smallest capture the engine accepts: one process, a root and one function, three samples.
 const MINIMAL: RawCapture = {
   meta: {

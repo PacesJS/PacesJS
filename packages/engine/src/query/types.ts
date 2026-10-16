@@ -221,8 +221,13 @@ export interface FlameLayout {
 export interface CallGraphOptions {
   /** Cover this share of total time (default 0.8). */
   coverage?: number;
-  /** Never show more nodes than this (default 25). */
+  /** Never show more nodes than this (default 40, or 25 without `prioritizeTarget`). */
   maxNodes?: number;
+  /**
+   * Keep the target's own functions (origin user) with total >= 1% or self >= 0.5% of busy time first, then fill
+   * with the heaviest others (default true). False: only the heaviest by self time up to `coverage`.
+   */
+  prioritizeTarget?: boolean;
   /** Ego mode: center on this function, 2 callers up and 2 callees down. */
   ego?: ViewFnId;
   /** Functions whose hidden neighbours were revealed with the "+N" chip. */

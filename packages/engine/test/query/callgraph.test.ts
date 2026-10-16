@@ -171,3 +171,40 @@ describe('call graph roots and connectivity', () => {
     expect(callGraph(m, plain).nodes.some((n) => n.isEntry)).toBe(false);
   });
 });
+
+describe('call graph prioritizes the target code', () => {
+  const m = loadModel('eslint-cli');
+  const view = applyTransforms(m, m.primaryTrack, DEFAULT_TRANSFORMS);
+  const isUser = (fn: number) => fn < m.functions.length && m.functions.origin[fn] === 0;
+
+  it('keeps target functions that matter and caps the graph at about 40 nodes', () => {
+    const g = callGraph(m, view);
+    const users = g.nodes.filter((n) => isUser(n.fn) && !n.isEntry);
+    const old = callGraph(m, view, { prioritizeTarget: false });
+    expect(users.length).toBeGreaterThan(
+      old.nodes.filter((n) => isUser(n.fn) && !n.isEntry).length,
+    );
+    expect(g.nodes.length).toBeLessThanOrEqual(41);
+    expect(g.nodes[0]?.isEntry).toBe(true);
+  });
+
+  it('keeps every target function above the share thresholds', () => {
+    const g = callGraph(m, view, { maxNodes: 100 });
+    const shown = new Set(g.nodes.map((n) => n.fn));
+    for (const n of callGraph(m, view, { coverage: 1, maxNodes: 1000, prioritizeTarget: false })
+      .nodes) {
+      if (isUser(n.fn) && (n.totalShare >= 0.01 || n.selfShare >= 0.005))
+        expect(shown.has(n.fn)).toBe(true);
+    }
+  });
+
+  it('keeps the contracted edges connected', () => {
+    const g = callGraph(m, view);
+    const called = new Set(g.edges.map((e) => e.to));
+    expect(g.nodes.filter((n) => !n.isEntry && !called.has(n.fn))).toEqual([]);
+  });
+
+  it('can be turned off', () => {
+    expect(callGraph(m, view, { prioritizeTarget: false }).nodes.length).toBeLessThanOrEqual(26);
+  });
+});

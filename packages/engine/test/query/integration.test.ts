@@ -28,7 +28,7 @@ describe('query layer over every recorded track', () => {
     expect(selfSum + (view.tree.self[0] ?? 0)).toBeCloseTo(view.totalUs, 0);
 
     const graph = callGraph(model, view);
-    expect(graph.nodes.length).toBeLessThanOrEqual(25);
+    expect(graph.nodes.length).toBeLessThanOrEqual(41);
 
     const track = model.tracks[trackIndex];
     const longest = Array.from({ length: track?.tasks.length ?? 0 }, (_, k) => k).sort(
