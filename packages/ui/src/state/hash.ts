@@ -1,0 +1,226 @@
+import {
+  ALL_TRACKS,
+  DEFAULT_OPTIONS,
+  DEFAULT_TRANSFORMS,
+  NO_SELECTION,
+  VIEW_ORDER,
+  initialSnapshot,
+} from './types';
+import type { Selection, Snapshot, TimeRange, Transform, ViewId, ViewOptions } from './types';
+
+const enc = encodeURIComponent;
+const dec = (s: string): string => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
+export function encodeSelection(sel: Selection): string {
+  switch (sel.kind) {
+    case 'none':
+      return '';
+    case 'fn':
+      return `fn:${sel.fn}`;
+    case 'node':
+    case 'span':
+    case 'task': {
+      const idx = sel.kind === 'node' ? sel.node : sel.kind === 'span' ? sel.span : sel.task;
+      return `${sel.kind}:${enc(sel.track)}:${idx}`;
+    }
+    case 'range':
+      return `range:${Math.round(sel.from)}:${Math.round(sel.to)}`;
+  }
+}
+
+function int(s: string | undefined): number | null {
+  if (s === undefined || !/^-?\d+$/.test(s)) return null;
+  return Number(s);
+}
+
+export function decodeSelection(text: string): Selection {
+  const [kind, a, b] = text.split(':');
+  if (kind === 'fn') {
+    const fn = int(a);
+    return fn === null ? NO_SELECTION : { kind: 'fn', fn };
+  }
+  if (kind === 'node' || kind === 'span' || kind === 'task') {
+    const idx = int(b);
+    if (a === undefined || idx === null) return NO_SELECTION;
+    const track = dec(a);
+    if (kind === 'node') return { kind, track, node: idx };
+    if (kind === 'span') return { kind, track, span: idx };
+    return { kind, track, task: idx };
+  }
+  if (kind === 'range') {
+    const from = int(a);
+    const to = int(b);
+    return from === null || to === null ? NO_SELECTION : { kind: 'range', from, to };
+  }
+  return NO_SELECTION;
+}
+
+export function encodeTransform(t: Transform): string {
+  switch (t.k) {
+    case 'collapse-deps':
+    case 'merge-plumbing':
+    case 'drop-idle':
+    case 'invert':
+      return t.k;
+    case 'collapse-pkg':
+      return `pkg:${enc(t.pkg)}`;
+    case 'merge-fn':
+      return `merge:${t.fn}`;
+    case 'focus-fn':
+      return `focus:${t.fn}`;
+    case 'focus-self':
+      return `fself:${t.fn}`;
+    case 'collapse-rec':
+      return `rec:${t.fn}`;
+    case 'drop-fn':
+      return `drop:${t.fn}`;
+    case 'merge-node':
+      return `mnode:${enc(t.track)}:${t.node}`;
+    case 'focus-node':
+      return `fnode:${enc(t.track)}:${t.node}`;
+  }
+}
+
+export function decodeTransform(text: string): Transform | null {
+  const [kind, a, b] = text.split(':');
+  switch (kind) {
+    case 'collapse-deps':
+    case 'merge-plumbing':
+    case 'drop-idle':
+    case 'invert':
+      return { k: kind };
+    case 'pkg':
+      return a === undefined ? null : { k: 'collapse-pkg', pkg: dec(a) };
+    case 'merge':
+    case 'focus':
+    case 'fself':
+    case 'rec':
+    case 'drop': {
+      const fn = int(a);
+      if (fn === null) return null;
+      const k = {
+        merge: 'merge-fn',
+        focus: 'focus-fn',
+        fself: 'focus-self',
+        rec: 'collapse-rec',
+        drop: 'drop-fn',
+      } as const;
+      return { k: k[kind], fn };
+    }
+    case 'mnode':
+    case 'fnode': {
+      const node = int(b);
+      if (a === undefined || node === null) return null;
+      return { k: kind === 'mnode' ? 'merge-node' : 'focus-node', track: dec(a), node };
+    }
+    default:
+      return null;
+  }
+}
+
+function encodeOptions(o: ViewOptions): string {
+  const parts: string[] = [];
+  if (o.critical !== DEFAULT_OPTIONS.critical) parts.push(`crit:${o.critical ? 1 : 0}`);
+  if (o.logical !== DEFAULT_OPTIONS.logical) parts.push(`logical:${o.logical ? 1 : 0}`);
+  if (o.sort !== DEFAULT_OPTIONS.sort) parts.push(`sort:${o.sort}`);
+  if (o.color !== DEFAULT_OPTIONS.color) parts.push(`color:${o.color}`);
+  if (o.layout !== DEFAULT_OPTIONS.layout) parts.push(`layout:${o.layout}`);
+  if (o.ego !== DEFAULT_OPTIONS.ego) parts.push(`ego:${o.ego ? 1 : 0}`);
+  if (o.zoom.length > 0) parts.push(`zoom:${o.zoom.join('.')}`);
+  if (o.task !== DEFAULT_OPTIONS.task) parts.push(`task:${o.task}`);
+  if (o.expanded.length > 0) parts.push(`exp:${o.expanded.map(enc).join('|')}`);
+  if (o.line !== DEFAULT_OPTIONS.line) parts.push(`line:${o.line}`);
+  return parts.join(',');
+}
+
+function decodeOptions(text: string): ViewOptions {
+  const o: ViewOptions = { ...DEFAULT_OPTIONS, zoom: [], expanded: [] };
+  for (const part of text.split(',')) {
+    const i = part.indexOf(':');
+    if (i < 0) continue;
+    const key = part.slice(0, i);
+    const val = part.slice(i + 1);
+    if (key === 'crit') o.critical = val === '1';
+    else if (key === 'logical') o.logical = val === '1';
+    else if (key === 'sort' && (val === 'heavy' || val === 'alpha')) o.sort = val;
+    else if (key === 'color' && (val === 'origin' || val === 'self')) o.color = val;
+    else if (key === 'layout' && (val === 'icicle' || val === 'flames')) o.layout = val;
+    else if (key === 'ego') o.ego = val === '1';
+    else if (key === 'zoom')
+      o.zoom = val
+        .split('.')
+        .map((n) => int(n))
+        .filter((n): n is number => n !== null);
+    else if (key === 'task') o.task = int(val) ?? -1;
+    else if (key === 'line') o.line = int(val) ?? 0;
+    else if (key === 'exp') o.expanded = val.split('|').map(dec).filter(Boolean);
+  }
+  return o;
+}
+
+export function encodeRange(r: TimeRange | null): string {
+  return r ? `${Math.round(r[0])}..${Math.round(r[1])}` : '';
+}
+
+export function decodeRange(text: string | null): TimeRange | null {
+  if (!text) return null;
+  const [a, b] = text.split('..');
+  const from = int(a);
+  const to = int(b);
+  return from === null || to === null || to <= from ? null : [from, to];
+}
+
+const sameTransforms = (a: readonly Transform[], b: readonly Transform[]): boolean =>
+  a.length === b.length &&
+  a.every((t, i) => encodeTransform(t) === encodeTransform(b[i] as Transform));
+
+/** Serialize the screen state. The leading `#` is included. */
+export function snapshotToHash(s: Snapshot): string {
+  const q: string[] = [`v=${s.view}`];
+  if (s.track !== ALL_TRACKS) q.push(`tr=${enc(s.track)}`);
+  const sel = encodeSelection(s.selection);
+  if (sel) q.push(`sel=${enc(sel)}`);
+  const range = encodeRange(s.range);
+  if (range) q.push(`r=${range}`);
+  if (!sameTransforms(s.transforms, DEFAULT_TRANSFORMS)) {
+    q.push(`t=${s.transforms.map((t) => enc(encodeTransform(t))).join(',')}`);
+  }
+  const opts = encodeOptions(s.options);
+  if (opts) q.push(`o=${enc(opts)}`);
+  return `#${q.join('&')}`;
+}
+
+/** Restore the screen state; unknown or malformed parts fall back to defaults. */
+export function hashToSnapshot(hash: string): Snapshot {
+  const base = initialSnapshot();
+  const text = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!text) return base;
+  const params = new Map<string, string>();
+  for (const part of text.split('&')) {
+    const i = part.indexOf('=');
+    if (i > 0) params.set(part.slice(0, i), part.slice(i + 1));
+  }
+  const view = params.get('v');
+  if (view && (VIEW_ORDER as readonly string[]).includes(view)) base.view = view as ViewId;
+  const tr = params.get('tr');
+  if (tr) base.track = dec(tr);
+  const sel = params.get('sel');
+  if (sel) base.selection = decodeSelection(dec(sel));
+  base.range = decodeRange(params.get('r') ?? null);
+  const t = params.get('t');
+  if (t !== undefined) {
+    base.transforms = t
+      .split(/,|%2C/i)
+      .map((x) => decodeTransform(dec(x)))
+      .filter((x): x is Transform => x !== null);
+  }
+  const o = params.get('o');
+  if (o) base.options = decodeOptions(dec(o));
+  return base;
+}

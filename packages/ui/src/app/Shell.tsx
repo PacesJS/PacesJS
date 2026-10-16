@@ -1,0 +1,260 @@
+import { useEffect, useMemo, useReducer, useRef } from 'react';
+import type { HostAdapter } from '../host/adapter';
+import type { QueryClient } from '../data/protocol';
+import type { ModelSummary, Scope } from '../data/queries';
+import { DetailsDrawer } from '../components/DetailsDrawer';
+import { Header } from '../components/Header';
+import { MainView } from '../components/MainView';
+import { Overview } from '../components/Overview';
+import { ShortcutSheet } from '../components/ShortcutSheet';
+import { SourcePanel } from '../components/SourcePanel';
+import { hashToSnapshot, snapshotToHash } from '../state/hash';
+import { resolveKey } from '../state/keymap';
+import { createState, reducer, snapshotOf } from '../state/reducer';
+import { addTransform } from '../state/transforms';
+import type { Selection, Snapshot } from '../state/types';
+import { AppContext } from './context';
+import type { AppContextValue } from './context';
+import { useAsync } from './hooks';
+
+interface ShellProps {
+  host: HostAdapter;
+  client: QueryClient;
+  summary: ModelSummary;
+  initial: Snapshot;
+  sessionPath?: string;
+  initialDismissed: string[];
+  initialPinned: string[];
+}
+
+const SMALL_PROFILE_SAMPLES = 200;
+
+export function Shell({
+  host,
+  client,
+  summary,
+  initial,
+  sessionPath,
+  initialDismissed,
+  initialPinned,
+}: ShellProps) {
+  const [state, dispatch] = useReducer(reducer, initial, (snap) => ({
+    ...createState(snap),
+    dismissed: initialDismissed,
+    pinned: initialPinned,
+  }));
+  const snap = snapshotOf(state);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+
+  const scope: Scope = useMemo(
+    () => ({ track: snap.track, transforms: snap.transforms, range: snap.range }),
+    [snap.track, snap.transforms, snap.range],
+  );
+  const scopeKey = useMemo(() => JSON.stringify(scope), [scope]);
+
+  const describeQ = useAsync(
+    () => client.describe(snap.selection),
+    `describe:${JSON.stringify(snap.selection)}`,
+  );
+  const selection = useMemo(() => {
+    const base = describeQ.data ?? {
+      fn: null,
+      node: null,
+      name: '',
+      track: null,
+      task: null,
+      loc: '',
+    };
+    return snap.selection.kind === 'fn' ? { ...base, fn: snap.selection.fn } : base;
+  }, [describeQ.data, snap.selection]);
+  const hoverFn = state.hover.kind === 'fn' ? state.hover.fn : null;
+  const primaryTrack = snap.track !== 'all' ? snap.track : (summary.tracks[0]?.id ?? 'main');
+
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
+
+  // URL hash mirrors the screen: reload or a pasted link restores it.
+  const hash = snapshotToHash(snap);
+  useEffect(() => {
+    if (location.hash !== hash) history.replaceState(null, '', hash);
+  }, [hash]);
+  useEffect(() => {
+    const onHash = (): void => {
+      const next = hashToSnapshot(location.hash);
+      if (snapshotToHash(next) !== snapshotToHash(snapshotOf(stateRef.current))) {
+        dispatch({ type: 'restore', snapshot: next });
+      }
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Persist dismissed hints and pinned tracks through the host.
+  const savedRef = useRef(JSON.stringify({ d: initialDismissed, p: initialPinned }));
+  useEffect(() => {
+    const now = JSON.stringify({ d: state.dismissed, p: state.pinned });
+    if (now === savedRef.current) return;
+    savedRef.current = now;
+    void host
+      .loadSettings()
+      .then((s) =>
+        host.saveSettings({ ...s, dismissedHints: state.dismissed, pinnedTracks: state.pinned }),
+      );
+  }, [host, state.dismissed, state.pinned]);
+
+  // Theme override for screenshots and links: ?theme=dark|light
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('theme');
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  }, []);
+
+  useEffect(() => {
+    document.title = 'paces';
+  }, []);
+
+  const selectionRef = useRef(selection);
+  useEffect(() => {
+    selectionRef.current = selection;
+  });
+
+  const select = (selection: Selection): void => dispatch({ type: 'select', selection });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const action = resolveKey(e);
+      if (!action) return;
+      const s = snapshotOf(stateRef.current);
+      const sel = selectionRef.current;
+      const swallow = (): void => e.preventDefault();
+      switch (action.type) {
+        case 'view':
+          swallow();
+          dispatch({ type: 'go', patch: { view: action.view } });
+          break;
+        case 'focus-search':
+          swallow();
+          searchRef.current?.focus();
+          break;
+        case 'focus-subtree':
+          if (sel.node !== null && sel.track) {
+            swallow();
+            dispatch({
+              type: 'add-transform',
+              transform: { k: 'focus-node', track: sel.track, node: sel.node },
+            });
+          } else if (sel.fn !== null) {
+            swallow();
+            dispatch({ type: 'add-transform', transform: { k: 'focus-fn', fn: sel.fn } });
+          }
+          break;
+        case 'merge':
+          if (sel.fn !== null) {
+            swallow();
+            dispatch({ type: 'add-transform', transform: { k: 'merge-fn', fn: sel.fn } });
+          }
+          break;
+        case 'collapse-pkg':
+          if (sel.fn !== null) {
+            swallow();
+            void client.packageOf(sel.fn).then((pkg) => {
+              if (pkg) dispatch({ type: 'add-transform', transform: { k: 'collapse-pkg', pkg } });
+            });
+          }
+          break;
+        case 'invert':
+          swallow();
+          dispatch({
+            type: 'go',
+            patch: { transforms: addTransform(s.transforms, { k: 'invert' }) },
+          });
+          break;
+        case 'critical':
+          swallow();
+          dispatch({ type: 'options', options: { critical: !s.options.critical } });
+          break;
+        case 'shortcuts':
+          swallow();
+          dispatch({ type: 'set-shortcuts', open: true });
+          break;
+        case 'back':
+          swallow();
+          dispatch({ type: 'back' });
+          break;
+        case 'forward':
+          swallow();
+          dispatch({ type: 'forward' });
+          break;
+        case 'escape':
+          if (stateRef.current.shortcutsOpen) dispatch({ type: 'set-shortcuts', open: false });
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [client]);
+
+  const perTrackSamples = Math.max(0, ...summary.tracks.map((t) => t.samples));
+  const small = perTrackSamples > 0 && perTrackSamples < SMALL_PROFILE_SAMPLES;
+
+  const value: AppContextValue = {
+    host,
+    client,
+    summary,
+    state,
+    snap,
+    dispatch,
+    scope,
+    scopeKey,
+    selection,
+    hoverFn,
+    primaryTrack,
+    select,
+    search: state.search,
+  };
+
+  return (
+    <AppContext.Provider value={value}>
+      <Header searchRef={searchRef} sessionPath={sessionPath} />
+      <main className="app-main">
+        {small || summary.warnings.length > 0 ? (
+          <div className="banner-stack">
+            {small ? (
+              <div role="status" className="note">
+                <span className="note-text">
+                  This profile has only {perTrackSamples} samples, so the numbers are statistically
+                  noisy. Run it longer, or sample faster with --interval 100.
+                </span>
+              </div>
+            ) : null}
+            {summary.warnings.map((w) => (
+              <div key={w} role="status" className="note">
+                <span className="note-text">{w}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <Overview />
+        <div className="app-grid">
+          <div className="app-col">
+            <MainView />
+            <DetailsDrawer />
+          </div>
+          <aside
+            aria-label="Source"
+            className={`app-aside${state.sourceCollapsed ? ' is-collapsed' : ''}`}
+          >
+            <SourcePanel />
+          </aside>
+        </div>
+      </main>
+      <div aria-live="polite" className="sr-only" role="status">
+        {selection.name ? `Selected ${selection.name}` : ''}
+      </div>
+      {state.shortcutsOpen ? (
+        <ShortcutSheet onClose={() => dispatch({ type: 'set-shortcuts', open: false })} />
+      ) : null}
+    </AppContext.Provider>
+  );
+}

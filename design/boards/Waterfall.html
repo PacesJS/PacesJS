@@ -1,173 +1,698 @@
-<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<title>Trailmap — Waterfall</title>
-<script src="0fb653ca-2f3e-44f3-b689-ad8704956e68"></script>
-</head>
-<body>
-<x-dc>
-<helmet>
-<!--fonts-->
-<style>
-body{margin:0;background:#f4f5fa}
-a{color:#1d5ad0}a:hover{color:#171a3a}
-:focus-visible{outline:none;box-shadow:0 0 0 2px #ffffff,0 0 0 4px #b24700}
-</style>
-</helmet>
-<div style="min-height: 100vh; background: #f4f5fa; color: #171a3a; font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif; font-size: 14px; line-height: 22px">
-<dc-import name="Header" hint-size="100%,132px"></dc-import>
-<main style="max-width: 1680px; margin: 0 auto; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
-<dc-import name="Overview" active="2" hint-size="100%,440px"></dc-import>
-<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
-<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
-<section aria-label="Main view" style="background: #ffffff; border-radius: 16px; box-shadow: 0 1px 2px #171a3a0a, 0 6px 20px -6px #171a3a14; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0">
-<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
-<nav aria-label="Views" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: #f4f5fa; border-radius: 10px">
-<a href="Main.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); box-shadow: 0 8px 20px -6px #ff7a1a8c; color: #171a3a; font-size: 14px; font-weight: 500; text-decoration: none">Waterfall <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff99">1</kbd></a>
-<a href="FlameGraph.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Flame graph <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">2</kbd></a>
-<a href="CallGraph.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Call graph <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">3</kbd></a>
-<a href="Functions.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Functions <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">4</kbd></a>
-</nav>
-<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
-<label for="task-pick" style="font-size: 12px; line-height: 16px; color: #5f6580">Task</label>
-<sc-raw-select id="task-pick" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #848aa3; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 14px">
-<option>GET /orders · ~182 ms · longest</option>
-<option>GET /orders · ~171 ms</option>
-<option>timer 250 ms · flushMetrics</option>
-<option>microtasks · ~12 ms</option>
-</sc-raw-select>
-</div>
-</div>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Trailmap — Waterfall</title>
+    <script src="0fb653ca-2f3e-44f3-b689-ad8704956e68"></script>
+  </head>
+  <body>
+    <x-dc>
+      <helmet>
+        <!--fonts-->
+        <style>
+          body {
+            margin: 0;
+            background: #f4f5fa;
+          }
+          a {
+            color: #1d5ad0;
+          }
+          a:hover {
+            color: #171a3a;
+          }
+          :focus-visible {
+            outline: none;
+            box-shadow:
+              0 0 0 2px #ffffff,
+              0 0 0 4px #b24700;
+          }
+        </style>
+      </helmet>
+      <div
+        style="
+          min-height: 100vh;
+          background: #f4f5fa;
+          color: #171a3a;
+          font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+          font-size: 14px;
+          line-height: 22px;
+        "
+      >
+        <dc-import name="Header" hint-size="100%,132px"></dc-import>
+        <main
+          style="
+            max-width: 1680px;
+            margin: 0 auto;
+            padding: 24px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+          "
+        >
+          <dc-import name="Overview" active="2" hint-size="100%,440px"></dc-import>
+          <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+            <div
+              style="
+                flex: 999 1 640px;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+              "
+            >
+              <section
+                aria-label="Main view"
+                style="
+                  background: #ffffff;
+                  border-radius: 16px;
+                  box-shadow:
+                    0 1px 2px #171a3a0a,
+                    0 6px 20px -6px #171a3a14;
+                  padding: 20px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 16px;
+                  min-width: 0;
+                "
+              >
+                <div
+                  style="
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                    align-items: center;
+                    justify-content: space-between;
+                  "
+                >
+                  <nav
+                    aria-label="Views"
+                    style="
+                      display: flex;
+                      flex-wrap: wrap;
+                      gap: 4px;
+                      padding: 4px;
+                      background: #f4f5fa;
+                      border-radius: 10px;
+                    "
+                  >
+                    <a
+                      href="Main.dc.html"
+                      aria-current="page"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        min-height: 44px;
+                        box-sizing: border-box;
+                        padding: 0 16px;
+                        border-radius: 6px;
+                        background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%);
+                        box-shadow: 0 8px 20px -6px #ff7a1a8c;
+                        color: #171a3a;
+                        font-size: 14px;
+                        font-weight: 500;
+                        text-decoration: none;
+                      "
+                      >Waterfall
+                      <kbd
+                        style="
+                          font-family: inherit;
+                          font-size: 11px;
+                          line-height: 16px;
+                          padding: 0 6px;
+                          border-radius: 6px;
+                          background: #ffffff99;
+                        "
+                        >1</kbd
+                      ></a
+                    >
+                    <a
+                      href="FlameGraph.dc.html"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        min-height: 44px;
+                        box-sizing: border-box;
+                        padding: 0 16px;
+                        border-radius: 6px;
+                        color: #5f6580;
+                        font-size: 14px;
+                        font-weight: 500;
+                        text-decoration: none;
+                      "
+                      >Flame graph
+                      <kbd
+                        style="
+                          font-family: inherit;
+                          font-size: 11px;
+                          line-height: 16px;
+                          padding: 0 6px;
+                          border-radius: 6px;
+                          background: #ffffff;
+                          border: 1px solid #e8eaf1;
+                        "
+                        >2</kbd
+                      ></a
+                    >
+                    <a
+                      href="CallGraph.dc.html"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        min-height: 44px;
+                        box-sizing: border-box;
+                        padding: 0 16px;
+                        border-radius: 6px;
+                        color: #5f6580;
+                        font-size: 14px;
+                        font-weight: 500;
+                        text-decoration: none;
+                      "
+                      >Call graph
+                      <kbd
+                        style="
+                          font-family: inherit;
+                          font-size: 11px;
+                          line-height: 16px;
+                          padding: 0 6px;
+                          border-radius: 6px;
+                          background: #ffffff;
+                          border: 1px solid #e8eaf1;
+                        "
+                        >3</kbd
+                      ></a
+                    >
+                    <a
+                      href="Functions.dc.html"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        min-height: 44px;
+                        box-sizing: border-box;
+                        padding: 0 16px;
+                        border-radius: 6px;
+                        color: #5f6580;
+                        font-size: 14px;
+                        font-weight: 500;
+                        text-decoration: none;
+                      "
+                      >Functions
+                      <kbd
+                        style="
+                          font-family: inherit;
+                          font-size: 11px;
+                          line-height: 16px;
+                          padding: 0 6px;
+                          border-radius: 6px;
+                          background: #ffffff;
+                          border: 1px solid #e8eaf1;
+                        "
+                        >4</kbd
+                      ></a
+                    >
+                  </nav>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                    <label
+                      for="task-pick"
+                      style="font-size: 12px; line-height: 16px; color: #5f6580"
+                      >Task</label
+                    >
+                    <sc-raw-select
+                      id="task-pick"
+                      style="
+                        min-height: 44px;
+                        padding: 0 12px;
+                        border-radius: 10px;
+                        border: 1px solid #848aa3;
+                        background: #ffffff;
+                        color: #171a3a;
+                        font-family: inherit;
+                        font-size: 14px;
+                      "
+                    >
+                      <option>GET /orders · ~182 ms · longest</option>
+                      <option>GET /orders · ~171 ms</option>
+                      <option>timer 250 ms · flushMetrics</option>
+                      <option>microtasks · ~12 ms</option>
+                    </sc-raw-select>
+                  </div>
+                </div>
 
-<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between">
-<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
-<button role="switch" aria-checked="true" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px 0 6px; border: 0; border-radius: 10px; background: #ffebd6; color: #b24700; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer"><span aria-hidden="true" style="width: 32px; height: 20px; border-radius: 9999px; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); position: relative; display: inline-block"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 9999px; background: #ffffff"></span></span>Critical path <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff">p</kbd></button>
-<button role="switch" aria-checked="true" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px 0 6px; border: 0; border-radius: 10px; background: #f4f5fa; color: #171a3a; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer"><span aria-hidden="true" style="width: 32px; height: 20px; border-radius: 9999px; background: #ff8a1f; position: relative; display: inline-block"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 9999px; background: #ffffff"></span></span>Logical flow <span style="font-size: 12px; color: #5f6580">from --async</span></button>
-</div>
-<p style="margin: 0; font-size: 12px; line-height: 16px; color: #5f6580">x = time inside the task, ms · rows in execution order · ~ = sampled estimate</p>
-</div>
+                <div
+                  style="
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 16px;
+                    align-items: center;
+                    justify-content: space-between;
+                  "
+                >
+                  <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+                    <button
+                      role="switch"
+                      aria-checked="true"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        min-height: 44px;
+                        padding: 0 12px 0 6px;
+                        border: 0;
+                        border-radius: 10px;
+                        background: #ffebd6;
+                        color: #b24700;
+                        font-family: inherit;
+                        font-size: 14px;
+                        font-weight: 500;
+                        cursor: pointer;
+                      "
+                    >
+                      <span
+                        aria-hidden="true"
+                        style="
+                          width: 32px;
+                          height: 20px;
+                          border-radius: 9999px;
+                          background: linear-gradient(
+                            135deg,
+                            #ffc23d 0%,
+                            #ff8a1f 55%,
+                            #ff7a1a 100%
+                          );
+                          position: relative;
+                          display: inline-block;
+                        "
+                        ><span
+                          style="
+                            position: absolute;
+                            top: 2px;
+                            right: 2px;
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 9999px;
+                            background: #ffffff;
+                          "
+                        ></span></span
+                      >Critical path
+                      <kbd
+                        style="
+                          font-family: inherit;
+                          font-size: 11px;
+                          line-height: 16px;
+                          padding: 0 6px;
+                          border-radius: 6px;
+                          background: #ffffff;
+                        "
+                        >p</kbd
+                      >
+                    </button>
+                    <button
+                      role="switch"
+                      aria-checked="true"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        min-height: 44px;
+                        padding: 0 12px 0 6px;
+                        border: 0;
+                        border-radius: 10px;
+                        background: #f4f5fa;
+                        color: #171a3a;
+                        font-family: inherit;
+                        font-size: 14px;
+                        font-weight: 500;
+                        cursor: pointer;
+                      "
+                    >
+                      <span
+                        aria-hidden="true"
+                        style="
+                          width: 32px;
+                          height: 20px;
+                          border-radius: 9999px;
+                          background: #ff8a1f;
+                          position: relative;
+                          display: inline-block;
+                        "
+                        ><span
+                          style="
+                            position: absolute;
+                            top: 2px;
+                            right: 2px;
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 9999px;
+                            background: #ffffff;
+                          "
+                        ></span></span
+                      >Logical flow
+                      <span style="font-size: 12px; color: #5f6580">from --async</span>
+                    </button>
+                  </div>
+                  <p style="margin: 0; font-size: 12px; line-height: 16px; color: #5f6580">
+                    x = time inside the task, ms · rows in execution order · ~ = sampled estimate
+                  </p>
+                </div>
 
-<div style="overflow-x: auto; margin: 0 -4px; padding: 0 4px">
-<div style="min-width: 860px; display: flex; flex-direction: column">
-<div style="display: grid; grid-template-columns: 320px minmax(0, 1fr) 76px 60px; column-gap: 12px; padding: 0 8px; align-items: end">
-<div style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580">MINIMAP</div>
-<div aria-hidden="true" style="position: relative; height: 28px; background: #f4f5fa; border-radius: 6px; overflow: hidden">
-<sc-for list="{{mini}}" as="m" hint-placeholder-count="10"><div style="{{m.style}}"></div></sc-for>
-<div style="position: absolute; inset: 0; border: 2px solid #b24700; border-radius: 6px"></div>
-</div>
-<div></div><div></div>
-</div>
-<div style="display: grid; grid-template-columns: 320px minmax(0, 1fr) 76px 60px; column-gap: 12px; padding: 8px 8px 6px; border-bottom: 1px solid #e8eaf1; align-items: end">
-<div style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580">CALL</div>
-<div style="position: relative; height: 16px; font-size: 12px; line-height: 16px; color: #5f6580">
-<sc-for list="{{ticks}}" as="t" hint-placeholder-count="8"><span style="{{t.style}}">{{t.label}}</span></sc-for>
-</div>
-<div style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580; text-align: right">TIME</div>
-<div style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580; text-align: right">SHARE</div>
-</div>
-<div style="display: flex; flex-direction: column; padding-top: 4px">
-<sc-for list="{{rows}}" as="r" hint-placeholder-count="18">
-<div style="{{r.rowStyle}}">
-<div style="{{r.nameStyle}}">
-<sc-if value="{{r.kids}}" hint-placeholder-val="{{ true }}"><svg aria-hidden="true" width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#5f6580" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M6 9l6 6 6-6"></path></svg></sc-if>
-<sc-if value="{{r.leaf}}" hint-placeholder-val="{{ false }}"><span style="width: 14px; flex: none"></span></sc-if>
-<span aria-hidden="true" style="{{r.dotStyle}}"></span>
-<span style="{{r.labelStyle}}">{{r.name}}</span>
-<span style="font-size: 12px; line-height: 16px; color: #5f6580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.loc}}</span>
-</div>
-<div style="position: relative; height: 32px; background-image: linear-gradient(to right, #e8eaf1 1px, transparent 1px); background-size: 13.736% 100%">
-<sc-if value="{{r.isSpan}}" hint-placeholder-val="{{ true }}"><div style="{{r.barStyle}}"><span style="font-size: 11px; line-height: 20px; font-weight: 600; color: #171a3a; white-space: nowrap; padding: 0 6px">{{r.inBar}}</span></div></sc-if>
-<sc-if value="{{r.isWait}}" hint-placeholder-val="{{ false }}"><div style="{{r.waitStyle}}"></div><span style="{{r.waitLabelStyle}}">{{r.waitLabel}}</span></sc-if>
-</div>
-<div style="font-size: 14px; line-height: 20px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums">{{r.dur}}</div>
-<div style="font-size: 12px; line-height: 16px; color: #5f6580; text-align: right; font-variant-numeric: tabular-nums">{{r.share}}</div>
-</div>
-</sc-for>
-</div>
-</div>
-</div>
+                <div style="overflow-x: auto; margin: 0 -4px; padding: 0 4px">
+                  <div style="min-width: 860px; display: flex; flex-direction: column">
+                    <div
+                      style="
+                        display: grid;
+                        grid-template-columns: 320px minmax(0, 1fr) 76px 60px;
+                        column-gap: 12px;
+                        padding: 0 8px;
+                        align-items: end;
+                      "
+                    >
+                      <div
+                        style="
+                          font-size: 11px;
+                          line-height: 16px;
+                          font-weight: 600;
+                          letter-spacing: 0.1em;
+                          color: #5f6580;
+                        "
+                      >
+                        MINIMAP
+                      </div>
+                      <div
+                        aria-hidden="true"
+                        style="
+                          position: relative;
+                          height: 28px;
+                          background: #f4f5fa;
+                          border-radius: 6px;
+                          overflow: hidden;
+                        "
+                      >
+                        <sc-for list="{{mini}}" as="m" hint-placeholder-count="10"
+                          ><div style="{{m.style}}"></div
+                        ></sc-for>
+                        <div
+                          style="
+                            position: absolute;
+                            inset: 0;
+                            border: 2px solid #b24700;
+                            border-radius: 6px;
+                          "
+                        ></div>
+                      </div>
+                      <div></div>
+                      <div></div>
+                    </div>
+                    <div
+                      style="
+                        display: grid;
+                        grid-template-columns: 320px minmax(0, 1fr) 76px 60px;
+                        column-gap: 12px;
+                        padding: 8px 8px 6px;
+                        border-bottom: 1px solid #e8eaf1;
+                        align-items: end;
+                      "
+                    >
+                      <div
+                        style="
+                          font-size: 11px;
+                          line-height: 16px;
+                          font-weight: 600;
+                          letter-spacing: 0.1em;
+                          color: #5f6580;
+                        "
+                      >
+                        CALL
+                      </div>
+                      <div
+                        style="
+                          position: relative;
+                          height: 16px;
+                          font-size: 12px;
+                          line-height: 16px;
+                          color: #5f6580;
+                        "
+                      >
+                        <sc-for list="{{ticks}}" as="t" hint-placeholder-count="8"
+                          ><span style="{{t.style}}">{{t.label}}</span></sc-for
+                        >
+                      </div>
+                      <div
+                        style="
+                          font-size: 11px;
+                          line-height: 16px;
+                          font-weight: 600;
+                          letter-spacing: 0.1em;
+                          color: #5f6580;
+                          text-align: right;
+                        "
+                      >
+                        TIME
+                      </div>
+                      <div
+                        style="
+                          font-size: 11px;
+                          line-height: 16px;
+                          font-weight: 600;
+                          letter-spacing: 0.1em;
+                          color: #5f6580;
+                          text-align: right;
+                        "
+                      >
+                        SHARE
+                      </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; padding-top: 4px">
+                      <sc-for list="{{rows}}" as="r" hint-placeholder-count="18">
+                        <div style="{{r.rowStyle}}">
+                          <div style="{{r.nameStyle}}">
+                            <sc-if value="{{r.kids}}" hint-placeholder-val="{{ true }}"
+                              ><svg
+                                aria-hidden="true"
+                                width="14"
+                                height="14"
+                                sc-camel-view-box="0 0 24 24"
+                                fill="none"
+                                stroke="#5f6580"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                style="flex: none"
+                              >
+                                <path d="M6 9l6 6 6-6"></path></svg
+                            ></sc-if>
+                            <sc-if value="{{r.leaf}}" hint-placeholder-val="{{ false }}"
+                              ><span style="width: 14px; flex: none"></span
+                            ></sc-if>
+                            <span aria-hidden="true" style="{{r.dotStyle}}"></span>
+                            <span style="{{r.labelStyle}}">{{r.name}}</span>
+                            <span
+                              style="
+                                font-size: 12px;
+                                line-height: 16px;
+                                color: #5f6580;
+                                white-space: nowrap;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                              "
+                              >{{r.loc}}</span
+                            >
+                          </div>
+                          <div
+                            style="
+                              position: relative;
+                              height: 32px;
+                              background-image: linear-gradient(
+                                to right,
+                                #e8eaf1 1px,
+                                transparent 1px
+                              );
+                              background-size: 13.736% 100%;
+                            "
+                          >
+                            <sc-if value="{{r.isSpan}}" hint-placeholder-val="{{ true }}"
+                              ><div style="{{r.barStyle}}">
+                                <span
+                                  style="
+                                    font-size: 11px;
+                                    line-height: 20px;
+                                    font-weight: 600;
+                                    color: #171a3a;
+                                    white-space: nowrap;
+                                    padding: 0 6px;
+                                  "
+                                  >{{r.inBar}}</span
+                                >
+                              </div></sc-if
+                            >
+                            <sc-if value="{{r.isWait}}" hint-placeholder-val="{{ false }}"
+                              ><div style="{{r.waitStyle}}"></div>
+                              <span style="{{r.waitLabelStyle}}">{{r.waitLabel}}</span></sc-if
+                            >
+                          </div>
+                          <div
+                            style="
+                              font-size: 14px;
+                              line-height: 20px;
+                              font-weight: 600;
+                              text-align: right;
+                              font-variant-numeric: tabular-nums;
+                            "
+                          >
+                            {{r.dur}}
+                          </div>
+                          <div
+                            style="
+                              font-size: 12px;
+                              line-height: 16px;
+                              color: #5f6580;
+                              text-align: right;
+                              font-variant-numeric: tabular-nums;
+                            "
+                          >
+                            {{r.share}}
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
 
-<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding-top: 12px; border-top: 1px solid #e8eaf1; font-size: 12px; line-height: 16px; color: #5f6580">
-<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 22px; height: 12px; border-radius: 3px; outline: 2px solid #171a3a; outline-offset: -1px; background: #ff8a1f"></span>Critical path: widest child at each level</span>
-<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 22px; height: 12px; border-radius: 3px; background: repeating-linear-gradient(135deg, #ff8a1f 0 2px, transparent 2px 5px)"></span>Under 2 ms, below sampling precision</span>
-<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 22px; border-top: 2px dashed #848aa3"></span>Idle wait between an await and its continuation</span>
-<span style="margin-left: auto">Arrows walk rows · Enter opens source · f focus · Backspace back</span>
-</div>
-</section>
-<dc-import name="Details" fn="loadTemplate" hint-size="100%,280px"></dc-import>
-</div>
-<aside aria-label="Source" style="flex: 1 1 380px; min-width: 0; max-width: 100%">
-<dc-import name="Source" fn="loadTemplate" hint-size="100%,900px"></dc-import>
-</aside>
-</div>
-</main>
-</div>
-</x-dc>
-<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1480}}">
-class Component extends DCLogic {
-  renderVals() {
-    var T = 182;
-    var C = { you: '#ff8a1f', dep: '#4c8dff', fw: '#e03fcb', node: '#1bb5a2', native: '#2bc48a', gc: '#848aa3' };
-    var DIM = { you: '#ff8a1f', dep: 'rgba(76,141,255,0.45)', fw: 'rgba(224,63,203,0.45)', node: 'rgba(27,181,162,0.45)', native: 'rgba(43,196,138,0.45)', gc: 'rgba(132,138,163,0.45)' };
-    // depth, name, location, origin, start ms, end ms, critical, selected, has children
-    var raw = [
-      [0, 'express ▸ router.handle', '6 frames folded', 'dep', 0, 182, true, false, true],
-      [1, 'getOrders', 'src/routes/orders.ts:18', 'you', 0.4, 181.2, true, false, true],
-      [2, 'authenticate', 'src/middleware/auth.ts:9', 'you', 0.6, 6.2, false, false, true],
-      [3, 'jsonwebtoken ▸ verify', 'node_modules', 'dep', 1.0, 5.6, false, false, false],
-      [2, 'findOrders', 'src/db/orders.ts:44', 'you', 6.4, 8.9, false, false, true],
-      [3, 'await pool.query', '', 'wait', 8.9, 46.1, false, false, false],
-      [3, 'mapRows', 'src/db/orders.ts:61', 'you', 46.1, 57.6, false, false, false],
-      [2, 'renderInvoice', 'src/render/invoice.ts:24', 'you', 57.9, 175.4, true, false, true],
-      [3, 'loadTemplate', 'src/render/template.ts:38', 'you', 58.1, 97.3, false, true, true],
-      [4, 'fs.readFileSync', 'node:fs', 'node', 58.6, 96.2, false, false, false],
-      [3, 'buildInvoiceRows', 'src/render/invoice.ts:71', 'you', 97.5, 158.2, true, false, true],
-      [4, 'ajv ▸ validate', 'node_modules', 'dep', 97.8, 119.6, false, false, false],
-      [4, 'formatCurrency', 'src/util/money.ts:12', 'you', 119.8, 121.3, false, false, false],
-      [4, 'lineTotal', 'src/util/money.ts:30', 'you', 121.6, 150.4, true, false, true],
-      [5, 'Intl.NumberFormat', 'native', 'native', 122.0, 147.9, true, false, false],
-      [4, '(GC) scavenge', 'V8', 'gc', 150.6, 156.8, false, false, false],
-      [3, 'JSON.stringify', 'native', 'native', 158.4, 171.0, false, false, false],
-      [1, 'express ▸ res.send', 'node_modules', 'dep', 175.6, 181.6, false, false, false]
-    ];
-    var rows = raw.map(function (r) {
-      var depth = r[0], origin = r[3], s = r[4], e = r[5], crit = r[6], sel = r[7];
-      var dur = e - s, left = s / T * 100, width = dur / T * 100;
-      var isWait = origin === 'wait';
-      var hatched = dur < 2;
-      var bg = hatched ? 'repeating-linear-gradient(135deg, ' + C[origin] + ' 0 2px, transparent 2px 5px)' : DIM[origin];
-      var durLabel = isWait ? '37.2 ms idle' : (hatched ? '< 2 ms' : '~' + dur.toFixed(1) + ' ms');
-      return {
-        name: r[1],
-        loc: r[2],
-        kids: r[8],
-        leaf: !r[8],
-        isSpan: !isWait,
-        isWait: isWait,
-        rowStyle: 'display: grid; grid-template-columns: 320px minmax(0, 1fr) 76px 60px; column-gap: 12px; align-items: center; min-height: 32px; padding: 0 8px; border-radius: 6px;' + (sel ? ' background: #ffebd6; box-shadow: inset 0 0 0 2px #ff8a1f;' : ''),
-        nameStyle: 'display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: ' + (depth * 16) + 'px',
-        dotStyle: isWait ? 'width: 8px; height: 8px; flex: none; border-radius: 9999px; border: 2px dashed #848aa3; box-sizing: border-box' : 'width: 8px; height: 8px; flex: none; border-radius: 9999px; background: ' + C[origin],
-        labelStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; ' + (origin === 'you' ? 'font-weight: 600; color: #171a3a' : isWait ? 'font-style: italic; color: #5f6580' : 'font-weight: 500; color: #5f6580'),
-        barStyle: 'position: absolute; top: 6px; height: 20px; left: ' + left.toFixed(3) + '%; width: ' + width.toFixed(3) + '%; min-width: 4px; box-sizing: border-box; border-radius: 4px; display: flex; align-items: center; overflow: hidden; background: ' + bg + ';' + (crit ? ' outline: 2px solid #171a3a; outline-offset: -1px;' : ''),
-        inBar: (!hatched && width > 12) ? durLabel : '',
-        waitStyle: 'position: absolute; top: 15px; left: ' + left.toFixed(3) + '%; width: ' + width.toFixed(3) + '%; border-top: 2px dashed #848aa3',
-        waitLabelStyle: 'position: absolute; top: 0; left: calc(' + left.toFixed(3) + '% + 8px); font-size: 11px; line-height: 14px; color: #5f6580; background: #ffffff; padding: 0 4px; white-space: nowrap',
-        waitLabel: 'idle · waiting on pg · resumes in mapRows',
-        dur: durLabel,
-        share: isWait ? '20.4%' : (dur / T * 100).toFixed(1) + '%'
-      };
-    });
-    var mini = raw.filter(function (r) { return r[3] !== 'wait'; }).map(function (r) {
-      var left = r[4] / T * 100, width = (r[5] - r[4]) / T * 100;
-      return { style: 'position: absolute; height: 3px; border-radius: 2px; top: ' + (3 + r[0] * 4) + 'px; left: ' + left.toFixed(2) + '%; width: max(' + width.toFixed(2) + '%, 2px); background: ' + C[r[3]] };
-    });
-    var ticks = [0, 25, 50, 75, 100, 125, 150, 175].map(function (t) {
-      return { label: t + (t === 0 ? ' ms' : ''), style: 'position: absolute; left: ' + (t / T * 100).toFixed(2) + '%; padding-left: 3px; white-space: nowrap' };
-    });
-    return { rows: rows, mini: mini, ticks: ticks };
-  }
-}
-</script>
-
-
-</body></html>
+                <div
+                  style="
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 16px;
+                    align-items: center;
+                    padding-top: 12px;
+                    border-top: 1px solid #e8eaf1;
+                    font-size: 12px;
+                    line-height: 16px;
+                    color: #5f6580;
+                  "
+                >
+                  <span style="display: flex; align-items: center; gap: 6px"
+                    ><span
+                      aria-hidden="true"
+                      style="
+                        width: 22px;
+                        height: 12px;
+                        border-radius: 3px;
+                        outline: 2px solid #171a3a;
+                        outline-offset: -1px;
+                        background: #ff8a1f;
+                      "
+                    ></span
+                    >Critical path: widest child at each level</span
+                  >
+                  <span style="display: flex; align-items: center; gap: 6px"
+                    ><span
+                      aria-hidden="true"
+                      style="
+                        width: 22px;
+                        height: 12px;
+                        border-radius: 3px;
+                        background: repeating-linear-gradient(
+                          135deg,
+                          #ff8a1f 0 2px,
+                          transparent 2px 5px
+                        );
+                      "
+                    ></span
+                    >Under 2 ms, below sampling precision</span
+                  >
+                  <span style="display: flex; align-items: center; gap: 6px"
+                    ><span
+                      aria-hidden="true"
+                      style="width: 22px; border-top: 2px dashed #848aa3"
+                    ></span
+                    >Idle wait between an await and its continuation</span
+                  >
+                  <span style="margin-left: auto"
+                    >Arrows walk rows · Enter opens source · f focus · Backspace back</span
+                  >
+                </div>
+              </section>
+              <dc-import name="Details" fn="loadTemplate" hint-size="100%,280px"></dc-import>
+            </div>
+            <aside aria-label="Source" style="flex: 1 1 380px; min-width: 0; max-width: 100%">
+              <dc-import name="Source" fn="loadTemplate" hint-size="100%,900px"></dc-import>
+            </aside>
+          </div>
+        </main>
+      </div>
+    </x-dc>
+    <script
+      type="text/x-dc"
+      data-dc-script=""
+      data-props='{"$preview":{"width":1440,"height":1480}}'
+    >
+      class Component extends DCLogic {
+        renderVals() {
+          var T = 182;
+          var C = { you: '#ff8a1f', dep: '#4c8dff', fw: '#e03fcb', node: '#1bb5a2', native: '#2bc48a', gc: '#848aa3' };
+          var DIM = { you: '#ff8a1f', dep: 'rgba(76,141,255,0.45)', fw: 'rgba(224,63,203,0.45)', node: 'rgba(27,181,162,0.45)', native: 'rgba(43,196,138,0.45)', gc: 'rgba(132,138,163,0.45)' };
+          // depth, name, location, origin, start ms, end ms, critical, selected, has children
+          var raw = [
+            [0, 'express ▸ router.handle', '6 frames folded', 'dep', 0, 182, true, false, true],
+            [1, 'getOrders', 'src/routes/orders.ts:18', 'you', 0.4, 181.2, true, false, true],
+            [2, 'authenticate', 'src/middleware/auth.ts:9', 'you', 0.6, 6.2, false, false, true],
+            [3, 'jsonwebtoken ▸ verify', 'node_modules', 'dep', 1.0, 5.6, false, false, false],
+            [2, 'findOrders', 'src/db/orders.ts:44', 'you', 6.4, 8.9, false, false, true],
+            [3, 'await pool.query', '', 'wait', 8.9, 46.1, false, false, false],
+            [3, 'mapRows', 'src/db/orders.ts:61', 'you', 46.1, 57.6, false, false, false],
+            [2, 'renderInvoice', 'src/render/invoice.ts:24', 'you', 57.9, 175.4, true, false, true],
+            [3, 'loadTemplate', 'src/render/template.ts:38', 'you', 58.1, 97.3, false, true, true],
+            [4, 'fs.readFileSync', 'node:fs', 'node', 58.6, 96.2, false, false, false],
+            [3, 'buildInvoiceRows', 'src/render/invoice.ts:71', 'you', 97.5, 158.2, true, false, true],
+            [4, 'ajv ▸ validate', 'node_modules', 'dep', 97.8, 119.6, false, false, false],
+            [4, 'formatCurrency', 'src/util/money.ts:12', 'you', 119.8, 121.3, false, false, false],
+            [4, 'lineTotal', 'src/util/money.ts:30', 'you', 121.6, 150.4, true, false, true],
+            [5, 'Intl.NumberFormat', 'native', 'native', 122.0, 147.9, true, false, false],
+            [4, '(GC) scavenge', 'V8', 'gc', 150.6, 156.8, false, false, false],
+            [3, 'JSON.stringify', 'native', 'native', 158.4, 171.0, false, false, false],
+            [1, 'express ▸ res.send', 'node_modules', 'dep', 175.6, 181.6, false, false, false]
+          ];
+          var rows = raw.map(function (r) {
+            var depth = r[0], origin = r[3], s = r[4], e = r[5], crit = r[6], sel = r[7];
+            var dur = e - s, left = s / T * 100, width = dur / T * 100;
+            var isWait = origin === 'wait';
+            var hatched = dur < 2;
+            var bg = hatched ? 'repeating-linear-gradient(135deg, ' + C[origin] + ' 0 2px, transparent 2px 5px)' : DIM[origin];
+            var durLabel = isWait ? '37.2 ms idle' : (hatched ? '< 2 ms' : '~' + dur.toFixed(1) + ' ms');
+            return {
+              name: r[1],
+              loc: r[2],
+              kids: r[8],
+              leaf: !r[8],
+              isSpan: !isWait,
+              isWait: isWait,
+              rowStyle: 'display: grid; grid-template-columns: 320px minmax(0, 1fr) 76px 60px; column-gap: 12px; align-items: center; min-height: 32px; padding: 0 8px; border-radius: 6px;' + (sel ? ' background: #ffebd6; box-shadow: inset 0 0 0 2px #ff8a1f;' : ''),
+              nameStyle: 'display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: ' + (depth * 16) + 'px',
+              dotStyle: isWait ? 'width: 8px; height: 8px; flex: none; border-radius: 9999px; border: 2px dashed #848aa3; box-sizing: border-box' : 'width: 8px; height: 8px; flex: none; border-radius: 9999px; background: ' + C[origin],
+              labelStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; ' + (origin === 'you' ? 'font-weight: 600; color: #171a3a' : isWait ? 'font-style: italic; color: #5f6580' : 'font-weight: 500; color: #5f6580'),
+              barStyle: 'position: absolute; top: 6px; height: 20px; left: ' + left.toFixed(3) + '%; width: ' + width.toFixed(3) + '%; min-width: 4px; box-sizing: border-box; border-radius: 4px; display: flex; align-items: center; overflow: hidden; background: ' + bg + ';' + (crit ? ' outline: 2px solid #171a3a; outline-offset: -1px;' : ''),
+              inBar: (!hatched && width > 12) ? durLabel : '',
+              waitStyle: 'position: absolute; top: 15px; left: ' + left.toFixed(3) + '%; width: ' + width.toFixed(3) + '%; border-top: 2px dashed #848aa3',
+              waitLabelStyle: 'position: absolute; top: 0; left: calc(' + left.toFixed(3) + '% + 8px); font-size: 11px; line-height: 14px; color: #5f6580; background: #ffffff; padding: 0 4px; white-space: nowrap',
+              waitLabel: 'idle · waiting on pg · resumes in mapRows',
+              dur: durLabel,
+              share: isWait ? '20.4%' : (dur / T * 100).toFixed(1) + '%'
+            };
+          });
+          var mini = raw.filter(function (r) { return r[3] !== 'wait'; }).map(function (r) {
+            var left = r[4] / T * 100, width = (r[5] - r[4]) / T * 100;
+            return { style: 'position: absolute; height: 3px; border-radius: 2px; top: ' + (3 + r[0] * 4) + 'px; left: ' + left.toFixed(2) + '%; width: max(' + width.toFixed(2) + '%, 2px); background: ' + C[r[3]] };
+          });
+          var ticks = [0, 25, 50, 75, 100, 125, 150, 175].map(function (t) {
+            return { label: t + (t === 0 ? ' ms' : ''), style: 'position: absolute; left: ' + (t / T * 100).toFixed(2) + '%; padding-left: 3px; white-space: nowrap' };
+          });
+          return { rows: rows, mini: mini, ticks: ticks };
+        }
+      }
+    </script>
+  </body>
+</html>

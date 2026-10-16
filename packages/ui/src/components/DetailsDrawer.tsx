@@ -1,0 +1,210 @@
+import { useApp } from '../app/context';
+import { useAsync } from '../app/hooks';
+import type { RelatedRow } from '../data/functions';
+import { originColor, originInfo } from '../theme/origin';
+import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
+
+function RelatedList({ title, rows }: { title: string; rows: RelatedRow[] }) {
+  const { select } = useApp();
+  return (
+    <div className="related">
+      <h3 className="caps">{title}</h3>
+      <ul className="related-list">
+        {rows.map((r) => {
+          const cls = `related-name${r.origin === 0 ? ' is-user' : ''}${r.kind === 'self' ? ' is-self' : ''}`;
+          return (
+            <li key={`${r.kind}-${r.name}-${r.fn}`} className="related-row">
+              {r.fn !== null ? (
+                <button
+                  type="button"
+                  className={cls}
+                  onClick={() => select({ kind: 'fn', fn: r.fn as number })}
+                >
+                  {r.name}
+                </button>
+              ) : (
+                <span className={cls}>{r.name}</span>
+              )}
+              <span className="related-track" aria-hidden="true">
+                <span
+                  className="related-fill"
+                  style={{
+                    width: `${Math.min(100, r.frac * 100)}%`,
+                    background: r.kind === 'self' ? 'var(--c-ink)' : originColor(r.origin),
+                  }}
+                />
+              </span>
+              <span className="related-pct">{fmtShare(r.frac)}</span>
+            </li>
+          );
+        })}
+        {rows.length === 0 ? <li className="section-sub">None in this range</li> : null}
+      </ul>
+    </div>
+  );
+}
+
+/** Numbers for the current selection: self, total, share, calls, origin, callers and callees. */
+export function DetailsDrawer() {
+  const { client, host, scope, scopeKey, snap, selection, dispatch, summary } = useApp();
+  const fn = selection.fn;
+  const detailsQ = useAsync(
+    () => (fn === null ? Promise.resolve(null) : client.details(scope, fn)),
+    `details:${scopeKey}:${fn}`,
+  );
+  const sourceQ = useAsync(
+    () => (fn === null ? Promise.resolve(null) : client.source(scope, fn)),
+    `src-info:${scopeKey}:${fn}`,
+  );
+  const d = fn === null ? null : detailsQ.data;
+  const src = fn === null ? null : sourceQ.data;
+  const trackLabel =
+    snap.track === 'all'
+      ? 'all tracks'
+      : (summary.tracks.find((t) => t.id === snap.track)?.label ?? snap.track);
+
+  if (selection.task) {
+    const t = selection.task;
+    return (
+      <section aria-label="Selection details" className="details card">
+        <div className="details-head">
+          <span
+            className="details-dot"
+            aria-hidden="true"
+            style={{ background: 'var(--c-origin-you)' }}
+          />
+          <h2 className="section-title">{t.label}</h2>
+          <span className="origin-pill is-other">Task</span>
+          <div className="details-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() =>
+                dispatch({ type: 'go', patch: { view: 'waterfall' }, options: { task: t.index } })
+              }
+            >
+              Show in waterfall
+            </button>
+          </div>
+        </div>
+        <dl className="stat-grid">
+          <div className="stat stat-big">
+            <dt>Duration</dt>
+            <dd>{fmtDuration(t.durationUs)}</dd>
+          </div>
+          <div className="stat">
+            <dt>Busy (CPU)</dt>
+            <dd>{fmtDuration(t.busyUs)}</dd>
+          </div>
+          <div className="stat">
+            <dt>Started at</dt>
+            <dd>{(t.startUs / 1_000_000).toFixed(2)} s</dd>
+          </div>
+          <div className="stat">
+            <dt>Over 50 ms</dt>
+            <dd>{t.durationUs > 50_000 ? 'Yes, a long task' : 'No'}</dd>
+          </div>
+        </dl>
+      </section>
+    );
+  }
+
+  if (!d || fn === null) {
+    const range = snap.range;
+    return (
+      <section aria-label="Selection details" className="details card">
+        <h2 className="section-title">
+          {range ? `Range ${fmtRange(range[0], range[1])}` : 'Nothing selected'}
+        </h2>
+        <p className="muted" role="status">
+          {range
+            ? `${fmtDuration(range[1] - range[0], { approx: false })} on ${trackLabel}. Select a function, call or task to see its numbers.`
+            : 'Select a function, a call, a task or a time range to see its numbers here. Selection is shared by every view.'}
+        </p>
+      </section>
+    );
+  }
+
+  const info = originInfo(d.origin);
+  const user = d.origin === 0;
+  const jump = snap.view === 'waterfall' ? 'Show in flame graph' : 'Show in waterfall';
+  const jumpTo = snap.view === 'waterfall' ? 'flame' : 'waterfall';
+
+  return (
+    <section aria-label="Selection details" className="details card">
+      <div className="details-head">
+        <span
+          className="details-dot"
+          aria-hidden="true"
+          style={{ background: originColor(d.origin, false) }}
+        />
+        <h2 className="section-title">{d.name}</h2>
+        {d.loc ? (
+          <button
+            type="button"
+            className="details-loc"
+            onClick={() => dispatch({ type: 'set-source-collapsed', collapsed: false })}
+          >
+            {d.loc}
+          </button>
+        ) : null}
+        <span className={`origin-pill${user ? '' : ' is-other'}`}>{info.label}</span>
+        <div className="details-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              dispatch({ type: 'go', patch: { view: jumpTo, selection: { kind: 'fn', fn } } })
+            }
+          >
+            {jump}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              dispatch({ type: 'go', patch: { view: 'functions', selection: { kind: 'fn', fn } } })
+            }
+          >
+            Show callers
+          </button>
+          <button
+            type="button"
+            className="btn btn-soft"
+            disabled={!src?.path}
+            onClick={() => src && void host.openInEditor(src.path, src.startLine || 1)}
+          >
+            Open in editor
+          </button>
+        </div>
+      </div>
+      <dl className="stat-grid">
+        <div className="stat stat-big">
+          <dt>Total time</dt>
+          <dd>{fmtDuration(d.totalUs)}</dd>
+        </div>
+        <div className="stat">
+          <dt>Self time</dt>
+          <dd>{fmtDuration(d.selfUs)}</dd>
+        </div>
+        <div className="stat">
+          <dt>
+            Share of {trackLabel}
+            {snap.range ? ', in range' : ''}
+          </dt>
+          <dd>{fmtShare(d.share)}</dd>
+        </div>
+        <div className="stat">
+          <dt>Calls</dt>
+          <dd>
+            {d.calls > 0 ? fmtCount(d.calls) : '—'} <span className="stat-est">est.</span>
+          </dd>
+        </div>
+      </dl>
+      <div className="related-grid">
+        <RelatedList title="Callers" rows={d.callers} />
+        <RelatedList title="Callees and self" rows={d.callees} />
+      </div>
+    </section>
+  );
+}

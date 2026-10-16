@@ -13,7 +13,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "test": "turbo run test",
-    "test:e2e": "pnpm build && playwright test",
+    "test:e2e": "pnpm build && playwright test && pnpm --filter @pacesjs/ui test:e2e",
     "typecheck": "turbo run typecheck",
     "lint": "eslint . && pnpm check:boundaries",
     "check:boundaries": "node scripts/check-boundaries.mjs",

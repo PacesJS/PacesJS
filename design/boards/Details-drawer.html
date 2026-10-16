@@ -1,97 +1,351 @@
-<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<title>Trailmap — Details drawer</title>
-<script src="2099a21e-b63e-4fee-a080-e5ff0ac8e19f"></script>
-</head>
-<body>
-<x-dc>
-<helmet>
-<!--fonts-->
-<style>
-body{margin:0}
-</style>
-</helmet>
-<section aria-label="Selection details" style="font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif; color: #171a3a; font-size: 14px; line-height: 22px; background: #ffffff; border-radius: 16px; box-shadow: 0 1px 2px #171a3a0a, 0 6px 20px -6px #171a3a14; padding: 20px; display: flex; flex-direction: column; gap: 16px">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px">
-<span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 9999px; background: #ff8a1f"></span>
-<h2 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600">{{d.name}}</h2>
-<a href="#open-source" style="font-size: 12px; line-height: 16px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace">{{d.loc}}</a>
-<span style="display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 6px; background: #ffebd6; color: #b24700; font-size: 12px; line-height: 16px; font-weight: 600">Your code</span>
-<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto">
-<button style="min-height: 44px; padding: 0 14px; border: 1px solid #848aa3; border-radius: 10px; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">{{d.jump}}</button>
-<button style="min-height: 44px; padding: 0 14px; border: 1px solid #848aa3; border-radius: 10px; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Show callers</button>
-<button style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffebd6; color: #b24700; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Open in editor</button>
-</div>
-</div>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Trailmap — Details drawer</title>
+    <script src="2099a21e-b63e-4fee-a080-e5ff0ac8e19f"></script>
+  </head>
+  <body>
+    <x-dc>
+      <helmet>
+        <!--fonts-->
+        <style>
+          body {
+            margin: 0;
+          }
+        </style>
+      </helmet>
+      <section
+        aria-label="Selection details"
+        style="
+          font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+          color: #171a3a;
+          font-size: 14px;
+          line-height: 22px;
+          background: #ffffff;
+          border-radius: 16px;
+          box-shadow:
+            0 1px 2px #171a3a0a,
+            0 6px 20px -6px #171a3a14;
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        "
+      >
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px">
+          <span
+            aria-hidden="true"
+            style="width: 10px; height: 10px; border-radius: 9999px; background: #ff8a1f"
+          ></span>
+          <h2 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600">
+            {{d.name}}
+          </h2>
+          <a
+            href="#open-source"
+            style="
+              font-size: 12px;
+              line-height: 16px;
+              font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+            "
+            >{{d.loc}}</a
+          >
+          <span
+            style="
+              display: inline-flex;
+              align-items: center;
+              min-height: 22px;
+              padding: 0 8px;
+              border-radius: 6px;
+              background: #ffebd6;
+              color: #b24700;
+              font-size: 12px;
+              line-height: 16px;
+              font-weight: 600;
+            "
+            >Your code</span
+          >
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto">
+            <button
+              style="
+                min-height: 44px;
+                padding: 0 14px;
+                border: 1px solid #848aa3;
+                border-radius: 10px;
+                background: #ffffff;
+                color: #171a3a;
+                font-family: inherit;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+              "
+            >
+              {{d.jump}}
+            </button>
+            <button
+              style="
+                min-height: 44px;
+                padding: 0 14px;
+                border: 1px solid #848aa3;
+                border-radius: 10px;
+                background: #ffffff;
+                color: #171a3a;
+                font-family: inherit;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+              "
+            >
+              Show callers
+            </button>
+            <button
+              style="
+                min-height: 44px;
+                padding: 0 14px;
+                border: 0;
+                border-radius: 10px;
+                background: #ffebd6;
+                color: #b24700;
+                font-family: inherit;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+              "
+            >
+              Open in editor
+            </button>
+          </div>
+        </div>
 
-<dl style="margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px">
-<div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa"><dt style="font-size: 12px; line-height: 16px; color: #5f6580">Total time</dt><dd style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums">{{d.total}}</dd></div>
-<div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa"><dt style="font-size: 12px; line-height: 16px; color: #5f6580">Self time</dt><dd style="margin: 0; font-size: 14px; line-height: 32px; font-weight: 600; font-variant-numeric: tabular-nums">{{d.self}}</dd></div>
-<div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa"><dt style="font-size: 12px; line-height: 16px; color: #5f6580">Share of main, in range</dt><dd style="margin: 0; font-size: 14px; line-height: 32px; font-weight: 600; font-variant-numeric: tabular-nums">{{d.share}}</dd></div>
-<div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa"><dt style="font-size: 12px; line-height: 16px; color: #5f6580">Calls</dt><dd style="margin: 0; font-size: 14px; line-height: 32px; font-weight: 600; font-variant-numeric: tabular-nums">{{d.calls}} <span style="font-size: 12px; font-weight: 400; color: #5f6580">est.</span></dd></div>
-</dl>
+        <dl
+          style="
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+          "
+        >
+          <div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa">
+            <dt style="font-size: 12px; line-height: 16px; color: #5f6580">Total time</dt>
+            <dd
+              style="
+                margin: 0;
+                font-size: 24px;
+                line-height: 32px;
+                font-weight: 700;
+                letter-spacing: -0.01em;
+                font-variant-numeric: tabular-nums;
+              "
+            >
+              {{d.total}}
+            </dd>
+          </div>
+          <div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa">
+            <dt style="font-size: 12px; line-height: 16px; color: #5f6580">Self time</dt>
+            <dd
+              style="
+                margin: 0;
+                font-size: 14px;
+                line-height: 32px;
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
+              "
+            >
+              {{d.self}}
+            </dd>
+          </div>
+          <div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa">
+            <dt style="font-size: 12px; line-height: 16px; color: #5f6580">
+              Share of main, in range
+            </dt>
+            <dd
+              style="
+                margin: 0;
+                font-size: 14px;
+                line-height: 32px;
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
+              "
+            >
+              {{d.share}}
+            </dd>
+          </div>
+          <div style="padding: 12px 16px; border-radius: 10px; background: #f4f5fa">
+            <dt style="font-size: 12px; line-height: 16px; color: #5f6580">Calls</dt>
+            <dd
+              style="
+                margin: 0;
+                font-size: 14px;
+                line-height: 32px;
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
+              "
+            >
+              {{d.calls}}
+              <span style="font-size: 12px; font-weight: 400; color: #5f6580">est.</span>
+            </dd>
+          </div>
+        </dl>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 24px">
-<div style="display: flex; flex-direction: column; gap: 8px">
-<h3 style="margin: 0; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580">CALLERS</h3>
-<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px">
-<sc-for list="{{d.callers}}" as="c" hint-placeholder-count="1">
-<li style="display: grid; grid-template-columns: minmax(0, 1fr) 120px 52px; gap: 10px; align-items: center">
-<a href="#select" style="{{c.nameStyle}}">{{c.name}}</a>
-<span aria-hidden="true" style="height: 8px; border-radius: 6px; background: #f4f5fa; overflow: hidden; display: block"><span style="{{c.barStyle}}"></span></span>
-<span style="font-size: 12px; line-height: 16px; text-align: right; font-variant-numeric: tabular-nums">{{c.pct}}</span>
-</li>
-</sc-for>
-</ul>
-</div>
-<div style="display: flex; flex-direction: column; gap: 8px">
-<h3 style="margin: 0; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.1em; color: #5f6580">CALLEES AND SELF</h3>
-<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px">
-<sc-for list="{{d.callees}}" as="c" hint-placeholder-count="4">
-<li style="display: grid; grid-template-columns: minmax(0, 1fr) 120px 52px; gap: 10px; align-items: center">
-<a href="#select" style="{{c.nameStyle}}">{{c.name}}</a>
-<span aria-hidden="true" style="height: 8px; border-radius: 6px; background: #f4f5fa; overflow: hidden; display: block"><span style="{{c.barStyle}}"></span></span>
-<span style="font-size: 12px; line-height: 16px; text-align: right; font-variant-numeric: tabular-nums">{{c.pct}}</span>
-</li>
-</sc-for>
-</ul>
-</div>
-</div>
-</section>
-</x-dc>
-<script type="text/x-dc" data-dc-script="" data-props="{&quot;fn&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;loadTemplate&quot;,&quot;buildInvoiceRows&quot;],&quot;default&quot;:&quot;loadTemplate&quot;},&quot;$preview&quot;:{&quot;width&quot;:960,&quot;height&quot;:320}}">
-class Component extends DCLogic {
-  renderVals() {
-    var C = { you: '#ff8a1f', dep: '#4c8dff', node: '#1bb5a2', native: '#2bc48a', self: '#171a3a' };
-    function rows(list) {
-      return list.map(function (r) {
-        return {
-          name: r[0], pct: r[2].toFixed(1) + '%',
-          nameStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; ' + (r[1] === 'you' ? 'font-weight: 600; color: #171a3a' : r[1] === 'self' ? 'font-style: italic; color: #5f6580' : 'font-weight: 500; color: #5f6580'),
-          barStyle: 'display: block; height: 8px; border-radius: 6px; width: ' + r[2] + '%; background: ' + C[r[1]]
-        };
-      });
-    }
-    var data = {
-      loadTemplate: {
-        name: 'loadTemplate', loc: 'src/render/template.ts:38', jump: 'Show in flame graph',
-        total: '~267 ms', self: '~9 ms', share: '16.7%', calls: '~7',
-        callers: rows([['renderInvoice', 'you', 100]]),
-        callees: rows([['fs.readFileSync', 'node', 93.6], ['self', 'self', 3.4], ['handlebars ▸ compile', 'dep', 2.2], ['path.join', 'node', 0.8]])
-      },
-      buildInvoiceRows: {
-        name: 'buildInvoiceRows', loc: 'src/render/invoice.ts:71', jump: 'Show in waterfall',
-        total: '~674 ms', self: '~296 ms', share: '42.1%', calls: '~7',
-        callers: rows([['renderInvoice', 'you', 100]]),
-        callees: rows([['self', 'self', 43.9], ['lineTotal', 'you', 26.7], ['ajv ▸ validate', 'dep', 19.0], ['formatCurrency', 'you', 10.4]])
+        <div
+          style="
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px 24px;
+          "
+        >
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <h3
+              style="
+                margin: 0;
+                font-size: 11px;
+                line-height: 16px;
+                font-weight: 600;
+                letter-spacing: 0.1em;
+                color: #5f6580;
+              "
+            >
+              CALLERS
+            </h3>
+            <ul
+              style="
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+              "
+            >
+              <sc-for list="{{d.callers}}" as="c" hint-placeholder-count="1">
+                <li
+                  style="
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) 120px 52px;
+                    gap: 10px;
+                    align-items: center;
+                  "
+                >
+                  <a href="#select" style="{{c.nameStyle}}">{{c.name}}</a>
+                  <span
+                    aria-hidden="true"
+                    style="
+                      height: 8px;
+                      border-radius: 6px;
+                      background: #f4f5fa;
+                      overflow: hidden;
+                      display: block;
+                    "
+                    ><span style="{{c.barStyle}}"></span
+                  ></span>
+                  <span
+                    style="
+                      font-size: 12px;
+                      line-height: 16px;
+                      text-align: right;
+                      font-variant-numeric: tabular-nums;
+                    "
+                    >{{c.pct}}</span
+                  >
+                </li>
+              </sc-for>
+            </ul>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <h3
+              style="
+                margin: 0;
+                font-size: 11px;
+                line-height: 16px;
+                font-weight: 600;
+                letter-spacing: 0.1em;
+                color: #5f6580;
+              "
+            >
+              CALLEES AND SELF
+            </h3>
+            <ul
+              style="
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+              "
+            >
+              <sc-for list="{{d.callees}}" as="c" hint-placeholder-count="4">
+                <li
+                  style="
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) 120px 52px;
+                    gap: 10px;
+                    align-items: center;
+                  "
+                >
+                  <a href="#select" style="{{c.nameStyle}}">{{c.name}}</a>
+                  <span
+                    aria-hidden="true"
+                    style="
+                      height: 8px;
+                      border-radius: 6px;
+                      background: #f4f5fa;
+                      overflow: hidden;
+                      display: block;
+                    "
+                    ><span style="{{c.barStyle}}"></span
+                  ></span>
+                  <span
+                    style="
+                      font-size: 12px;
+                      line-height: 16px;
+                      text-align: right;
+                      font-variant-numeric: tabular-nums;
+                    "
+                    >{{c.pct}}</span
+                  >
+                </li>
+              </sc-for>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </x-dc>
+    <script
+      type="text/x-dc"
+      data-dc-script=""
+      data-props='{"fn":{"editor":"enum","options":["loadTemplate","buildInvoiceRows"],"default":"loadTemplate"},"$preview":{"width":960,"height":320}}'
+    >
+      class Component extends DCLogic {
+        renderVals() {
+          var C = { you: '#ff8a1f', dep: '#4c8dff', node: '#1bb5a2', native: '#2bc48a', self: '#171a3a' };
+          function rows(list) {
+            return list.map(function (r) {
+              return {
+                name: r[0], pct: r[2].toFixed(1) + '%',
+                nameStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; ' + (r[1] === 'you' ? 'font-weight: 600; color: #171a3a' : r[1] === 'self' ? 'font-style: italic; color: #5f6580' : 'font-weight: 500; color: #5f6580'),
+                barStyle: 'display: block; height: 8px; border-radius: 6px; width: ' + r[2] + '%; background: ' + C[r[1]]
+              };
+            });
+          }
+          var data = {
+            loadTemplate: {
+              name: 'loadTemplate', loc: 'src/render/template.ts:38', jump: 'Show in flame graph',
+              total: '~267 ms', self: '~9 ms', share: '16.7%', calls: '~7',
+              callers: rows([['renderInvoice', 'you', 100]]),
+              callees: rows([['fs.readFileSync', 'node', 93.6], ['self', 'self', 3.4], ['handlebars ▸ compile', 'dep', 2.2], ['path.join', 'node', 0.8]])
+            },
+            buildInvoiceRows: {
+              name: 'buildInvoiceRows', loc: 'src/render/invoice.ts:71', jump: 'Show in waterfall',
+              total: '~674 ms', self: '~296 ms', share: '42.1%', calls: '~7',
+              callers: rows([['renderInvoice', 'you', 100]]),
+              callees: rows([['self', 'self', 43.9], ['lineTotal', 'you', 26.7], ['ajv ▸ validate', 'dep', 19.0], ['formatCurrency', 'you', 10.4]])
+            }
+          };
+          var fn = this.props.fn || 'loadTemplate';
+          return { d: data[fn] || data.loadTemplate };
+        }
       }
-    };
-    var fn = this.props.fn || 'loadTemplate';
-    return { d: data[fn] || data.loadTemplate };
-  }
-}
-</script>
-
-
-</body></html>
+    </script>
+  </body>
+</html>

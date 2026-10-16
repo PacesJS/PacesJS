@@ -14,7 +14,8 @@
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test -c ../../e2e/ui/playwright.config.ts"
   },
   "dependencies": {
     "@pacesjs/engine": "workspace:*",

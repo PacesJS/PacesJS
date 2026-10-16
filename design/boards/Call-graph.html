@@ -1,165 +1,581 @@
-<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<title>Trailmap — Call graph</title>
-<script src="dcc4cabc-958c-4b07-9648-606a9add4959"></script>
-</head>
-<body>
-<x-dc>
-<helmet>
-<!--fonts-->
-<style>
-body{margin:0;background:#f4f5fa}
-a{color:#1d5ad0}a:hover{color:#171a3a}
-:focus-visible{outline:none;box-shadow:0 0 0 2px #ffffff,0 0 0 4px #b24700}
-</style>
-</helmet>
-<div style="min-height: 100vh; background: #f4f5fa; color: #171a3a; font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif; font-size: 14px; line-height: 22px">
-<dc-import name="Header" hint-size="100%,132px"></dc-import>
-<main style="max-width: 1680px; margin: 0 auto; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
-<dc-import name="Overview" active="3" hint-size="100%,440px"></dc-import>
-<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
-<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
-<section aria-label="Main view" style="background: #ffffff; border-radius: 16px; box-shadow: 0 1px 2px #171a3a0a, 0 6px 20px -6px #171a3a14; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0">
-<nav aria-label="Views" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: #f4f5fa; border-radius: 10px; align-self: flex-start">
-<a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Waterfall <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">1</kbd></a>
-<a href="FlameGraph.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Flame graph <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">2</kbd></a>
-<a href="CallGraph.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); box-shadow: 0 8px 20px -6px #ff7a1a8c; color: #171a3a; font-size: 14px; font-weight: 500; text-decoration: none">Call graph <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff99">3</kbd></a>
-<a href="Functions.dc.html" style="display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; color: #5f6580; font-size: 14px; font-weight: 500; text-decoration: none">Functions <kbd style="font-family: inherit; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1">4</kbd></a>
-</nav>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Trailmap — Call graph</title>
+    <script src="dcc4cabc-958c-4b07-9648-606a9add4959"></script>
+  </head>
+  <body>
+    <x-dc>
+      <helmet>
+        <!--fonts-->
+        <style>
+          body {
+            margin: 0;
+            background: #f4f5fa;
+          }
+          a {
+            color: #1d5ad0;
+          }
+          a:hover {
+            color: #171a3a;
+          }
+          :focus-visible {
+            outline: none;
+            box-shadow:
+              0 0 0 2px #ffffff,
+              0 0 0 4px #b24700;
+          }
+        </style>
+      </helmet>
+      <div
+        style="
+          min-height: 100vh;
+          background: #f4f5fa;
+          color: #171a3a;
+          font-family: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+          font-size: 14px;
+          line-height: 22px;
+        "
+      >
+        <dc-import name="Header" hint-size="100%,132px"></dc-import>
+        <main
+          style="
+            max-width: 1680px;
+            margin: 0 auto;
+            padding: 24px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+          "
+        >
+          <dc-import name="Overview" active="3" hint-size="100%,440px"></dc-import>
+          <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+            <div
+              style="
+                flex: 999 1 640px;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+              "
+            >
+              <section
+                aria-label="Main view"
+                style="
+                  background: #ffffff;
+                  border-radius: 16px;
+                  box-shadow:
+                    0 1px 2px #171a3a0a,
+                    0 6px 20px -6px #171a3a14;
+                  padding: 20px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 16px;
+                  min-width: 0;
+                "
+              >
+                <nav
+                  aria-label="Views"
+                  style="
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 4px;
+                    padding: 4px;
+                    background: #f4f5fa;
+                    border-radius: 10px;
+                    align-self: flex-start;
+                  "
+                >
+                  <a
+                    href="Main.dc.html"
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      min-height: 44px;
+                      box-sizing: border-box;
+                      padding: 0 16px;
+                      border-radius: 6px;
+                      color: #5f6580;
+                      font-size: 14px;
+                      font-weight: 500;
+                      text-decoration: none;
+                    "
+                    >Waterfall
+                    <kbd
+                      style="
+                        font-family: inherit;
+                        font-size: 11px;
+                        line-height: 16px;
+                        padding: 0 6px;
+                        border-radius: 6px;
+                        background: #ffffff;
+                        border: 1px solid #e8eaf1;
+                      "
+                      >1</kbd
+                    ></a
+                  >
+                  <a
+                    href="FlameGraph.dc.html"
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      min-height: 44px;
+                      box-sizing: border-box;
+                      padding: 0 16px;
+                      border-radius: 6px;
+                      color: #5f6580;
+                      font-size: 14px;
+                      font-weight: 500;
+                      text-decoration: none;
+                    "
+                    >Flame graph
+                    <kbd
+                      style="
+                        font-family: inherit;
+                        font-size: 11px;
+                        line-height: 16px;
+                        padding: 0 6px;
+                        border-radius: 6px;
+                        background: #ffffff;
+                        border: 1px solid #e8eaf1;
+                      "
+                      >2</kbd
+                    ></a
+                  >
+                  <a
+                    href="CallGraph.dc.html"
+                    aria-current="page"
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      min-height: 44px;
+                      box-sizing: border-box;
+                      padding: 0 16px;
+                      border-radius: 6px;
+                      background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%);
+                      box-shadow: 0 8px 20px -6px #ff7a1a8c;
+                      color: #171a3a;
+                      font-size: 14px;
+                      font-weight: 500;
+                      text-decoration: none;
+                    "
+                    >Call graph
+                    <kbd
+                      style="
+                        font-family: inherit;
+                        font-size: 11px;
+                        line-height: 16px;
+                        padding: 0 6px;
+                        border-radius: 6px;
+                        background: #ffffff99;
+                      "
+                      >3</kbd
+                    ></a
+                  >
+                  <a
+                    href="Functions.dc.html"
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      min-height: 44px;
+                      box-sizing: border-box;
+                      padding: 0 16px;
+                      border-radius: 6px;
+                      color: #5f6580;
+                      font-size: 14px;
+                      font-weight: 500;
+                      text-decoration: none;
+                    "
+                    >Functions
+                    <kbd
+                      style="
+                        font-family: inherit;
+                        font-size: 11px;
+                        line-height: 16px;
+                        padding: 0 6px;
+                        border-radius: 6px;
+                        background: #ffffff;
+                        border: 1px solid #e8eaf1;
+                      "
+                      >4</kbd
+                    ></a
+                  >
+                </nav>
 
-<div style="display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center">
-<button role="switch" aria-checked="true" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px 0 6px; border: 0; border-radius: 10px; background: #ffebd6; color: #b24700; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer"><span aria-hidden="true" style="width: 32px; height: 20px; border-radius: 9999px; background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%); position: relative; display: inline-block"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 9999px; background: #ffffff"></span></span>Ego mode: buildInvoiceRows</button>
-<span style="font-size: 13px; line-height: 18px; color: #5f6580">Pruned to 80% of time · <strong style="color: #171a3a; font-weight: 600">14 of 63</strong> functions</span>
-<button style="min-height: 44px; padding: 0 14px; border: 1px solid #848aa3; border-radius: 10px; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Show all</button>
-<button style="min-height: 44px; padding: 0 14px; border: 1px solid #848aa3; border-radius: 10px; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Fit</button>
-<p style="margin: 0 0 0 auto; font-size: 12px; line-height: 16px; font-weight: 600; color: #5f6580">callers above callees · each function shown once</p>
-</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center">
+                  <button
+                    role="switch"
+                    aria-checked="true"
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      min-height: 44px;
+                      padding: 0 12px 0 6px;
+                      border: 0;
+                      border-radius: 10px;
+                      background: #ffebd6;
+                      color: #b24700;
+                      font-family: inherit;
+                      font-size: 14px;
+                      font-weight: 500;
+                      cursor: pointer;
+                    "
+                  >
+                    <span
+                      aria-hidden="true"
+                      style="
+                        width: 32px;
+                        height: 20px;
+                        border-radius: 9999px;
+                        background: linear-gradient(135deg, #ffc23d 0%, #ff8a1f 55%, #ff7a1a 100%);
+                        position: relative;
+                        display: inline-block;
+                      "
+                      ><span
+                        style="
+                          position: absolute;
+                          top: 2px;
+                          right: 2px;
+                          width: 16px;
+                          height: 16px;
+                          border-radius: 9999px;
+                          background: #ffffff;
+                        "
+                      ></span></span
+                    >Ego mode: buildInvoiceRows
+                  </button>
+                  <span style="font-size: 13px; line-height: 18px; color: #5f6580"
+                    >Pruned to 80% of time ·
+                    <strong style="color: #171a3a; font-weight: 600">14 of 63</strong>
+                    functions</span
+                  >
+                  <button
+                    style="
+                      min-height: 44px;
+                      padding: 0 14px;
+                      border: 1px solid #848aa3;
+                      border-radius: 10px;
+                      background: #ffffff;
+                      color: #171a3a;
+                      font-family: inherit;
+                      font-size: 14px;
+                      font-weight: 500;
+                      cursor: pointer;
+                    "
+                  >
+                    Show all
+                  </button>
+                  <button
+                    style="
+                      min-height: 44px;
+                      padding: 0 14px;
+                      border: 1px solid #848aa3;
+                      border-radius: 10px;
+                      background: #ffffff;
+                      color: #171a3a;
+                      font-family: inherit;
+                      font-size: 14px;
+                      font-weight: 500;
+                      cursor: pointer;
+                    "
+                  >
+                    Fit
+                  </button>
+                  <p
+                    style="
+                      margin: 0 0 0 auto;
+                      font-size: 12px;
+                      line-height: 16px;
+                      font-weight: 600;
+                      color: #5f6580;
+                    "
+                  >
+                    callers above callees · each function shown once
+                  </p>
+                </div>
 
-<ul aria-label="Encoding" style="list-style: none; margin: 0; padding: 10px 12px; border-radius: 10px; background: #f4f5fa; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12px; line-height: 16px; color: #5f6580">
-<li style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 18px; height: 12px; border-radius: 3px; background: rgba(255,138,31,0.7)"></span>Node size and fill = self time</li>
-<li style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 18px; height: 6px; border-radius: 3px; background: #171a3a"></span>Inner bar = total time</li>
-<li style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 18px; height: 0; border-top: 4px solid #5f6580"></span>Edge width = time passed to callee</li>
-<li style="display: flex; align-items: center; gap: 6px"><span style="padding: 0 6px; border-radius: 6px; border: 1px solid #e8eaf1; background: #ffffff; color: #171a3a; font-weight: 600">27% · ~96</span>Share of caller · est. calls</li>
-<li style="display: flex; align-items: center; gap: 6px"><span style="padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #848aa3; color: #171a3a; font-weight: 600">+3</span>Hidden callers or callees</li>
-</ul>
+                <ul
+                  aria-label="Encoding"
+                  style="
+                    list-style: none;
+                    margin: 0;
+                    padding: 10px 12px;
+                    border-radius: 10px;
+                    background: #f4f5fa;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px 20px;
+                    font-size: 12px;
+                    line-height: 16px;
+                    color: #5f6580;
+                  "
+                >
+                  <li style="display: flex; align-items: center; gap: 6px">
+                    <span
+                      aria-hidden="true"
+                      style="
+                        width: 18px;
+                        height: 12px;
+                        border-radius: 3px;
+                        background: rgba(255, 138, 31, 0.7);
+                      "
+                    ></span
+                    >Node size and fill = self time
+                  </li>
+                  <li style="display: flex; align-items: center; gap: 6px">
+                    <span
+                      aria-hidden="true"
+                      style="width: 18px; height: 6px; border-radius: 3px; background: #171a3a"
+                    ></span
+                    >Inner bar = total time
+                  </li>
+                  <li style="display: flex; align-items: center; gap: 6px">
+                    <span
+                      aria-hidden="true"
+                      style="width: 18px; height: 0; border-top: 4px solid #5f6580"
+                    ></span
+                    >Edge width = time passed to callee
+                  </li>
+                  <li style="display: flex; align-items: center; gap: 6px">
+                    <span
+                      style="
+                        padding: 0 6px;
+                        border-radius: 6px;
+                        border: 1px solid #e8eaf1;
+                        background: #ffffff;
+                        color: #171a3a;
+                        font-weight: 600;
+                      "
+                      >27% · ~96</span
+                    >Share of caller · est. calls
+                  </li>
+                  <li style="display: flex; align-items: center; gap: 6px">
+                    <span
+                      style="
+                        padding: 0 6px;
+                        border-radius: 6px;
+                        background: #ffffff;
+                        border: 1px solid #848aa3;
+                        color: #171a3a;
+                        font-weight: 600;
+                      "
+                      >+3</span
+                    >Hidden callers or callees
+                  </li>
+                </ul>
 
-<div style="overflow-x: auto; border-radius: 10px; background: #f4f5fa">
-<div role="img" aria-label="Call graph centered on buildInvoiceRows: called by renderInvoice, which is called by getOrders; calls lineTotal, ajv and formatCurrency, which both reach Intl.NumberFormat." style="position: relative; width: 1000px; height: 704px; margin: 0 auto">
-<svg aria-hidden="true" width="1000" height="704" sc-camel-view-box="0 0 1000 704" style="position: absolute; inset: 0">
-<sc-for list="{{edges}}" as="e" hint-placeholder-count="14"><path d="{{e.d}}" fill="none" stroke="{{e.stroke}}" stroke-width="{{e.w}}" stroke-linecap="round"></path></sc-for>
-<path d="M658 520 C 688 510, 688 574, 658 564" fill="none" stroke="#171a3a" stroke-opacity="0.55" stroke-width="2" stroke-dasharray="4 3"></path>
-</svg>
-<sc-for list="{{nodes}}" as="n" hint-placeholder-count="14">
-<button style="{{n.style}}">
-<span style="display: flex; align-items: baseline; gap: 6px; min-width: 0">
-<span style="{{n.nameStyle}}">{{n.name}}</span>
-<span style="font-size: 11px; line-height: 14px; color: #5f6580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.sub}}</span>
-</span>
-<span aria-hidden="true" style="display: block; height: 6px; border-radius: 3px; background: #ffffffb3"><span style="{{n.barStyle}}"></span></span>
-<span style="font-size: 11px; line-height: 14px; color: #171a3a; font-variant-numeric: tabular-nums; white-space: nowrap">{{n.stats}}</span>
-</button>
-</sc-for>
-<sc-for list="{{labels}}" as="l" hint-placeholder-count="7"><span style="{{l.style}}">{{l.text}}</span></sc-for>
-<sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><button aria-label="{{c.aria}}" style="{{c.style}}">{{c.text}}</button></sc-for>
-<span style="position: absolute; left: 436px; top: 574px; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1; font-size: 11px; line-height: 16px; font-weight: 600">recursion ×4</span>
-</div>
-</div>
-<p style="margin: 0; padding-top: 12px; border-top: 1px solid #e8eaf1; font-size: 12px; line-height: 16px; color: #5f6580">Faded nodes are outside two levels of the selection. Positions stay put when the selection changes; only fading and highlight move. Packages (express, jsonwebtoken, ajv) are collapsed; select one to expand it in place.</p>
-</section>
-<dc-import name="Details" fn="buildInvoiceRows" hint-size="100%,280px"></dc-import>
-</div>
-<aside aria-label="Source" style="flex: 1 1 380px; min-width: 0; max-width: 100%">
-<dc-import name="Source" fn="buildInvoiceRows" hint-size="100%,900px"></dc-import>
-</aside>
-</div>
-</main>
-</div>
-</x-dc>
-<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1580}}">
-class Component extends DCLogic {
-  renderVals() {
-    var H = 72, MAXSELF = 296, MAXTOTAL = 1248;
-    var RGB = { you: '255,138,31', dep: '76,141,255', node: '27,181,162', native: '43,196,138' };
-    var SOLID = { you: '#ff8a1f', dep: '#4c8dff', node: '#1bb5a2', native: '#2bc48a' };
-    // key, name, sub, origin, center x, top y, self ms, total ms, state ('sel' | 'ego' | 'fade')
-    var raw = [
-      ['express', 'express', 'package', 'dep', 500, 16, 38, 1248, 'fade'],
-      ['getOrders', 'getOrders', 'orders.ts:18', 'you', 500, 136, 16, 1224, 'ego'],
-      ['findOrders', 'findOrders', 'orders.ts:44', 'you', 110, 256, 9, 90, 'fade'],
-      ['renderInvoice', 'renderInvoice', 'invoice.ts:24', 'you', 440, 256, 22, 998, 'ego'],
-      ['json', 'JSON.stringify', 'native', 'native', 690, 256, 77, 77, 'fade'],
-      ['authenticate', 'authenticate', 'auth.ts:9', 'you', 890, 256, 4, 51, 'fade'],
-      ['loadTemplate', 'loadTemplate', 'template.ts:38', 'you', 150, 376, 9, 267, 'fade'],
-      ['bir', 'buildInvoiceRows', 'invoice.ts:71', 'you', 450, 376, 296, 674, 'sel'],
-      ['jwt', 'jsonwebtoken', 'package', 'dep', 890, 376, 46, 46, 'fade'],
-      ['fs', 'fs.readFileSync', 'node:fs', 'node', 110, 496, 4, 250, 'fade'],
-      ['lineTotal', 'lineTotal', 'money.ts:30', 'you', 300, 496, 38, 180, 'ego'],
-      ['ajv', 'ajv', 'package', 'dep', 540, 496, 128, 128, 'ego'],
-      ['fmt', 'formatCurrency', 'money.ts:12', 'you', 770, 496, 12, 70, 'ego'],
-      ['intl', 'Intl.NumberFormat', 'native', 'native', 520, 616, 175, 175, 'ego']
-    ];
-    var by = {};
-    var nodes = raw.map(function (r) {
-      var w = Math.round(150 + 130 * Math.sqrt(r[6] / MAXSELF));
-      var alpha = (0.14 + 0.62 * Math.sqrt(r[6] / MAXSELF)).toFixed(2);
-      var st = r[8];
-      by[r[0]] = { cx: r[4], y: r[5], w: w };
-      return {
-        name: r[1], sub: r[2],
-        stats: 'self ~' + r[6] + ' ms · total ~' + r[7] + ' ms',
-        nameStyle: 'font-size: 13px; line-height: 18px; color: #171a3a; white-space: nowrap; ' + (r[3] === 'you' ? 'font-weight: 600' : 'font-weight: 500'),
-        barStyle: 'display: block; height: 6px; border-radius: 3px; background: ' + (r[3] === 'you' ? '#171a3a' : SOLID[r[3]]) + '; width: ' + (r[7] / MAXTOTAL * 100).toFixed(1) + '%',
-        style: 'position: absolute; left: ' + (r[4] - w / 2) + 'px; top: ' + r[5] + 'px; width: ' + w + 'px; height: ' + H + 'px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(' + RGB[r[3]] + ',0.55); background: rgba(' + RGB[r[3]] + ',' + alpha + '); display: flex; flex-direction: column; justify-content: space-between; text-align: left; font-family: inherit; cursor: pointer;' +
-          (st === 'fade' ? ' opacity: 0.38;' : '') +
-          (st === 'sel' ? ' outline: 2px solid #171a3a; outline-offset: 2px; box-shadow: 0 8px 20px -6px #ff7a1a8c;' : ' box-shadow: 0 1px 2px #171a3a0a;')
-      };
-    });
-    // from, to, time ms, ego edge, label
-    var E = [
-      ['express', 'getOrders', 1224, false],
-      ['getOrders', 'findOrders', 90, false],
-      ['getOrders', 'renderInvoice', 998, true, '82% · ~7'],
-      ['getOrders', 'json', 77, false],
-      ['getOrders', 'authenticate', 51, false],
-      ['renderInvoice', 'loadTemplate', 267, false],
-      ['renderInvoice', 'bir', 674, true, '68% · ~7'],
-      ['authenticate', 'jwt', 46, false],
-      ['loadTemplate', 'fs', 250, false],
-      ['bir', 'lineTotal', 180, true, '27% · ~96'],
-      ['bir', 'ajv', 128, true, '19% · ~96'],
-      ['bir', 'fmt', 70, true, '10% · ~192'],
-      ['lineTotal', 'intl', 117, true, '65% · ~96'],
-      ['fmt', 'intl', 58, true, '83% · ~192']
-    ];
-    var edges = [], labels = [];
-    E.forEach(function (e) {
-      var a = by[e[0]], b = by[e[1]];
-      var x1 = a.cx, y1 = a.y + H, x2 = b.cx, y2 = b.y;
-      var my = (y1 + y2) / 2;
-      edges.push({
-        d: 'M' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + my + ', ' + x2 + ' ' + my + ', ' + x2 + ' ' + y2,
-        w: (1.5 + 9 * e[2] / MAXTOTAL).toFixed(1),
-        stroke: e[3] ? 'rgba(23,26,58,0.6)' : 'rgba(132,138,163,0.35)'
-      });
-      if (e[4]) {
-        labels.push({ text: e[4], style: 'position: absolute; left: ' + ((x1 + x2) / 2) + 'px; top: ' + (my - 9) + 'px; transform: translateX(-50%); white-space: nowrap; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1; font-size: 11px; line-height: 16px; font-weight: 600; font-variant-numeric: tabular-nums' });
+                <div style="overflow-x: auto; border-radius: 10px; background: #f4f5fa">
+                  <div
+                    role="img"
+                    aria-label="Call graph centered on buildInvoiceRows: called by renderInvoice, which is called by getOrders; calls lineTotal, ajv and formatCurrency, which both reach Intl.NumberFormat."
+                    style="position: relative; width: 1000px; height: 704px; margin: 0 auto"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      width="1000"
+                      height="704"
+                      sc-camel-view-box="0 0 1000 704"
+                      style="position: absolute; inset: 0"
+                    >
+                      <sc-for list="{{edges}}" as="e" hint-placeholder-count="14">
+                        <path
+                          d="{{e.d}}"
+                          fill="none"
+                          stroke="{{e.stroke}}"
+                          stroke-width="{{e.w}}"
+                          stroke-linecap="round"
+                        ></path>
+                      </sc-for>
+                      <path
+                        d="M658 520 C 688 510, 688 574, 658 564"
+                        fill="none"
+                        stroke="#171a3a"
+                        stroke-opacity="0.55"
+                        stroke-width="2"
+                        stroke-dasharray="4 3"
+                      ></path>
+                    </svg>
+                    <sc-for list="{{nodes}}" as="n" hint-placeholder-count="14">
+                      <button style="{{n.style}}">
+                        <span style="display: flex; align-items: baseline; gap: 6px; min-width: 0">
+                          <span style="{{n.nameStyle}}">{{n.name}}</span>
+                          <span
+                            style="
+                              font-size: 11px;
+                              line-height: 14px;
+                              color: #5f6580;
+                              white-space: nowrap;
+                              overflow: hidden;
+                              text-overflow: ellipsis;
+                            "
+                            >{{n.sub}}</span
+                          >
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          style="
+                            display: block;
+                            height: 6px;
+                            border-radius: 3px;
+                            background: #ffffffb3;
+                          "
+                          ><span style="{{n.barStyle}}"></span
+                        ></span>
+                        <span
+                          style="
+                            font-size: 11px;
+                            line-height: 14px;
+                            color: #171a3a;
+                            font-variant-numeric: tabular-nums;
+                            white-space: nowrap;
+                          "
+                          >{{n.stats}}</span
+                        >
+                      </button>
+                    </sc-for>
+                    <sc-for list="{{labels}}" as="l" hint-placeholder-count="7"
+                      ><span style="{{l.style}}">{{l.text}}</span></sc-for
+                    >
+                    <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"
+                      ><button aria-label="{{c.aria}}" style="{{c.style}}">
+                        {{c.text}}
+                      </button></sc-for
+                    >
+                    <span
+                      style="
+                        position: absolute;
+                        left: 436px;
+                        top: 574px;
+                        padding: 0 6px;
+                        border-radius: 6px;
+                        background: #ffffff;
+                        border: 1px solid #e8eaf1;
+                        font-size: 11px;
+                        line-height: 16px;
+                        font-weight: 600;
+                      "
+                      >recursion ×4</span
+                    >
+                  </div>
+                </div>
+                <p
+                  style="
+                    margin: 0;
+                    padding-top: 12px;
+                    border-top: 1px solid #e8eaf1;
+                    font-size: 12px;
+                    line-height: 16px;
+                    color: #5f6580;
+                  "
+                >
+                  Faded nodes are outside two levels of the selection. Positions stay put when the
+                  selection changes; only fading and highlight move. Packages (express,
+                  jsonwebtoken, ajv) are collapsed; select one to expand it in place.
+                </p>
+              </section>
+              <dc-import name="Details" fn="buildInvoiceRows" hint-size="100%,280px"></dc-import>
+            </div>
+            <aside aria-label="Source" style="flex: 1 1 380px; min-width: 0; max-width: 100%">
+              <dc-import name="Source" fn="buildInvoiceRows" hint-size="100%,900px"></dc-import>
+            </aside>
+          </div>
+        </main>
+      </div>
+    </x-dc>
+    <script
+      type="text/x-dc"
+      data-dc-script=""
+      data-props='{"$preview":{"width":1440,"height":1580}}'
+    >
+      class Component extends DCLogic {
+        renderVals() {
+          var H = 72, MAXSELF = 296, MAXTOTAL = 1248;
+          var RGB = { you: '255,138,31', dep: '76,141,255', node: '27,181,162', native: '43,196,138' };
+          var SOLID = { you: '#ff8a1f', dep: '#4c8dff', node: '#1bb5a2', native: '#2bc48a' };
+          // key, name, sub, origin, center x, top y, self ms, total ms, state ('sel' | 'ego' | 'fade')
+          var raw = [
+            ['express', 'express', 'package', 'dep', 500, 16, 38, 1248, 'fade'],
+            ['getOrders', 'getOrders', 'orders.ts:18', 'you', 500, 136, 16, 1224, 'ego'],
+            ['findOrders', 'findOrders', 'orders.ts:44', 'you', 110, 256, 9, 90, 'fade'],
+            ['renderInvoice', 'renderInvoice', 'invoice.ts:24', 'you', 440, 256, 22, 998, 'ego'],
+            ['json', 'JSON.stringify', 'native', 'native', 690, 256, 77, 77, 'fade'],
+            ['authenticate', 'authenticate', 'auth.ts:9', 'you', 890, 256, 4, 51, 'fade'],
+            ['loadTemplate', 'loadTemplate', 'template.ts:38', 'you', 150, 376, 9, 267, 'fade'],
+            ['bir', 'buildInvoiceRows', 'invoice.ts:71', 'you', 450, 376, 296, 674, 'sel'],
+            ['jwt', 'jsonwebtoken', 'package', 'dep', 890, 376, 46, 46, 'fade'],
+            ['fs', 'fs.readFileSync', 'node:fs', 'node', 110, 496, 4, 250, 'fade'],
+            ['lineTotal', 'lineTotal', 'money.ts:30', 'you', 300, 496, 38, 180, 'ego'],
+            ['ajv', 'ajv', 'package', 'dep', 540, 496, 128, 128, 'ego'],
+            ['fmt', 'formatCurrency', 'money.ts:12', 'you', 770, 496, 12, 70, 'ego'],
+            ['intl', 'Intl.NumberFormat', 'native', 'native', 520, 616, 175, 175, 'ego']
+          ];
+          var by = {};
+          var nodes = raw.map(function (r) {
+            var w = Math.round(150 + 130 * Math.sqrt(r[6] / MAXSELF));
+            var alpha = (0.14 + 0.62 * Math.sqrt(r[6] / MAXSELF)).toFixed(2);
+            var st = r[8];
+            by[r[0]] = { cx: r[4], y: r[5], w: w };
+            return {
+              name: r[1], sub: r[2],
+              stats: 'self ~' + r[6] + ' ms · total ~' + r[7] + ' ms',
+              nameStyle: 'font-size: 13px; line-height: 18px; color: #171a3a; white-space: nowrap; ' + (r[3] === 'you' ? 'font-weight: 600' : 'font-weight: 500'),
+              barStyle: 'display: block; height: 6px; border-radius: 3px; background: ' + (r[3] === 'you' ? '#171a3a' : SOLID[r[3]]) + '; width: ' + (r[7] / MAXTOTAL * 100).toFixed(1) + '%',
+              style: 'position: absolute; left: ' + (r[4] - w / 2) + 'px; top: ' + r[5] + 'px; width: ' + w + 'px; height: ' + H + 'px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(' + RGB[r[3]] + ',0.55); background: rgba(' + RGB[r[3]] + ',' + alpha + '); display: flex; flex-direction: column; justify-content: space-between; text-align: left; font-family: inherit; cursor: pointer;' +
+                (st === 'fade' ? ' opacity: 0.38;' : '') +
+                (st === 'sel' ? ' outline: 2px solid #171a3a; outline-offset: 2px; box-shadow: 0 8px 20px -6px #ff7a1a8c;' : ' box-shadow: 0 1px 2px #171a3a0a;')
+            };
+          });
+          // from, to, time ms, ego edge, label
+          var E = [
+            ['express', 'getOrders', 1224, false],
+            ['getOrders', 'findOrders', 90, false],
+            ['getOrders', 'renderInvoice', 998, true, '82% · ~7'],
+            ['getOrders', 'json', 77, false],
+            ['getOrders', 'authenticate', 51, false],
+            ['renderInvoice', 'loadTemplate', 267, false],
+            ['renderInvoice', 'bir', 674, true, '68% · ~7'],
+            ['authenticate', 'jwt', 46, false],
+            ['loadTemplate', 'fs', 250, false],
+            ['bir', 'lineTotal', 180, true, '27% · ~96'],
+            ['bir', 'ajv', 128, true, '19% · ~96'],
+            ['bir', 'fmt', 70, true, '10% · ~192'],
+            ['lineTotal', 'intl', 117, true, '65% · ~96'],
+            ['fmt', 'intl', 58, true, '83% · ~192']
+          ];
+          var edges = [], labels = [];
+          E.forEach(function (e) {
+            var a = by[e[0]], b = by[e[1]];
+            var x1 = a.cx, y1 = a.y + H, x2 = b.cx, y2 = b.y;
+            var my = (y1 + y2) / 2;
+            edges.push({
+              d: 'M' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + my + ', ' + x2 + ' ' + my + ', ' + x2 + ' ' + y2,
+              w: (1.5 + 9 * e[2] / MAXTOTAL).toFixed(1),
+              stroke: e[3] ? 'rgba(23,26,58,0.6)' : 'rgba(132,138,163,0.35)'
+            });
+            if (e[4]) {
+              labels.push({ text: e[4], style: 'position: absolute; left: ' + ((x1 + x2) / 2) + 'px; top: ' + (my - 9) + 'px; transform: translateX(-50%); white-space: nowrap; padding: 0 6px; border-radius: 6px; background: #ffffff; border: 1px solid #e8eaf1; font-size: 11px; line-height: 16px; font-weight: 600; font-variant-numeric: tabular-nums' });
+            }
+          });
+          function chip(key, text, aria) {
+            var n = by[key];
+            return { text: text, aria: aria, style: 'position: absolute; left: ' + (n.cx + n.w / 2 - 18) + 'px; top: ' + (n.y + H - 10) + 'px; min-width: 32px; height: 24px; padding: 0 6px; border-radius: 6px; border: 1px solid #848aa3; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer' };
+          }
+          var chips = [
+            chip('getOrders', '+3', 'Show 3 hidden callees of getOrders'),
+            chip('renderInvoice', '+2', 'Show 2 hidden callees of renderInvoice'),
+            chip('lineTotal', '+1', 'Show 1 hidden callee of lineTotal'),
+            chip('ajv', '+12', 'Expand ajv: 12 functions')
+          ];
+          return { nodes: nodes, edges: edges, labels: labels, chips: chips };
+        }
       }
-    });
-    function chip(key, text, aria) {
-      var n = by[key];
-      return { text: text, aria: aria, style: 'position: absolute; left: ' + (n.cx + n.w / 2 - 18) + 'px; top: ' + (n.y + H - 10) + 'px; min-width: 32px; height: 24px; padding: 0 6px; border-radius: 6px; border: 1px solid #848aa3; background: #ffffff; color: #171a3a; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer' };
-    }
-    var chips = [
-      chip('getOrders', '+3', 'Show 3 hidden callees of getOrders'),
-      chip('renderInvoice', '+2', 'Show 2 hidden callees of renderInvoice'),
-      chip('lineTotal', '+1', 'Show 1 hidden callee of lineTotal'),
-      chip('ajv', '+12', 'Expand ajv: 12 functions')
-    ];
-    return { nodes: nodes, edges: edges, labels: labels, chips: chips };
-  }
-}
-</script>
-
-
-</body></html>
+    </script>
+  </body>
+</html>
