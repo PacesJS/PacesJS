@@ -25,46 +25,15 @@ import {
 } from '../view/waterfall-indent';
 import { rowFacts, selectedRowIdOf } from '../view/waterfall-facts';
 import { waterfallKeyAction } from '../view/waterfall-keys';
-import { barDetails, durLabel, rowLocation, tipStyle } from '../view/waterfall-labels';
+import { RESUMED_TIP, barDetails, durLabel, rowLocation, tipStyle } from '../view/waterfall-labels';
 import { visibleRows } from '../view/waterfall-rows';
-import type { WaterfallSort } from '../view/waterfall-rows';
 import { ColumnResizer } from './ColumnResizer';
 import { Hint } from './Hint';
 import { Icon } from './Icon';
-import { Legend } from './Legend';
-import { Switch } from './Switch';
+import { WaterfallLegend } from './WaterfallLegend';
+import { WaterfallToolbar } from './WaterfallToolbar';
 
 const VIEWPORT_H = 720;
-
-const TASK_GROUPS = [
-  'Whole run',
-  'Entry',
-  'Requests',
-  'Timers',
-  'I/O',
-  'Microtasks',
-  'Other',
-  'Small tasks',
-] as const;
-
-/** Option value of the picker when a time range is shown instead of a task. */
-const RANGE_OPTION = -2;
-
-const RESUMED_TIP =
-  'Continuations after an await are attached to the call that started them (inferred; run with --async for exact).';
-
-const SORTS: Array<{ value: WaterfallSort; label: string }> = [
-  { value: 'time', label: 'Time order' },
-  { value: 'duration', label: 'Duration' },
-  { value: 'share', label: 'Share' },
-];
-
-const MIN_DURATIONS: Array<{ us: number; label: string }> = [
-  { us: 0, label: 'Any' },
-  { us: 1000, label: '1 ms' },
-  { us: 5000, label: '5 ms' },
-  { us: 20_000, label: '20 ms' },
-];
 
 export function Waterfall() {
   const { client, scope, scopeKey, snap, state, dispatch, selection, select, summary, openDock } =
@@ -251,9 +220,7 @@ export function Waterfall() {
     step.length > 1
       ? ((((step[1] ?? 0) - (step[0] ?? 0)) * 1000) / (window.end - window.start)) * 100
       : 12.5;
-  const hasAsync = data.hasAsync;
   const mirrorTask = tasksQ.data ?? [];
-  const smallCount = mirrorTask.filter((t) => t.group === 'Small tasks').length;
   const gridStyle = { ['--wf-grid' as string]: gridTemplate(cols) } as CSSProperties;
   const minWidth = WF.pad * 2 + cols.call + MIN_BAR_PX + cols.time + cols.share + WF.gap * 3;
 
@@ -314,148 +281,19 @@ export function Waterfall() {
 
   const winStartPct = (window.start / total) * 100;
   const winWidthPct = ((window.end - window.start) / total) * 100;
-  const order = SORTS.find((s) => s.value === wfSort)?.label.toLowerCase() ?? 'time order';
 
   return (
     <>
-      <div className="toolbar-row">
-        <div className="toolbar" style={{ gap: 12 }}>
-          <Switch
-            checked={snap.options.critical}
-            onChange={(v) => dispatch({ type: 'options', options: { critical: v } })}
-          >
-            Critical path
-          </Switch>
-          <Switch
-            checked={pathOnly}
-            onChange={(v) => dispatch({ type: 'options', options: { pathOnly: v } })}
-          >
-            Path only <kbd className="kbd">p</kbd>
-          </Switch>
-          <Switch
-            checked={snap.options.logical && hasAsync}
-            disabled={!hasAsync}
-            onChange={(v) => dispatch({ type: 'options', options: { logical: v } })}
-            hint={hasAsync ? 'from --async' : 'needs --async'}
-          >
-            Logical flow
-          </Switch>
-          <div className="field">
-            <label htmlFor="task-pick">Task</label>
-            <select
-              id="task-pick"
-              className="select"
-              value={data.mode === 'range' ? RANGE_OPTION : data.taskIndex}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (v === RANGE_OPTION) return;
-                dispatch(
-                  v < 0
-                    ? {
-                        type: 'go',
-                        patch: { selection: { kind: 'none' }, range: null },
-                        options: { task: -1 },
-                      }
-                    : {
-                        type: 'go',
-                        patch: { selection: { kind: 'task', track: data.trackId, task: v } },
-                        options: { task: v },
-                      },
-                );
-              }}
-            >
-              {data.mode === 'range' ? (
-                <option value={RANGE_OPTION}>{data.taskLabel}</option>
-              ) : null}
-              {TASK_GROUPS.map((group) => {
-                const all = mirrorTask.filter((t) => t.group === group);
-                // Small tasks stay folded away until asked for, unless one of them is open.
-                const tasks =
-                  group === 'Small tasks' && !showSmall
-                    ? all.filter((t) => t.index === data.taskIndex)
-                    : all;
-                return tasks.length === 0 ? null : (
-                  <optgroup
-                    key={group}
-                    label={group === 'Small tasks' ? `Small tasks (${all.length})` : group}
-                  >
-                    {tasks.map((t) => (
-                      <option key={t.index} value={t.index}>
-                        {group === 'Entry' ? `${t.label} · program entry point` : t.label}
-                        {group === 'Whole run' ? '' : ` · ${fmtDuration(t.durationUs)}`}
-                        {t.longest ? ' · longest' : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                );
-              })}
-            </select>
-          </div>
-          {smallCount > 0 ? (
-            <button
-              type="button"
-              className="btn btn-sm"
-              aria-pressed={showSmall}
-              onClick={() => setShowSmall((v) => !v)}
-            >
-              {showSmall ? 'Hide small tasks' : `Show ${smallCount} small tasks`}
-            </button>
-          ) : null}
-          <div className="field">
-            <label htmlFor="wf-sort">Order</label>
-            <select
-              id="wf-sort"
-              className="select"
-              value={wfSort}
-              onChange={(e) =>
-                dispatch({
-                  type: 'options',
-                  options: { wfSort: e.target.value as WaterfallSort },
-                })
-              }
-            >
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="wf-min">Min duration</label>
-            <select
-              id="wf-min"
-              className="select"
-              value={minDurUs}
-              onChange={(e) =>
-                dispatch({ type: 'options', options: { minDurUs: Number(e.target.value) } })
-              }
-            >
-              <option value={-1}>Auto · hide under {threshold}</option>
-              {MIN_DURATIONS.map((m) => (
-                <option key={m.us} value={m.us}>
-                  {m.us === 0 ? m.label : `≥ ${m.label}`}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        {hiding && folded && folded.hiddenSmall > 0 ? (
-          <span className="filter-summary" role="status">
-            Hiding rows under {foldLabel} ({folded.hiddenSmall})
-            <button
-              type="button"
-              className="filter-reset"
-              onClick={() => dispatch({ type: 'options', options: { minDurUs: 0 } })}
-            >
-              show
-            </button>
-          </span>
-        ) : null}
-        <p className="axis-caption" style={{ fontWeight: 400 }}>
-          x = time inside the task, ms · siblings in {order} · ~ = sampled estimate
-        </p>
-      </div>
+      <WaterfallToolbar
+        data={data}
+        tasks={mirrorTask}
+        showSmall={showSmall}
+        onToggleSmall={() => setShowSmall((v) => !v)}
+        threshold={threshold}
+        foldLabel={foldLabel}
+        hiding={hiding}
+        hiddenSmall={folded?.hiddenSmall ?? 0}
+      />
       <Hint id="hint-waterfall">
         Each row is one call. The bar shows when it started and how long it took inside this task.
         Ctrl + wheel zooms the time axis; drag the column edges to resize them.
@@ -725,38 +563,7 @@ export function Waterfall() {
             document.body,
           )
         : null}
-      <div className="view-footer">
-        <Legend label="Origin colors" />
-        <span className="wf-legend-item">
-          <span className="wf-legend-swatch swatch-critical" aria-hidden="true" />
-          Critical path: widest child at each level
-        </span>
-        <span className="wf-legend-item">
-          <span className="wf-legend-swatch swatch-hatch" aria-hidden="true" />
-          Under {threshold}, below sampling precision
-        </span>
-        <span className="wf-legend-item">
-          <span className="wf-legend-swatch swatch-wait" aria-hidden="true" />
-          Idle wait between an await and its continuation
-        </span>
-        <span className="wf-legend-item" title={RESUMED_TIP}>
-          <span aria-hidden="true" className="wf-resumed">
-            ↻
-          </span>
-          Resumed after an await: attached to the call that started it (inferred; run with --async
-          for exact)
-        </span>
-        <span className="wf-legend-item">
-          <span className="wf-depth" aria-hidden="true">
-            ⋯ N
-          </span>
-          Depth of a deep call. Past level 12 it is a button: Focus here (or f) makes the call the
-          root
-        </span>
-        <span className="view-footer-end">
-          Arrows walk rows · Enter opens source · f focus · Backspace back
-        </span>
-      </div>
+      <WaterfallLegend threshold={threshold} />
       <span className="sr-only" role="status" aria-live="polite">
         {data.taskLabel}, {fmtDuration(data.taskUs)}, {data.rows.length - 1} calls
       </span>

@@ -75,3 +75,6 @@ export function tipStyle(
     zIndex: 40,
   };
 }
+
+export const RESUMED_TIP =
+  'Continuations after an await are attached to the call that started them (inferred; run with --async for exact).';
