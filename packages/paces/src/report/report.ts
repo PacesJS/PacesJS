@@ -168,6 +168,29 @@ interface Header {
   json: Record<string, unknown>;
 }
 
+/** The JSON every view shares: schema version, view name and header, then the view's own fields. */
+function envelope(
+  view: string,
+  head: Header,
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  return { schemaVersion: REPORT_SCHEMA_VERSION, view, ...head.json, ...body };
+}
+
+/** Closes a view: the `next:` commands end the text and the JSON. */
+function finishView(
+  view: string,
+  head: Header,
+  lines: string[],
+  next: string[],
+  body: Record<string, unknown>,
+): ReportOutput {
+  return {
+    text: [...lines, 'next:', ...next].join('\n'),
+    json: { ...envelope(view, head, body), next: next.map((n) => n.trim()) },
+  };
+}
+
 function headerOf(ctx: ReportContext, ti: number, flags: Flags, title: string): Header {
   const { model } = ctx;
   const track = model.tracks[ti];
@@ -358,20 +381,11 @@ function treeView(
     ...renderRows(rows.map(treeLayout), paint),
   ];
   lines.push(...footerFor(res));
-  const next = nextForTree(ctx, rows, ti);
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'tree',
-      ...head.json,
-      rootMs: round(res.rootUs / 1000),
-      hiddenRows: res.hidden,
-      rows: rows.map(jsonRow),
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView('tree', head, lines, nextForTree(ctx, rows, ti), {
+    rootMs: round(res.rootUs / 1000),
+    hiddenRows: res.hidden,
+    rows: rows.map(jsonRow),
+  });
 }
 
 function flattenCallers(
@@ -410,7 +424,7 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
         ...head.lines,
         'No callers recorded (it is a top-level entry, or called only from runtime frames).',
       ].join('\n'),
-      json: { schemaVersion: REPORT_SCHEMA_VERSION, view: 'callers', ...head.json, rows: [] },
+      json: envelope('callers', head, { rows: [] }),
     };
   }
   const budget = Math.max(3, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 7);
@@ -440,33 +454,25 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
       : []),
     nextCmd(ctx, `--lines f${fn}`),
   ].slice(0, 3);
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'callers',
-      ...head.json,
-      function: {
-        id: `f${fn}`,
-        name: target.name,
-        file: target.file,
-        line: target.line,
-        totalMs: round(total / 1000),
-        calls,
-      },
-      rows: flat.map(({ node, depth: d }) => ({
-        depth: d,
-        id: `f${node.fn}`,
-        name: node.name,
-        file: node.file,
-        line: node.line,
-        viaMs: round(node.weightUs / 1000),
-        calls: node.calls,
-      })),
-      next: next.map((n) => n.trim()),
+  return finishView('callers', head, lines, next, {
+    function: {
+      id: `f${fn}`,
+      name: target.name,
+      file: target.file,
+      line: target.line,
+      totalMs: round(total / 1000),
+      calls,
     },
-  };
+    rows: flat.map(({ node, depth: d }) => ({
+      depth: d,
+      id: `f${node.fn}`,
+      name: node.name,
+      file: node.file,
+      line: node.line,
+      viaMs: round(node.weightUs / 1000),
+      calls: node.calls,
+    })),
+  });
 }
 
 function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): ReportOutput {
@@ -525,31 +531,23 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
           : [nextCmd(ctx, `--top ${sort === 'self' ? 'total' : 'self'}`)]),
       ].slice(0, 3)
     : [];
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: pkg ? 'package' : 'top',
-      ...head.json,
-      sort,
-      ...(pkg ? { package: pkg } : {}),
-      totalFunctions: rows.length,
-      rows: shown.map((r) => ({
-        id: `f${r.fn}`,
-        name: r.name,
-        package: r.pkg,
-        origin: originName(r.origin),
-        file: r.file,
-        line: r.line,
-        selfMs: round(r.self / 1000),
-        totalMs: round(r.total / 1000),
-        selfShare: Math.round(r.selfShare * 1000) / 1000,
-        calls: r.calls,
-      })),
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView(pkg ? 'package' : 'top', head, lines, next, {
+    sort,
+    ...(pkg ? { package: pkg } : {}),
+    totalFunctions: rows.length,
+    rows: shown.map((r) => ({
+      id: `f${r.fn}`,
+      name: r.name,
+      package: r.pkg,
+      origin: originName(r.origin),
+      file: r.file,
+      line: r.line,
+      selfMs: round(r.self / 1000),
+      totalMs: round(r.total / 1000),
+      selfShare: Math.round(r.selfShare * 1000) / 1000,
+      calls: r.calls,
+    })),
+  });
 }
 
 function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
@@ -635,33 +633,25 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     nextCmd(ctx, `--tree --from f${fn}`),
     ...(top && top.totalUs > info.selfUs ? [nextCmd(ctx, `--lines f${top.fn}`)] : []),
   ].slice(0, 3);
-  out.push('next:', ...next);
-  return {
-    text: out.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'lines',
-      ...head.json,
-      function: {
-        id: `f${fn}`,
-        name: info.name,
-        file: info.file,
-        line: info.line,
-        selfMs: round(info.selfUs / 1000),
-        totalMs: round(info.totalUs / 1000),
-      },
-      sourceAvailable: Boolean(text),
-      lines: jsonLines,
-      calleeTime: info.calleeTime.slice(0, 6).map((c) => ({
-        id: `f${c.fn}`,
-        name: c.name,
-        package: c.pkg,
-        totalMs: round(c.totalUs / 1000),
-      })),
-      reason: info.lines.length === 0 ? info.lineInfo.reason : '',
-      next: next.map((n) => n.trim()),
+  return finishView('lines', head, out, next, {
+    function: {
+      id: `f${fn}`,
+      name: info.name,
+      file: info.file,
+      line: info.line,
+      selfMs: round(info.selfUs / 1000),
+      totalMs: round(info.totalUs / 1000),
     },
-  };
+    sourceAvailable: Boolean(text),
+    lines: jsonLines,
+    calleeTime: info.calleeTime.slice(0, 6).map((c) => ({
+      id: `f${c.fn}`,
+      name: c.name,
+      package: c.pkg,
+      totalMs: round(c.totalUs / 1000),
+    })),
+    reason: info.lines.length === 0 ? info.lineInfo.reason : '',
+  });
 }
 
 function phasesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
@@ -676,18 +666,9 @@ function phasesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput 
       lines.push(`    ${padStart(fmtUs(h.selfMs * 1000), 9)}  ${h.name} ${place(h.file, h.line)}`);
     }
   }
-  const next = [nextCmd(ctx, '--tree'), nextCmd(ctx, '--tasks')];
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'phases',
-      ...head.json,
-      phases,
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView('phases', head, lines, [nextCmd(ctx, '--tree'), nextCmd(ctx, '--tasks')], {
+    phases,
+  });
 }
 
 function tasksView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
@@ -718,25 +699,17 @@ function tasksView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     longest && longest.index >= 0
       ? [nextCmd(ctx, `--tree --task ${longest.index}`)]
       : [nextCmd(ctx, '--tree')];
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'tasks',
-      ...head.json,
-      tasks: shown.map((t) => ({
-        task: t.index < 0 ? 'whole' : t.index,
-        group: t.group,
-        label: t.label,
-        startMs: round(t.startUs / 1000),
-        durationMs: round(t.durationUs / 1000),
-        busyMs: round(t.busyUs / 1000),
-        longest: t.longest,
-      })),
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView('tasks', head, lines, next, {
+    tasks: shown.map((t) => ({
+      task: t.index < 0 ? 'whole' : t.index,
+      group: t.group,
+      label: t.label,
+      startMs: round(t.startUs / 1000),
+      durationMs: round(t.durationUs / 1000),
+      busyMs: round(t.busyUs / 1000),
+      longest: t.longest,
+    })),
+  });
 }
 
 function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
@@ -806,18 +779,10 @@ function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
       next[at >= 0 ? at : Math.min(1, next.length)] = nextCmd(ctx, `--lines f${hotId}`);
     }
   }
-  lines.push('next:', ...next.slice(0, 3));
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'summary',
-      ...head.json,
-      summary: s,
-      tree: res.rows.map(jsonRow),
-      next: next.slice(0, 3).map((n) => n.trim()),
-    },
-  };
+  return finishView('summary', head, lines, next.slice(0, 3), {
+    summary: s,
+    tree: res.rows.map(jsonRow),
+  });
 }
 
 /** Renders one view of a model, as text for people and agents and as JSON for programs. */
