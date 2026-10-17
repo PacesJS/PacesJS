@@ -62,19 +62,6 @@ export function taskOptions(model: ExecutionModel, trackIndex: number): TaskOpti
   }));
 }
 
-export function longestTask(track: Track): number {
-  let best = -1;
-  let bestDur = -1;
-  for (let i = 0; i < track.tasks.length; i++) {
-    const d = (track.tasks.end[i] ?? 0) - (track.tasks.start[i] ?? 0);
-    if (d > bestDur) {
-      bestDur = d;
-      best = i;
-    }
-  }
-  return best;
-}
-
 // ---- Waterfall ----
 
 export interface WaterfallRequest {
@@ -418,11 +405,7 @@ export function calleesOf(
 }
 
 /** The call node at `path` (UI ids from the root): its CPU time, self time and direct callees. */
-export function callAt(
-  model: ExecutionModel,
-  s: Scoped,
-  path: readonly number[],
-): CallNumbers | null {
+export function callAt(s: Scoped, path: readonly number[]): CallNumbers | null {
   const ids = path.map((f) => s.inn(f));
   if (path.length === 0 || ids.some((f) => f < 0)) return null;
   const tree = s.view.tree;

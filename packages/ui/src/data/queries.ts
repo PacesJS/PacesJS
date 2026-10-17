@@ -243,7 +243,7 @@ export function createQueries(
       return sourceInfo(model, scoped(scope), fn);
     },
     callAt(scope, path) {
-      return callAt(model, scoped(scope), path);
+      return callAt(scoped(scope), path);
     },
     outline(scope, fn) {
       return fileOutline(model, scoped(scope), fn);
