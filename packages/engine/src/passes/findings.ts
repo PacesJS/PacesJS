@@ -10,7 +10,7 @@ import { formatDuration, formatPercent, plural } from '../util/format.js';
 import { displayPath } from '../util/paths.js';
 import type { PassContext } from './types.js';
 
-type Rule = (model: ExecutionModel, th: Thresholds, ctx: PassContext) => Finding[];
+type Rule = (model: ExecutionModel, th: Thresholds) => Finding[];
 
 const KIND_ORDER: FindingKind[] = [
   'event-loop-blocked',
@@ -548,7 +548,6 @@ const heavySerialization: Rule = (m, th) => {
 
 const lateModuleLoading: Rule = (m, th) => {
   interface Hit {
-    us: number;
     track: number;
     task: number;
     taskUs: number;
@@ -589,7 +588,7 @@ const lateModuleLoading: Rule = (m, th) => {
       }
       total += taskUs;
       if (taskUs > 0 && (!hit || taskUs > hit.taskUs)) {
-        hit = { us: 0, track: ti, task: k, taskUs, fn: topFn };
+        hit = { track: ti, task: k, taskUs, fn: topFn };
       }
     }
   });
@@ -705,7 +704,7 @@ const RULES: Rule[] = [
 export function findIssues(model: ExecutionModel, ctx: PassContext): Finding[] {
   const suppressed =
     model.meta.runKind === 'server' ? [] : (ctx.options.suppressForCli ?? DEFAULT_SUPPRESS_FOR_CLI);
-  const all = RULES.flatMap((rule) => rule(model, ctx.thresholds, ctx)).filter(
+  const all = RULES.flatMap((rule) => rule(model, ctx.thresholds)).filter(
     (f) => !suppressed.includes(f.kind),
   );
   return all.sort(

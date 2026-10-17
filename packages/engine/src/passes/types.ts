@@ -2,7 +2,7 @@
 
 import type { AnalyzeOptions, Thresholds } from '../config.js';
 import type { Samples, EventTable } from '../model.js';
-import type { RawCapture, ScriptInfo, TrackInfo } from '../raw.js';
+import type { ScriptInfo, TrackInfo } from '../raw.js';
 import type { StringTable } from '../util/strings.js';
 
 /** One occurrence of something worth a warning; `analyze` folds drafts into one `ModelWarning` per kind. */
@@ -88,5 +88,3 @@ export interface IngestResult {
   precisionUs: number;
   durationUs: number;
 }
-
-export type IngestInput = RawCapture;
