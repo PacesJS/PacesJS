@@ -7,6 +7,7 @@ import type { CallTree, ExecutionModel, Samples } from '../model.js';
 import { depthsOf, subtreeEnds, totalsOf } from '../util/tree-columns.js';
 import { stitchPlan } from './stitch.js';
 import { createTreeBuilder } from './tree-builder.js';
+import type { TreeBuilder } from './tree-builder.js';
 import type { FunctionInfo, Transform, TransformedView, ViewFnId } from './types.js';
 import { trackAt } from './track-at.js';
 
@@ -161,17 +162,14 @@ function rebuild(model: ExecutionModel, work: Working, plan: Plan): Working {
     tmpTotal[target] = (tmpTotal[target] ?? 0) + (dur[w] ?? 0);
     w++;
   }
-  return finish(work, parent, fn, time, dur, node, tmpTotal);
+  return finish(work, { parent, fn }, { time, dur, node }, tmpTotal);
 }
 
 /** Orders a creation-order tree into preorder, prunes empty subtrees and computes self/total. */
 function finish(
   work: Working,
-  parent: number[],
-  fn: number[],
-  time: Float64Array,
-  dur: Float64Array,
-  node: Uint32Array,
+  { parent, fn }: Pick<TreeBuilder, 'parent' | 'fn'>,
+  { time, dur, node }: { time: Float64Array; dur: Float64Array; node: Uint32Array },
   selfTmp: Float64Array,
 ): Working {
   const m = parent.length;
@@ -290,7 +288,7 @@ function invert(model: ExecutionModel, work: Working): Working {
     node[s] = target;
     tmp[target] = (tmp[target] ?? 0) + (samples.dur[s] ?? 0);
   }
-  const out = finish(work, parent, fn, samples.time, samples.dur, node, tmp);
+  const out = finish(work, { parent, fn }, { time: samples.time, dur: samples.dur, node }, tmp);
   return { ...out, inverted: true };
 }
 
@@ -402,7 +400,7 @@ function applyOne(model: ExecutionModel, work: Working, t: Transform): Working {
         const target = plan.node[s] ?? 0;
         tmp[target] = (tmp[target] ?? 0) + (samples.dur[s] ?? 0);
       }
-      return finish(work, plan.parent, plan.fn, samples.time, samples.dur, plan.node, tmp);
+      return finish(work, plan, { time: samples.time, dur: samples.dur, node: plan.node }, tmp);
     }
     case 'drop-idle': {
       const keepLeaf = new Uint8Array(tree.length).fill(1);
