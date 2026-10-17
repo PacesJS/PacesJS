@@ -3,7 +3,7 @@
 
 import { Origin, TaskKind } from '../model.js';
 import { functionName } from '../frames.js';
-import type { ExecutionModel, Samples } from '../model.js';
+import type { ExecutionModel, Samples, Track } from '../model.js';
 import { reconstructSpans } from '../passes/spans.js';
 import { formatDuration, plural } from '../util/format.js';
 import { DEFAULT_TRANSFORMS } from './types.js';
@@ -559,18 +559,12 @@ export function reindex(
   return out;
 }
 
-export function waterfallForRun(
-  model: ExecutionModel,
-  trackIndex: number,
-  options: RunWaterfallOptions = {},
-): Waterfall {
-  const track = trackAt(model, trackIndex);
-  const built = applyTransforms(model, trackIndex, options.transforms ?? DEFAULT_TRANSFORMS);
-  const full = viewFor(model, built, options);
-  const origin = extendedOrigin(model, full);
-  const trivial = trivialTasks(model, trackIndex, options.collapseTrivialUs);
-
-  // Samples of small tasks do not make rows; they come back as summary rows.
+/** The view without the samples of small tasks: those come back as summary rows. */
+function withoutSmallTasks(
+  full: TransformedView,
+  track: Track,
+  small: Set<number>,
+): TransformedView {
   const tasks = track.tasks;
   const keep: number[] = [];
   let k = 0;
@@ -579,9 +573,9 @@ export function waterfallForRun(
     const t = all.time[i] ?? 0;
     while (k < tasks.length && (tasks.end[k] ?? 0) <= t) k++;
     const inTask = k < tasks.length && (tasks.start[k] ?? 0) <= t;
-    if (!(inTask && trivial.has(k))) keep.push(i);
+    if (!(inTask && small.has(k))) keep.push(i);
   }
-  const view: TransformedView = {
+  return {
     ...full,
     samples: {
       length: keep.length,
@@ -590,56 +584,79 @@ export function waterfallForRun(
       dur: Float64Array.from(keep, (i) => all.dur[i] ?? 0),
     },
   };
-  // The run is the whole profile, small tasks included.
-  const start = all.time[0] ?? 0;
-  const lastAt = all.length - 1;
-  const end = (all.time[lastAt] ?? 0) + (all.dur[lastAt] ?? 0);
-  const main = buildRows(
-    model,
-    view,
-    origin,
-    { start, end: Math.max(end, start + 1), task: -1 },
-    { rowBase: 0, depthBase: 0, parentOfRoots: -1 },
-  );
-  let rows = main.rows;
+}
 
-  // One root row for the whole run: awaiting and small tasks leave gaps, not separate roots.
-  const alias = new Map<number, number>();
-  const rootRows = rows.filter((r) => r.kind === 'call' && r.parent < 0 && r.fn === track.rootFn);
+/**
+ * One root row for the whole run: awaiting and small tasks leave gaps, not separate roots. The extra roots
+ * are merged into the first one (recorded in `alias`); returns it, if there is one.
+ */
+function mergeRootRows(
+  rows: WaterfallRow[],
+  rootFn: number,
+  start: number,
+  end: number,
+  alias: Map<number, number>,
+): WaterfallRow | undefined {
+  const rootRows = rows.filter((r) => r.kind === 'call' && r.parent < 0 && r.fn === rootFn);
   const root = rootRows[0];
-  if (root) {
-    for (const extra of rootRows.slice(1)) {
-      alias.set(extra.id, root.id);
-      root.start = Math.min(root.start, extra.start);
-      root.end = Math.max(root.end, extra.end);
-      root.selfUs += extra.selfUs;
-    }
-    root.start = Math.min(root.start, start);
-    root.end = Math.max(root.end, end);
-    root.durUs = root.end - root.start;
-    root.share = 1;
-    root.hatched = false;
+  if (!root) return undefined;
+  for (const extra of rootRows.slice(1)) {
+    alias.set(extra.id, root.id);
+    root.start = Math.min(root.start, extra.start);
+    root.end = Math.max(root.end, extra.end);
+    root.selfUs += extra.selfUs;
   }
+  root.start = Math.min(root.start, start);
+  root.end = Math.max(root.end, end);
+  root.durUs = root.end - root.start;
+  root.share = 1;
+  root.hatched = false;
+  return root;
+}
 
-  // Root-level (program), GC and idle rows shorter than the limit sit between tasks (the stacks around them
-  // share nothing, so they cannot be bridged into a call): noise, folded into the summary rows below.
-  const taskLimit = smallTaskLimitUs(model, trackIndex, options.collapseTrivialUs);
-  const blipLimit = taskLimit > 0 ? Math.max(taskLimit, 2 * model.meta.precisionUs) : 0;
-  const topDepth = root ? 1 : 0;
-  const drop = new Set<number>();
-  const blips: Array<{ start: number; end: number; runtime: number }> = [];
-  if (blipLimit > 0) {
-    for (const r of rows) {
-      if (r.kind !== 'call' || r.depth !== topDepth || r.fn < 0 || r.durUs >= blipLimit) continue;
-      if (!RUNTIME_BLIPS.has(functionName(model, r.fn))) continue;
-      drop.add(r.id);
-      blips.push({ start: r.start, end: r.end, runtime: r.durUs });
-    }
+interface Blip {
+  start: number;
+  end: number;
+  runtime: number;
+}
+
+/**
+ * Root-level (program), GC and idle rows shorter than the limit sit between tasks (the stacks around them
+ * share nothing, so they cannot be bridged into a call): noise, dropped here and folded into the summary rows.
+ */
+function takeBlips(
+  model: ExecutionModel,
+  rows: WaterfallRow[],
+  topDepth: number,
+  blipLimit: number,
+  drop: Set<number>,
+): Blip[] {
+  const blips: Blip[] = [];
+  if (blipLimit <= 0) return blips;
+  for (const r of rows) {
+    if (r.kind !== 'call' || r.depth !== topDepth || r.fn < 0 || r.durUs >= blipLimit) continue;
+    if (!RUNTIME_BLIPS.has(functionName(model, r.fn))) continue;
+    drop.add(r.id);
+    blips.push({ start: r.start, end: r.end, runtime: r.durUs });
   }
+  return blips;
+}
 
-  // Segments after an await. The resumed call is another row, flagged, with an awaiting row before it.
-  // Its callers are the same calls continuing: they stay one row each instead of repeating per segment.
-  const tolerance = 2 * model.meta.precisionUs;
+interface PendingWait {
+  anchor: WaterfallRow;
+  wait: number;
+}
+
+/**
+ * Segments after an await. The resumed call is another row, flagged, with an awaiting row before it.
+ * Its callers are the same calls continuing: they stay one row each instead of repeating per segment.
+ */
+function findResumedCalls(
+  model: ExecutionModel,
+  track: Track,
+  rows: WaterfallRow[],
+  tolerance: number,
+): { continuing: Set<number>; pendingWaits: PendingWait[] } {
   const byFn = new Map<number, WaterfallRow[]>();
   for (const r of rows) {
     if (r.kind !== 'call' || r.depth === 0) continue;
@@ -650,7 +667,7 @@ export function waterfallForRun(
   const cont = track.continuations;
   const awaited = new Set<number>();
   const continuing = new Set<number>();
-  const pendingWaits: Array<{ anchor: WaterfallRow; wait: number }> = [];
+  const pendingWaits: PendingWait[] = [];
   for (let c = 0; c < cont.length; c++) {
     const at = track.spans.start[cont.span[c] ?? 0] ?? 0;
     const candidates = byFn.get(cont.fn[c] ?? 0) ?? [];
@@ -682,24 +699,43 @@ export function waterfallForRun(
     awaited.add(anchor.id);
     pendingWaits.push({ anchor, wait });
   }
-  // Merge a continuing caller into the earlier row of the same call under the same parent.
+  return { continuing, pendingWaits };
+}
+
+/** Merges a continuing caller into the earlier row of the same call under the same parent. */
+function mergeContinuingCalls(
+  rows: WaterfallRow[],
+  alias: Map<number, number>,
+  continuing: Set<number>,
+  precisionUs: number,
+  span: number,
+): void {
+  const tolerance = 2 * precisionUs;
   const latest = new Map<string, WaterfallRow>();
   for (const r of rows) {
     if (r.kind !== 'call' || r.depth === 0) continue;
     const key = `${r.node}:${resolveAlias(alias, r.parent)}`;
     const prev = latest.get(key);
     // Touching rows (within a sampling interval) are one call cut by a sample of another stack.
-    const touching = prev ? r.start - prev.end <= model.meta.precisionUs : false;
+    const touching = prev ? r.start - prev.end <= precisionUs : false;
     if (prev && (touching || (continuing.has(r.id) && prev.end <= r.start + tolerance))) {
       alias.set(r.id, prev.id);
       prev.end = Math.max(prev.end, r.end);
       prev.durUs = prev.end - prev.start;
       prev.selfUs += r.selfUs;
-      prev.share = prev.durUs / Math.max(1, end - start);
+      prev.share = prev.durUs / span;
       prev.hatched = false;
     } else latest.set(key, r);
   }
-  // An awaiting row hangs under the nearest caller row that was already running when the wait began.
+}
+
+/** An awaiting row hangs under the nearest caller row that was already running when the wait began. */
+function awaitingRows(
+  rows: WaterfallRow[],
+  pendingWaits: PendingWait[],
+  alias: Map<number, number>,
+  span: number,
+): WaterfallRow[] {
   const waits: WaterfallRow[] = [];
   for (const { anchor, wait } of pendingWaits) {
     const began = anchor.start - wait;
@@ -723,19 +759,36 @@ export function waterfallForRun(
         selfUs: wait,
         depth: holder.depth,
         parent: holder.parent,
-        share: wait / Math.max(1, end - start),
+        share: wait / span,
         task: -1,
         label: `awaiting ${formatDuration(wait)}`,
       }),
     );
   }
-  rows = [...rows, ...waits];
+  return waits;
+}
 
-  // Small tasks and runtime blips: one summary row for each run of them between two real things.
-  const rootId = root ? root.id : -1;
+/** What the run's rows folded away, and where the top-level rows sit. */
+interface Folds {
+  alias: Map<number, number>;
+  drop: Set<number>;
+  topDepth: number;
+  rootId: number;
+}
+
+/** Small tasks and runtime blips: one summary row for each run of them between two real things. */
+function summaryRows(
+  rows: WaterfallRow[],
+  track: Track,
+  folded: { small: Set<number>; blips: Blip[] },
+  { alias, drop, topDepth, rootId }: Folds,
+  span: number,
+): WaterfallRow[] {
+  const { small, blips } = folded;
+  const tasks = track.tasks;
   const items: Array<{ start: number; end: number; busy: number; runtime: number; task: number }> =
     [
-      ...[...trivial].map((k) => ({
+      ...[...small].map((k) => ({
         start: tasks.start[k] ?? 0,
         end: tasks.end[k] ?? 0,
         busy: tasks.busy[k] ?? 0,
@@ -745,7 +798,7 @@ export function waterfallForRun(
       ...blips.map((x) => ({ ...x, busy: 0, task: -1 })),
     ].sort((x, y) => x.start - y.start || x.end - y.end);
   const breakers: number[] = [];
-  for (let k = 0; k < tasks.length; k++) if (!trivial.has(k)) breakers.push(tasks.start[k] ?? 0);
+  for (let k = 0; k < tasks.length; k++) if (!small.has(k)) breakers.push(tasks.start[k] ?? 0);
   for (const r of rows) {
     if (r.kind === 'call' && r.depth === topDepth && !alias.has(r.id) && !drop.has(r.id)) {
       breakers.push(r.start);
@@ -790,7 +843,7 @@ export function waterfallForRun(
         selfUs: total,
         depth: topDepth,
         parent: rootId,
-        share: total / Math.max(1, end - start),
+        share: total / span,
         task: -1,
         label:
           list.length > 0
@@ -802,10 +855,63 @@ export function waterfallForRun(
     );
     first = last;
   }
-  rows = reindex([...rows, ...summaries], alias, drop);
-  for (const r of rows) r.critical = false;
-  const path = markCritical(rows);
-  const shaped = shapeRows(rows, path, options);
+  return summaries;
+}
+
+export function waterfallForRun(
+  model: ExecutionModel,
+  trackIndex: number,
+  options: RunWaterfallOptions = {},
+): Waterfall {
+  const track = trackAt(model, trackIndex);
+  const built = applyTransforms(model, trackIndex, options.transforms ?? DEFAULT_TRANSFORMS);
+  const full = viewFor(model, built, options);
+  const origin = extendedOrigin(model, full);
+  const small = trivialTasks(model, trackIndex, options.collapseTrivialUs);
+  const view = withoutSmallTasks(full, track, small);
+
+  // The run is the whole profile, small tasks included.
+  const all = full.samples;
+  const start = all.time[0] ?? 0;
+  const lastAt = all.length - 1;
+  const end = (all.time[lastAt] ?? 0) + (all.dur[lastAt] ?? 0);
+  const span = Math.max(1, end - start);
+  const main = buildRows(
+    model,
+    view,
+    origin,
+    { start, end: Math.max(end, start + 1), task: -1 },
+    { rowBase: 0, depthBase: 0, parentOfRoots: -1 },
+  );
+
+  const alias = new Map<number, number>();
+  const root = mergeRootRows(main.rows, track.rootFn, start, end, alias);
+  const taskLimit = smallTaskLimitUs(model, trackIndex, options.collapseTrivialUs);
+  const blipLimit = taskLimit > 0 ? Math.max(taskLimit, 2 * model.meta.precisionUs) : 0;
+  const topDepth = root ? 1 : 0;
+  const drop = new Set<number>();
+  const blips = takeBlips(model, main.rows, topDepth, blipLimit, drop);
+
+  const { continuing, pendingWaits } = findResumedCalls(
+    model,
+    track,
+    main.rows,
+    2 * model.meta.precisionUs,
+  );
+  mergeContinuingCalls(main.rows, alias, continuing, model.meta.precisionUs, span);
+  const rows = [...main.rows, ...awaitingRows(main.rows, pendingWaits, alias, span)];
+  const summaries = summaryRows(
+    rows,
+    track,
+    { small, blips },
+    { alias, drop, topDepth, rootId: root ? root.id : -1 },
+    span,
+  );
+
+  const ordered = reindex([...rows, ...summaries], alias, drop);
+  for (const r of ordered) r.critical = false;
+  const path = markCritical(ordered);
+  const shaped = shapeRows(ordered, path, options);
   return {
     start,
     end,
