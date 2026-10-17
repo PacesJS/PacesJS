@@ -17,7 +17,7 @@ import {
 } from '@pacesjs/engine';
 import type { ExecutionModel, FlameLayout, ModelDiff, OriginId, Track } from '@pacesjs/engine';
 import { cgLocation, cgSubtitle } from './call-graph-label';
-import { fileLine, locationOf, trackOrder } from './scope';
+import { fileLine, locationOf, nameOrAnon, trackOrder } from './scope';
 import type { Scoped } from './scope';
 import type {
   CallGraphData,
@@ -101,7 +101,7 @@ export function waterfallData(
         kind: r.kind,
         fn,
         path: r.kind === 'call' ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
-        name: info ? info.name || '(anonymous)' : r.label,
+        name: info ? nameOrAnon(info.name) : r.label,
         loc: info ? locationOf(info) : '',
         origin: info ? info.origin : Origin.Idle,
         start: r.start - t0,
@@ -173,7 +173,7 @@ export function waterfallData(
       kind: r.kind,
       fn: call ? s.out(r.fn) : -1,
       path: call ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
-      name: info ? info.name || '(anonymous)' : r.label,
+      name: info ? nameOrAnon(info.name) : r.label,
       loc: info ? locationOf(info) : '',
       origin: info ? info.origin : Origin.Idle,
       start: r.start - t0,
@@ -301,7 +301,7 @@ export function flameData(
       locs.push('');
     } else {
       const info = s.info(fn[i] ?? 0);
-      names.push(info.name || '(anonymous)');
+      names.push(nameOrAnon(info.name));
       locs.push(info.synthetic ? '' : locationOf(info));
     }
     if (!diff) heat[i] = layout.intensity[i] ?? 0;
@@ -363,7 +363,7 @@ export function functionsTable(
     const info = s.info(fn);
     return {
       fn,
-      name: r.name || '(anonymous)',
+      name: nameOrAnon(r.name),
       origin: r.origin,
       pkg: r.pkg,
       selfUs: r.self,
@@ -421,7 +421,7 @@ export function callAt(s: Scoped, path: readonly number[]): CallNumbers | null {
     .map(([f, totalUs]) => {
       const fn = s.out(f);
       const info = s.info(fn);
-      return { fn, name: info.name || '(anonymous)', origin: info.origin, totalUs };
+      return { fn, name: nameOrAnon(info.name), origin: info.origin, totalUs };
     })
     .sort((a, b) => b.totalUs - a.totalUs || a.fn - b.fn);
   return { totalUs: tree.total[node] ?? 0, selfUs: tree.self[node] ?? 0, callees };
@@ -485,7 +485,7 @@ export function functionDetails(
   const base = baseTimeUs(s, range);
   return {
     fn,
-    name: info.name || '(anonymous)',
+    name: nameOrAnon(info.name),
     loc: locationOf(info),
     origin: info.origin,
     pkg: info.pkg,
@@ -581,7 +581,7 @@ export function callGraphData(
     const sub = cgSubtitle(info, n.isEntry, cgLocation(info));
     return {
       fn,
-      name: info.name || '(anonymous)',
+      name: nameOrAnon(info.name),
       sub,
       origin: info.origin,
       isPackage: n.isPackage,
@@ -651,7 +651,7 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
       const fn = s.out(c.fn);
       return {
         fn,
-        name: s.info(fn).name || '(anonymous)',
+        name: nameOrAnon(s.info(fn).name),
         origin: s.info(fn).origin,
         selfUs: c.selfUs,
         totalUs: c.totalUs,
@@ -670,7 +670,7 @@ export function fileOutline(model: ExecutionModel, s: Scoped, fn: number): FileO
     .filter((r) => r.file === file && r.fn < model.functions.length)
     .map((r) => ({
       fn: r.fn,
-      name: r.name || '(anonymous)',
+      name: nameOrAnon(r.name),
       line: r.line,
       selfUs: r.self,
       totalUs: r.total,
@@ -687,7 +687,7 @@ export function hotPathRows(model: ExecutionModel, s: Scoped, limit: number): Ho
     const last = p.locations[p.locations.length - 1];
     return {
       fns: p.fns,
-      names: p.locations.map((l) => l.name || '(anonymous)'),
+      names: p.locations.map((l) => nameOrAnon(l.name)),
       loc: last ? fileLine(last.file, last.line) : '',
       selfUs: p.selfUs,
       totalUs: p.totalUs,

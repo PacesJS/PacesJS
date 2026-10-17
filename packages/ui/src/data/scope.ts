@@ -153,6 +153,11 @@ export function scopeView(ctx: ModelCtx, trackIndex: number, stack: EngineTransf
   return { ctx, view, trackIndex, track, out, inn, info };
 }
 
+/** The function's name, or `(anonymous)` for one without. */
+export function nameOrAnon(name: string): string {
+  return name || '(anonymous)';
+}
+
 /** `file:line`, or just the file when the line is unknown. */
 export function fileLine(file: string, line: number): string {
   return line > 0 ? `${file}:${line}` : file;

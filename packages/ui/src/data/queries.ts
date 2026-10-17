@@ -22,7 +22,15 @@ import {
 import { browserElk } from './elk-browser';
 import { layoutGraph } from './layout';
 import type { ElkProvider, GraphLayout } from './layout';
-import { locationOf, modelCtx, scopeView, toEngineStack, trackIndexOf, trackOrder } from './scope';
+import {
+  locationOf,
+  modelCtx,
+  nameOrAnon,
+  scopeView,
+  toEngineStack,
+  trackIndexOf,
+  trackOrder,
+} from './scope';
 import type { Scoped } from './scope';
 import { EMPTY_SELECTION } from './types';
 import type {
@@ -253,7 +261,7 @@ export function createQueries(
         const info = s.info(fn);
         return {
           fn,
-          name: info.name || '(anonymous)',
+          name: nameOrAnon(info.name),
           loc: locationOf(info),
           plumbing: info.plumbing,
         };
