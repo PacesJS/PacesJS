@@ -10,13 +10,7 @@ import { originColor, originInfo } from '../theme/origin';
 import { fmtAxis, fmtDuration, fmtShare } from '../util/format';
 import { drawBar } from '../view/draw-bars';
 import { clamp, niceTicks } from '../view/scale';
-import {
-  MIN_BAR_PX,
-  fitCallWidth,
-  fitNumericWidth,
-  gridTemplate,
-  resizeColumn,
-} from '../view/waterfall-columns';
+import { MIN_BAR_PX, fitCallWidth, fitNumericWidth, gridTemplate } from '../view/waterfall-columns';
 import type { ColumnKey } from '../view/waterfall-columns';
 import {
   WF,
@@ -36,15 +30,16 @@ import {
   indentFor,
   middleEllipsis,
 } from '../view/waterfall-indent';
+import { barDetails, durLabel, rowLocation, samePath, tipStyle } from '../view/waterfall-labels';
 import { visibleRows } from '../view/waterfall-rows';
 import type { WaterfallSort } from '../view/waterfall-rows';
+import { ColumnResizer } from './ColumnResizer';
 import { Hint } from './Hint';
 import { Icon } from './Icon';
 import { Legend } from './Legend';
 import { Switch } from './Switch';
 
 const VIEWPORT_H = 720;
-const KEY_STEP_PX = 8;
 
 const TASK_GROUPS = [
   'Whole run',
@@ -76,133 +71,7 @@ const MIN_DURATIONS: Array<{ us: number; label: string }> = [
   { us: 20_000, label: '20 ms' },
 ];
 
-/** The "< X" label of a row below measurement precision; set once the summary is known. */
-function durLabel(r: WaterfallRow, threshold = '2 ms'): string {
-  if (r.kind === 'fold' && r.fold === 'small') return '';
-  if (r.belowPrecision) return `< ${threshold}`;
-  return fmtDuration(r.end - r.start, { decimals: 1 });
-}
-
-/** Waiting shorter than this is not worth a row of its own wording. */
-const MIN_AWAIT_US = 1000;
-/** A call spends this share of its extent not running before it counts as awaiting. */
-const AWAIT_SHARE = 0.1;
-
-/** CPU time of a row against its elapsed extent, for calls that await (or resume after one). */
-interface Elapsed {
-  cpuUs: number;
-}
-
-/**
- * What a bar says when you point at it: how long, how much of the whole, and when. A call that
- * awaits spans wall-clock time, so it says how much of that was CPU and how much was waiting.
- */
-function barDetails(r: WaterfallRow, threshold: string, whole: string, elapsed?: Elapsed): string {
-  if (r.kind === 'wait') return `idle ${fmtDuration(r.end - r.start, { decimals: 1 })}`;
-  if (r.kind === 'fold' && r.fold === 'small') return '';
-  const span = `${(r.start / 1000).toFixed(1)}–${(r.end / 1000).toFixed(1)} ms`;
-  const dur = r.end - r.start;
-  let lead: string;
-  if (r.belowPrecision) lead = `< ${threshold}, below sampling precision`;
-  else if (
-    elapsed &&
-    r.kind === 'call' &&
-    dur - elapsed.cpuUs >= Math.max(MIN_AWAIT_US, AWAIT_SHARE * dur)
-  ) {
-    const waiting = Math.max(0, dur - elapsed.cpuUs);
-    lead = `elapsed ${fmtDuration(dur, { approx: false, decimals: 1 })} (CPU ${fmtDuration(elapsed.cpuUs, { decimals: 1 })}, ${fmtDuration(waiting, { decimals: 0 })} awaiting)`;
-  } else lead = durLabel(r, threshold);
-  return `${lead} · ${fmtShare(r.share)} of the ${whole} · ${span}`;
-}
-
-const ORIGIN_HINT: Record<number, string> = { 1: 'node_modules', 3: 'node', 4: 'native', 6: 'V8' };
-
-function rowLocation(r: WaterfallRow): string {
-  if (r.kind === 'task') return 'event-loop task';
-  if (r.kind === 'wait' || r.kind === 'summary') return '';
-  return r.loc || (ORIGIN_HINT[r.origin] ?? '');
-}
-
-function samePath(a: readonly number[], b: readonly number[]): boolean {
-  return a.length === b.length && a.every((f, i) => f === b[i]);
-}
-
-interface ResizerProps {
-  column: ColumnKey;
-  label: string;
-  cols: WfColumns;
-  /** Which edge of its header cell the handle sits on. */
-  edge: 'left' | 'right';
-  onLive(cols: WfColumns | null): void;
-  onCommit(cols: WfColumns): void;
-  onFit(column: ColumnKey): void;
-}
-
-/** Drag handle on a header edge: drag to resize, arrows nudge, double-click or Enter auto-fits. */
-function ColumnResizer({ column, label, cols, edge, onLive, onCommit, onFit }: ResizerProps) {
-  const drag = useRef<{ x: number; cols: WfColumns } | null>(null);
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={`Resize ${label} column`}
-      aria-valuenow={cols[column]}
-      tabIndex={0}
-      className={`wf-resizer is-${edge}`}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { x: e.clientX, cols };
-      }}
-      onPointerMove={(e) => {
-        const d = drag.current;
-        if (d) onLive(resizeColumn(d.cols, column, e.clientX - d.x));
-      }}
-      onPointerUp={(e) => {
-        const d = drag.current;
-        drag.current = null;
-        if (d) onCommit(resizeColumn(d.cols, column, e.clientX - d.x));
-        onLive(null);
-      }}
-      onPointerCancel={() => {
-        drag.current = null;
-        onLive(null);
-      }}
-      onDoubleClick={() => onFit(column)}
-      onKeyDown={(e) => {
-        const step =
-          e.key === 'ArrowRight' ? KEY_STEP_PX : e.key === 'ArrowLeft' ? -KEY_STEP_PX : 0;
-        if (step !== 0) {
-          e.preventDefault();
-          onCommit(resizeColumn(cols, column, step));
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          onFit(column);
-        }
-      }}
-    />
-  );
-}
-
 const TIP_DELAY_MS = 150;
-
-/** Below the bar, or above it near the bottom, and always inside the viewport. */
-function tipStyle(
-  tip: { text: string; x: number; y: number; top: number },
-  vw: number,
-  vh: number,
-): CSSProperties {
-  const width = Math.min(vw - 16, tip.text.length * 7.5 + 28);
-  const left = Math.max(8, Math.min(tip.x - width / 2, vw - width - 8));
-  const below = tip.y + 6 + 44 <= vh;
-  return {
-    position: 'fixed',
-    left,
-    top: below ? tip.y + 6 : Math.max(8, tip.top - 6 - 44),
-    maxWidth: vw - 16,
-    zIndex: 40,
-  };
-}
 
 export function Waterfall() {
   const { client, scope, scopeKey, snap, state, dispatch, selection, select, summary, openDock } =
