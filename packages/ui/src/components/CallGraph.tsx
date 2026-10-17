@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { useApp } from '../app/context';
+import { DRAG_PX } from '../app/click-off';
 import { useHoverFn } from '../app/hover';
 import { useAsync, useElementSize } from '../app/hooks';
 import type { CgNode } from '../data/types';
@@ -25,7 +26,6 @@ import { Legend } from './Legend';
 import { Switch } from './Switch';
 
 const PAN_KEY_PX = 60;
-const DRAG_PX = 4;
 
 const ORIGIN_VAR = [
   '--c-origin-you',

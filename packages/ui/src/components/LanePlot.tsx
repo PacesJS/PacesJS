@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { DRAG_PX } from '../app/click-off';
 import { useCanvas, usePalette } from '../app/hooks';
 import type { LaneData } from '../data/types';
 import { drawLane, taskAtTime } from '../view/draw-lane';
@@ -15,8 +16,6 @@ interface LanePlotProps {
   onHoverTask(task: number): void;
   hoveredTask: number;
 }
-
-const DRAG_PX = 4;
 
 /** One track lane: canvas for CPU, tasks, GC; pointer handling for click and drag-to-select. */
 export function LanePlot({
