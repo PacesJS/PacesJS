@@ -4,7 +4,7 @@ import { packBlocks } from './lod';
 import { linearScale, niceTicks } from './scale';
 
 /** GC pauses over this get the heavier mark; matches the engine's long-task threshold. */
-export const LONG_PAUSE_US = 50_000;
+const LONG_PAUSE_US = 50_000;
 
 export interface LaneDrawOptions {
   /** Index of the selected task, or -1. */

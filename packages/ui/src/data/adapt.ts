@@ -208,7 +208,7 @@ export function waterfallData(
  * The view node a chain of function ids leads to: the longest prefix that exists in this view
  * (collapsed packages and merged plumbing can remove frames of a hot path). 0 when none does.
  */
-export function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
+function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
   const tree = s.view.tree;
   // A stitched view is rooted at the entry script's function, which hot paths do not include.
   const entry = tree.length > 1 && tree.parent[1] === 0 ? [tree.fn[1] ?? 0] : [];
@@ -337,7 +337,7 @@ export function flameData(
 // ---- Functions table, details, sandwich ----
 
 /** Share is relative to the wall time of the track (or range), as the column promises. */
-export function baseTimeUs(s: Scoped, range: readonly [number, number] | null): number {
+function baseTimeUs(s: Scoped, range: readonly [number, number] | null): number {
   return Math.max(1, range ? range[1] - range[0] : s.track.durationUs);
 }
 
@@ -386,7 +386,7 @@ export function functionsTable(
  * That tree merges the calls once, so the time of one callee never counts a recursive re-entry
  * twice and can never be more than the function's own total.
  */
-export function calleesOf(
+function calleesOf(
   model: ExecutionModel,
   s: Scoped,
   engineFn: number,

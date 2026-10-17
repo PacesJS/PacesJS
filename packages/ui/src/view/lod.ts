@@ -45,7 +45,7 @@ export function visibleRange(sorted: ArrayLike<number>, a: number, b: number): [
 }
 
 /** First index whose value is greater than `v`. */
-export function upperBound(sorted: ArrayLike<number>, v: number): number {
+function upperBound(sorted: ArrayLike<number>, v: number): number {
   let lo = 0;
   let hi = sorted.length;
   while (lo < hi) {

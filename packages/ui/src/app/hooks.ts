@@ -23,7 +23,7 @@ function themeKey(): string {
 }
 
 /** "light" or "dark": changes when the OS scheme or `data-theme` changes. */
-export function useThemeName(): string {
+function useThemeName(): string {
   return useSyncExternalStore(subscribeTheme, themeKey, () => 'light');
 }
 

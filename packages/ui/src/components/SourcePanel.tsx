@@ -10,7 +10,7 @@ import { Icon } from './Icon';
 import { SourceCode } from './SourceCode';
 
 /** Path as a breadcrumb: the last segment is the file, long paths keep their tail. */
-export function Breadcrumb({ path }: { path: string }) {
+function Breadcrumb({ path }: { path: string }) {
   const parts = path.split('/').filter(Boolean);
   const shown = parts.length > 4 ? ['…', ...parts.slice(-4)] : parts;
   return (
@@ -82,10 +82,7 @@ interface SourceHeaderProps {
 }
 
 /** What the totals line covers: every call of the function, then the selected call on top. */
-export function totalsLines(
-  source: SourceState,
-  name: string,
-): { call: string | null; all: string } {
+function totalsLines(source: SourceState, name: string): { call: string | null; all: string } {
   const { details, call, calls } = source;
   const all = details
     ? `${calls > 0 ? `All ${fmtCount(calls)} calls` : 'All calls'} of ${name}: ${fmtDuration(details.totalUs)} total (CPU) · ${fmtDuration(details.selfUs)} self`

@@ -7,7 +7,7 @@ import { Popover } from './Popover';
 const SMALL_PROFILE_SAMPLES = 200;
 
 /** Notes about the profile: the engine's aggregated warnings plus a low-sample-count note. */
-export function profileNotes(
+function profileNotes(
   warnings: readonly ModelWarning[],
   tracks: ReadonlyArray<{ role: string; samples: number }>,
 ): ModelWarning[] {

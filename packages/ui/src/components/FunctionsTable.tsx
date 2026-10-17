@@ -41,7 +41,7 @@ function value(r: FnRow, key: SortKey): number | string {
   }
 }
 
-export function sortRows(rows: FnRow[], key: SortKey, dir: 'asc' | 'desc'): FnRow[] {
+function sortRows(rows: FnRow[], key: SortKey, dir: 'asc' | 'desc'): FnRow[] {
   const sign = dir === 'asc' ? 1 : -1;
   return rows.slice().sort((a, b) => {
     const va = value(a, key);

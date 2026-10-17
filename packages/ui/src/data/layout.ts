@@ -24,7 +24,7 @@ export interface GraphLayout {
   nodes: PlacedNode[];
 }
 
-export function nodeWidth(selfUs: number, maxSelfUs: number): number {
+function nodeWidth(selfUs: number, maxSelfUs: number): number {
   return Math.round(200 + 80 * Math.sqrt(selfUs / Math.max(1, maxSelfUs)));
 }
 

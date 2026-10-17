@@ -17,7 +17,7 @@ const dec = (s: string): string => {
   }
 };
 
-export function encodeSelection(sel: Selection): string {
+function encodeSelection(sel: Selection): string {
   switch (sel.kind) {
     case 'none':
       return '';
@@ -43,7 +43,7 @@ function decodePath(text: string | undefined): number[] | null {
   return ids.every((n): n is number => n !== null) ? (ids as number[]) : null;
 }
 
-export function decodeSelection(text: string): Selection {
+function decodeSelection(text: string): Selection {
   const [kind, a, b, c] = text.split(':');
   if (kind === 'fn') {
     const fn = int(a);
@@ -94,7 +94,7 @@ export function encodeTransform(t: Transform): string {
   }
 }
 
-export function decodeTransform(text: string): Transform | null {
+function decodeTransform(text: string): Transform | null {
   const [kind, a] = text.split(':');
   switch (kind) {
     case 'stitch':
@@ -195,11 +195,11 @@ function decodeOptions(text: string): ViewOptions {
   return o;
 }
 
-export function encodeRange(r: TimeRange | null): string {
+function encodeRange(r: TimeRange | null): string {
   return r ? `${Math.round(r[0])}..${Math.round(r[1])}` : '';
 }
 
-export function decodeRange(text: string | null): TimeRange | null {
+function decodeRange(text: string | null): TimeRange | null {
   if (!text) return null;
   const [a, b] = text.split('..');
   const from = int(a);

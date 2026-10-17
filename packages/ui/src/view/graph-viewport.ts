@@ -23,7 +23,7 @@ export const MIN_K = 0.05;
 export const MAX_K = 3;
 export const ZOOM_STEP = 1.25;
 
-export const clampK = (k: number): number => Math.min(MAX_K, Math.max(MIN_K, k));
+const clampK = (k: number): number => Math.min(MAX_K, Math.max(MIN_K, k));
 
 /** Zoom by `factor` keeping the layout point under the screen point (cx, cy) where it is. */
 export function zoomAt(v: Viewport, factor: number, cx: number, cy: number): Viewport {

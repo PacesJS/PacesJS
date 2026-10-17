@@ -11,7 +11,7 @@ export const NOISE_SHARE = 0.001;
 
 /** Expand along the heaviest chain this deep, or until a row carries less than `MIN_PATH_SHARE`. */
 export const INITIAL_DEPTH = 12;
-export const MIN_PATH_SHARE = 0.05;
+const MIN_PATH_SHARE = 0.05;
 
 export interface FoldOptions {
   /** Hide rows below precision and `NOISE_SHARE` behind one summary row per run of siblings. */

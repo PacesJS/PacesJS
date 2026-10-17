@@ -12,7 +12,7 @@ interface SandwichProps {
 
 const ROW = 30;
 
-export function sandwichTop(level: number, minLevel: number): number {
+function sandwichTop(level: number, minLevel: number): number {
   return (level - minLevel) * ROW + (level > 0 ? 12 : 0);
 }
 

@@ -1,7 +1,7 @@
 import type { HostAdapter, SessionInfo, Settings, SourceResult } from './adapter';
 
 /** Message prefix of an unreachable host, so views can tell it from a refusal. */
-export const HOST_LOST = 'Lost connection to the paces host';
+const HOST_LOST = 'Lost connection to the paces host';
 
 export function isHostLost(message: string | null | undefined): boolean {
   return typeof message === 'string' && message.startsWith(HOST_LOST);

@@ -6,7 +6,7 @@ import { clearShowMeAction, isShowing, showMeAction, showMeContext } from '../st
 
 const SEVERITY_LABEL = { high: 'High', medium: 'Medium', low: 'Low' } as const;
 
-export function opensLabel(f: Finding): string {
+function opensLabel(f: Finding): string {
   const v = f.showMe.view;
   if (f.kind === 'hot-function' && f.showMe.line !== undefined) return 'source';
   if (v === 'waterfall') return f.showMe.line !== undefined ? 'waterfall + source' : 'waterfall';
