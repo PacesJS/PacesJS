@@ -36,6 +36,7 @@ export interface SourceResolver {
 }
 
 const decoder = new TextDecoder();
+const encoder = new TextEncoder();
 
 /** Comparable form of a path: '/' separators, no `..`, drive letters case-insensitive, no leading '/C:'. */
 export function pathKey(input: string): string {
@@ -97,6 +98,14 @@ function indexSourceMaps(maps: Record<string, string>): Map<string, Embedded> {
   return out;
 }
 
+/** Loaders add cache-busting queries (`eslint.config.js?mtime=...`); the file has no such name. */
+function withoutQuery(raw: string): string {
+  return raw.startsWith('file:') ? raw : raw.replace(/[?#].*$/, '');
+}
+
+const MOVED_HINT =
+  'The file was not found on disk; it may have been moved or deleted since profiling. Profile with --embed-sources to keep a copy in the session.';
+
 export function createSourceResolver(input: ResolverInput): SourceResolver {
   const rootKey = pathKey(input.projectRoot);
   const allowed = new Map<string, string>();
@@ -155,14 +164,13 @@ export function createSourceResolver(input: ResolverInput): SourceResolver {
 
   return {
     diskPath(raw) {
-      const requested = raw.startsWith('file:') ? raw : raw.replace(/[?#].*$/, '');
+      const requested = withoutQuery(raw);
       const keys = keysFor(requested);
       const file = allowedDisk(requested, keys);
       return file && readDisk(file) ? file : undefined;
     },
     resolve(raw) {
-      // Loaders add cache-busting queries (`eslint.config.js?mtime=...`); the file has no such name.
-      const requested = raw.startsWith('file:') ? raw : raw.replace(/[?#].*$/, '');
+      const requested = withoutQuery(raw);
       if (!requested || requested.startsWith('node:')) {
         return build('missing', 'Built into Node.js, so there is no source file to show.');
       }
@@ -210,19 +218,8 @@ export function createSourceResolver(input: ResolverInput): SourceResolver {
           'This file comes from a source map that does not embed the original code (no sourcesContent) and the file is not on disk. Re-run with --embed-sources while the sources exist to keep a copy in the session.',
         );
       }
-      if (file) {
-        return build(
-          'missing',
-          'The file was not found on disk; it may have been moved or deleted since profiling. Profile with --embed-sources to keep a copy in the session.',
-        );
-      }
       const lexicallyInside = keys.some((k) => k === rootKey || k.startsWith(`${rootKey}/`));
-      if (lexicallyInside) {
-        return build(
-          'missing',
-          'The file was not found on disk; it may have been moved or deleted since profiling. Profile with --embed-sources to keep a copy in the session.',
-        );
-      }
+      if (file || lexicallyInside) return build('missing', MOVED_HINT);
       return build(
         'outside-root',
         'This file is outside the profiled project and was not loaded by the profiled process, so paces will not read it.',
@@ -232,5 +229,5 @@ export function createSourceResolver(input: ResolverInput): SourceResolver {
 }
 
 function textBytes(text: string): Uint8Array {
-  return new TextEncoder().encode(text);
+  return encoder.encode(text);
 }
