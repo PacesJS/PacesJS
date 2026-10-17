@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { focusTransform } from '../state/focus';
 import { useApp } from '../app/context';
 import { useBarTooltip } from '../app/useBarTooltip';
 import { useTimeWindow } from '../app/useTimeWindow';
-import { measureText, useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
+import {
+  measureText,
+  useAsync,
+  useCanvas,
+  useElementWidth,
+  usePalette,
+  useStableCallback,
+} from '../app/hooks';
+import { createHoverStore } from '../app/hover';
 import type { WaterfallRow } from '../data/types';
 import type { WfColumns } from '../state/prefs';
-import { originColor, originInfo } from '../theme/origin';
 import { fmtAxis, fmtDuration, fmtShare } from '../util/format';
 import { drawBar } from '../view/draw-bars';
 import { niceTicks } from '../view/scale';
@@ -16,20 +22,14 @@ import { MIN_BAR_PX, fitCallWidth, fitNumericWidth, gridTemplate } from '../view
 import type { ColumnKey } from '../view/waterfall-columns';
 import { WF, barColumn, barRect, labelFitsBar, visibleSlice } from '../view/waterfall-geometry';
 import { foldRows, hotTargetPath, reconcileCollapsed } from '../view/waterfall-fold';
-import {
-  BADGE_DEPTH,
-  FOCUS_DEPTH,
-  guideLevels,
-  indentFor,
-  middleEllipsis,
-} from '../view/waterfall-indent';
 import { rowFacts, selectedRowIdOf } from '../view/waterfall-facts';
 import { waterfallKeyAction } from '../view/waterfall-keys';
-import { RESUMED_TIP, barDetails, durLabel, rowLocation, tipStyle } from '../view/waterfall-labels';
+import { durLabel, tipStyle } from '../view/waterfall-labels';
 import { visibleRows } from '../view/waterfall-rows';
+import type { Transform } from '../state/types';
+import { WaterfallRowView } from './WaterfallRowView';
 import { ColumnResizer } from './ColumnResizer';
 import { Hint } from './Hint';
-import { Icon } from './Icon';
 import { WaterfallLegend } from './WaterfallLegend';
 import { WaterfallToolbar } from './WaterfallToolbar';
 
@@ -50,7 +50,7 @@ export function Waterfall() {
   const data = wfQ.data;
 
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
-  const [hoverRow, setHoverRow] = useState<number | null>(null);
+  const [hover] = useState(createHoverStore);
   const { tip, show: showTip, hide: hideTip } = useBarTooltip();
   const [liveCols, setLiveCols] = useState<WfColumns | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -99,7 +99,7 @@ export function Waterfall() {
     [rows, collapsed, pathOnly, data],
   );
   const [from, to] = visibleSlice(scrollTop, VIEWPORT_H, visible.length);
-  const slice = visible.slice(from, to);
+  const slice = useMemo(() => visible.slice(from, to), [visible, from, to]);
 
   const sel = snap.selection;
   const selectedRowId = useMemo(
@@ -154,6 +154,41 @@ export function Waterfall() {
     // Only a new result moves the first screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  const onToggle = useCallback((id: number): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const selectRow = useStableCallback((r: WaterfallRow): void => {
+    if (!data) return;
+    if (r.kind === 'fold') {
+      onToggle(r.id);
+      return;
+    }
+    if (r.kind === 'summary' && r.summaryTasks[0] !== undefined) {
+      // A row standing for small tasks opens the first of them.
+      dispatch({
+        type: 'go',
+        patch: { selection: { kind: 'task', track: data.trackId, task: r.summaryTasks[0] } },
+        options: { task: r.summaryTasks[0] },
+      });
+      return;
+    }
+    if (r.kind === 'call') select({ kind: 'node', track: data.trackId, path: r.path, row: r.id });
+    else if (r.kind === 'task' && data.taskIndex >= 0)
+      select({ kind: 'task', track: data.trackId, task: data.taskIndex });
+  });
+  const onOpen = useStableCallback(() => openDock());
+  const onFocus = useCallback(
+    (transform: Transform): void => dispatch({ type: 'add-transform', transform }),
+    [dispatch],
+  );
+  const onBarEnter = useStableCallback(showTip);
+  const onBarLeave = useStableCallback(hideTip);
 
   const canvasRef = useCanvas(
     (ctx, { width: w }) => {
@@ -223,32 +258,6 @@ export function Waterfall() {
   const mirrorTask = tasksQ.data ?? [];
   const gridStyle = { ['--wf-grid' as string]: gridTemplate(cols) } as CSSProperties;
   const minWidth = WF.pad * 2 + cols.call + MIN_BAR_PX + cols.time + cols.share + WF.gap * 3;
-
-  const toggleFold = (id: number): void => {
-    const next = new Set(collapsed);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setCollapsed(next);
-  };
-
-  const selectRow = (r: WaterfallRow): void => {
-    if (r.kind === 'fold') {
-      toggleFold(r.id);
-      return;
-    }
-    if (r.kind === 'summary' && r.summaryTasks[0] !== undefined) {
-      // A row standing for small tasks opens the first of them.
-      dispatch({
-        type: 'go',
-        patch: { selection: { kind: 'task', track: data.trackId, task: r.summaryTasks[0] } },
-        options: { task: r.summaryTasks[0] },
-      });
-      return;
-    }
-    if (r.kind === 'call') select({ kind: 'node', track: data.trackId, path: r.path, row: r.id });
-    else if (r.kind === 'task' && data.taskIndex >= 0)
-      select({ kind: 'task', track: data.trackId, task: data.taskIndex });
-  };
 
   const fit = (column: ColumnKey): void => {
     const shown = visible.map((i) => rows[i] as WaterfallRow);
@@ -395,155 +404,37 @@ export function Waterfall() {
               {slice.map((ri, k) => {
                 const r = rows[ri] as WaterfallRow;
                 const isSel = r.id === selectedRowId;
-                // Hover lights only the row under the pointer; the same function elsewhere in
-                // the tree gets a faint "linked" mark when it is the selected function.
-                const isLinked =
-                  !isSel && selection.fn !== null && r.kind === 'call' && r.fn === selection.fn;
-                const info = originInfo(r.origin);
-                const isUser = r.origin === 0;
-                const where = rowLocation(r);
-                const indent = indentFor(r.depth, cols.call);
-                const badged = r.kind === 'call' && r.depth > BADGE_DEPTH;
-                const depthBadge = `⋯ ${r.depth}`;
-                const focusAs =
-                  r.kind === 'call' && r.depth > FOCUS_DEPTH
-                    ? focusTransform(r.path, r.fn, summary.functionCount)
-                    : null;
-                const nameFont = `${isUser ? 600 : 500} 14px ${pal.fontSans}`;
-                const room =
-                  cols.call -
-                  indent -
-                  (14 + 8 + 12) -
-                  (focusAs
-                    ? 44 + 6
-                    : badged
-                      ? measureText(depthBadge, `600 11px ${pal.fontSans}`) + 8 + 6
-                      : 0) -
-                  (r.resumed ? 22 : 0) -
-                  2;
-                const label = middleEllipsis(r.name, Math.max(room, 24), (t) =>
-                  measureText(t, nameFont),
-                );
-                const hiddenKids = facts.hidden.get(r.id) ?? 0;
-                const hiddenNote =
-                  hiddenKids > 0
-                    ? `${hiddenKids} ${hiddenKids === 1 ? 'callee' : 'callees'} under ${foldLabel} hidden`
-                    : '';
-                const nameTitle = [
-                  r.name,
-                  where,
-                  r.depth > BADGE_DEPTH ? `level ${r.depth + 1}` : '',
-                  hiddenNote,
-                ]
-                  .filter(Boolean)
-                  .join(' · ');
-                const details = barDetails(r, threshold, data.mode === 'run' ? 'run' : 'task', {
-                  cpuUs: facts.cpu.get(r.id) ?? 0,
-                });
-                const rect = barRect(r.start, r.end, window, bar.x0, bar.x1);
-                const barBox = details && !rect.hidden ? rect : null;
                 return (
-                  <div
+                  <WaterfallRowView
                     key={r.id}
-                    role="row"
-                    aria-level={r.depth + 1}
-                    aria-expanded={r.hasChildren ? !collapsed.has(r.id) : undefined}
-                    aria-selected={isSel}
-                    aria-description={
-                      [details, hiddenNote].filter(Boolean).join(' · ') || undefined
+                    r={r}
+                    top={(from + k) * WF.rowH}
+                    selected={isSel}
+                    // The same function elsewhere in the tree gets a faint "linked" mark.
+                    linked={
+                      !isSel && selection.fn !== null && r.kind === 'call' && r.fn === selection.fn
                     }
-                    aria-label={`${r.name}, ${info.label}, ${durLabel(r, threshold)}, ${fmtShare(r.share)} of ${r.kind === 'task' ? 'itself' : 'task'}${r.critical ? ', critical path' : ''}`}
-                    className={`wf-row${isSel ? ' is-selected' : ''}${hoverRow === r.id ? ' is-hover' : ''}${isLinked ? ' is-linked' : ''}`}
-                    style={{ top: (from + k) * WF.rowH }}
-                    onClick={() => selectRow(r)}
-                    onDoubleClick={() => openDock()}
-                    onPointerEnter={() => setHoverRow(r.id)}
-                    onPointerLeave={() => setHoverRow(null)}
-                  >
-                    <div
-                      className="wf-name"
-                      role="cell"
-                      title={nameTitle}
-                      style={{
-                        paddingLeft: indent,
-                        ['--wf-guides' as string]: guideLevels(r.depth),
-                      }}
-                    >
-                      {r.hasChildren ? (
-                        <span
-                          className="wf-twisty"
-                          aria-hidden="true"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const n = new Set(collapsed);
-                            if (n.has(r.id)) n.delete(r.id);
-                            else n.add(r.id);
-                            setCollapsed(n);
-                          }}
-                          style={{ transform: collapsed.has(r.id) ? 'rotate(-90deg)' : undefined }}
-                        >
-                          <Icon name="chevron-down" size={14} strokeWidth={2} />
-                        </span>
-                      ) : (
-                        <span style={{ width: 14, flex: 'none' }} />
-                      )}
-                      <span
-                        className="wf-dot"
-                        aria-hidden="true"
-                        style={{ background: originColor(r.origin, false) }}
-                      />
-                      {focusAs ? (
-                        <button
-                          type="button"
-                          className="wf-depth is-action"
-                          aria-label={`Focus here: ${r.name}`}
-                          title={`Level ${r.depth + 1}. Focus here: make this call the root of the waterfall (f)`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            dispatch({ type: 'add-transform', transform: focusAs });
-                          }}
-                        >
-                          {hoverRow === r.id || isSel ? 'Focus' : depthBadge}
-                        </button>
-                      ) : badged ? (
-                        <span
-                          className="wf-depth"
-                          aria-hidden="true"
-                          title={`Level ${r.depth + 1}`}
-                        >
-                          {depthBadge}
-                        </span>
-                      ) : null}
-                      <span
-                        className={`wf-label${isUser ? ' is-user' : ''}${r.kind === 'wait' || r.kind === 'fold' ? ' is-wait' : ''}`}
-                      >
-                        {label}
-                      </span>
-                      {r.resumed ? (
-                        <span className="wf-resumed" title={RESUMED_TIP}>
-                          <span aria-hidden="true">↻</span>
-                          <span className="sr-only">resumed after an await, inferred</span>
-                        </span>
-                      ) : null}
-                      <span className="wf-loc">{where}</span>
-                    </div>
-                    <div className="wf-bar-cell" role="cell" aria-hidden="true" />
-                    {barBox ? (
-                      <div
-                        className="wf-bar-hit"
-                        aria-hidden="true"
-                        style={{ left: barBox.x, width: barBox.w, top: WF.barTop, height: WF.barH }}
-                        onPointerEnter={(e) => showTip(e.currentTarget, details)}
-                        onPointerLeave={hideTip}
-                      />
-                    ) : null}
-                    <div className="wf-time" role="cell">
-                      {durLabel(r, threshold)}
-                    </div>
-                    <div className="wf-share" role="cell">
-                      {fmtShare(r.share)}
-                    </div>
-                  </div>
+                    collapsed={collapsed.has(r.id)}
+                    callWidth={cols.call}
+                    fontSans={pal.fontSans}
+                    functionCount={summary.functionCount}
+                    threshold={threshold}
+                    foldLabel={foldLabel}
+                    whole={data.mode === 'run' ? 'run' : 'task'}
+                    winStart={window.start}
+                    winEnd={window.end}
+                    barX0={bar.x0}
+                    barX1={bar.x1}
+                    hiddenKids={facts.hidden.get(r.id) ?? 0}
+                    cpuUs={facts.cpu.get(r.id) ?? 0}
+                    hover={hover}
+                    onSelect={selectRow}
+                    onToggle={onToggle}
+                    onOpen={onOpen}
+                    onFocus={onFocus}
+                    onBarEnter={onBarEnter}
+                    onBarLeave={onBarLeave}
+                  />
                 );
               })}
             </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { PointerEvent, WheelEvent } from 'react';
 import type { WfColumns } from '../state/prefs';
 import { clamp } from '../view/scale';
@@ -22,7 +22,10 @@ export function useTimeWindow(o: {
 } {
   const { taskKey, taskUs, rowsEl, cols } = o;
   const [win, setWin] = useState<{ key: string; w: TimeWindow } | null>(null);
-  const window = win && win.key === taskKey ? win.w : { start: 0, end: taskUs };
+  const window = useMemo(
+    () => (win && win.key === taskKey ? win.w : { start: 0, end: taskUs }),
+    [win, taskKey, taskUs],
+  );
 
   const onWheel = (e: WheelEvent<HTMLElement>): void => {
     if (!(e.ctrlKey || e.metaKey)) return;

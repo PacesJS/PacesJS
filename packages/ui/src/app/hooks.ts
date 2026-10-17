@@ -112,6 +112,20 @@ export function useCanvas(
   return ref;
 }
 
+/**
+ * A function with a stable identity that always calls the latest `fn`. For handlers handed to
+ * memoized children, so they re-render only when their own data changes.
+ */
+export function useStableCallback<A extends unknown[], R>(
+  fn: (...args: A) => R,
+): (...args: A) => R {
+  const ref = useRef(fn);
+  useEffect(() => {
+    ref.current = fn;
+  });
+  return useCallback((...args: A) => ref.current(...args), []);
+}
+
 export interface AsyncState<T> {
   data: T | undefined;
   error: string | null;
