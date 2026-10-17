@@ -355,8 +355,8 @@ export function SourcePanel() {
       )}
       <p className="source-foot">
         Bars = self time on each line, from V8 line ticks, summed over{' '}
-        {source.acrossAll.replace('across ', '')}
-        (V8 records no ticks per call). Chips = time spent in the callee from that line,{' '}
+        {source.acrossAll.replace('across ', '')} (V8 records no ticks per call). Chips = time spent
+        in the callee from that line,{' '}
         {source.scopeMode === 'call' ? 'in this call' : source.acrossAll}; select one to follow it.
         {snap.options.line > 0 ? ` Opened at line ${snap.options.line}.` : ''}
       </p>

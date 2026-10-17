@@ -118,14 +118,21 @@ test.describe('the duration tooltip', () => {
   });
 });
 
-/** Show me on the hot-path finding selects a function at the end of a chain 17 levels deep. */
+/**
+ * Show me on the hot-path finding selects a function at the end of a chain 17 levels deep. Idempotent:
+ * the page opens on another finding, and a reload keeps this one active (its selection is in the
+ * URL), so the card is only pressed when it is not shown yet. Pressing an active finding again
+ * would clear it.
+ */
 async function openDeep(page: Page): Promise<void> {
-  await page
-    .locator('.finding-card')
-    .nth(2)
-    .getByRole('button', { name: /^Show me:/ })
-    .click();
+  const card = page.locator('.finding-card').nth(2);
+  await expect(card).toBeVisible();
+  if ((await card.getAttribute('aria-current')) !== 'true') {
+    await card.getByRole('button', { name: /^Show me:/ }).click();
+  }
+  await expect(card).toHaveAttribute('aria-current', 'true');
   await showWaterfall(page);
+  await expect(page.getByRole('table', { name: 'Waterfall rows' })).toBeVisible();
 }
 
 test.describe('very deep call chains', () => {
@@ -141,6 +148,17 @@ test.describe('very deep call chains', () => {
   }) => {
     await withPrefs(page, baseUrl, { wfCols: { call: 640, time: 88, share: 72 } }, async () => {
       await openDeep(page);
+      // The deep rows render once the waterfall data has arrived.
+      await expect
+        .poll(async () =>
+          Math.max(
+            0,
+            ...(await rowsOf(page).evaluateAll((rows) =>
+              rows.map((r) => Number(r.getAttribute('aria-level'))),
+            )),
+          ),
+        )
+        .toBeGreaterThan(14);
       const cells = await rowsOf(page).evaluateAll((rows) =>
         rows.map((r) => {
           const cell = r.querySelector<HTMLElement>('.wf-name')!;
