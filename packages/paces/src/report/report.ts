@@ -134,17 +134,14 @@ function tag(origin: number, pkg: string, synthetic = false): string {
   return `(${originName(origin)})`;
 }
 
-function describeHow(how: SelectorResult['how']): string {
-  return how === 'substring'
-    ? 'by substring'
-    : how === 'path'
-      ? 'by name path'
-      : how === 'location'
-        ? 'by file:line'
-        : how === 'id'
-          ? 'by id'
-          : 'exactly';
-}
+const HOW_PHRASE: Partial<Record<SelectorResult['how'], string>> = {
+  substring: 'by substring',
+  path: 'by name path',
+  location: 'by file:line',
+  id: 'by id',
+};
+
+const describeHow = (how: SelectorResult['how']): string => HOW_PHRASE[how] ?? 'exactly';
 
 /** One function out of a selector, or a clear error listing the candidates. */
 function pick(
