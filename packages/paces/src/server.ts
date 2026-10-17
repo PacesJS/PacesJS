@@ -196,6 +196,34 @@ export async function startHost(options: HostOptions): Promise<Host> {
     json(res, 200, resolver.resolve(requested));
   };
 
+  const openInEditorApi = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    const parsed = await readJsonBody(req, res);
+    if (!parsed.ok) return;
+    const body = parsed.value as { file?: unknown; line?: unknown };
+    if (
+      typeof body.file !== 'string' ||
+      !Number.isInteger(body.line) ||
+      (body.line as number) < 1
+    ) {
+      return json(res, 400, { error: 'file (string) and line (positive integer) are required' });
+    }
+    const file = resolver.diskPath(body.file);
+    if (!file) return json(res, 403, { error: 'file is missing or outside the profiled project' });
+    options.openInEditor?.(file, body.line as number);
+    json(res, 200, { ok: true });
+  };
+
+  const putSettingsApi = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    const parsed = await readJsonBody(req, res);
+    if (!parsed.ok) return;
+    const body = parsed.value;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return json(res, 400, { error: 'settings must be a JSON object' });
+    }
+    writeSettings(configDir, body as Record<string, unknown>);
+    json(res, 200, body);
+  };
+
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     lastRequest = Date.now();
     const host = req.headers.host ?? '';
@@ -274,36 +302,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
       return streamBytes(res, session.modelBytes);
     }
     if (p === '/api/source' && method === 'GET') return sourceApi(url, res);
-    if (p === '/api/open-in-editor' && method === 'POST') {
-      const parsed = await readJsonBody(req, res);
-      if (!parsed.ok) return;
-      const body = parsed.value as { file?: unknown; line?: unknown };
-      if (
-        typeof body.file !== 'string' ||
-        !Number.isInteger(body.line) ||
-        (body.line as number) < 1
-      ) {
-        return json(res, 400, { error: 'file (string) and line (positive integer) are required' });
-      }
-      const file = resolver.diskPath(body.file);
-      if (!file)
-        return json(res, 403, { error: 'file is missing or outside the profiled project' });
-      options.openInEditor?.(file, body.line as number);
-      return json(res, 200, { ok: true });
-    }
-    if (p === '/api/settings') {
-      if (method === 'GET') return json(res, 200, readSettings(configDir));
-      if (method === 'PUT') {
-        const parsed = await readJsonBody(req, res);
-        if (!parsed.ok) return;
-        const body = parsed.value;
-        if (!body || typeof body !== 'object' || Array.isArray(body)) {
-          return json(res, 400, { error: 'settings must be a JSON object' });
-        }
-        writeSettings(configDir, body as Record<string, unknown>);
-        return json(res, 200, body);
-      }
-    }
+    if (p === '/api/open-in-editor' && method === 'POST') return openInEditorApi(req, res);
+    if (p === '/api/settings' && method === 'GET') return json(res, 200, readSettings(configDir));
+    if (p === '/api/settings' && method === 'PUT') return putSettingsApi(req, res);
     json(res, 404, { error: 'not found' });
   };
 
