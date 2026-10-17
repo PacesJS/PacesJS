@@ -115,6 +115,109 @@ function trackLabel(
   return `${name}${pid}${suffix}`;
 }
 
+interface TrackStage {
+  ing: IngestResult;
+  sm: ReturnType<typeof resolveSourceMaps>;
+  functions: FunctionTable;
+  detection: TargetDetection;
+  rootOf: number[];
+  ctx: PassContext;
+}
+
+/** Passes 5-8 for one track: call tree, spans, tasks, async edges, continuations and aggregates. */
+function buildTrack(
+  raw: IngestResult['tracks'][number],
+  index: number,
+  { ing, sm, functions, detection, rootOf, ctx }: TrackStage,
+): { track: Track; aggregate: TrackAggregateResult } {
+  const tree = toCallTree(raw.tree, sm.frameToFn);
+  const spans = reconstructSpans({
+    tree,
+    samples: raw.samples,
+    origin: functions.origin,
+    gapUs: ing.precisionUs * 3,
+  });
+  const tasks = segmentTasks(
+    { tree, samples: raw.samples, spans, functions, requests: raw.events.requests },
+    ctx,
+  );
+  const asyncEdges = stitchAsync({ records: raw.async, tasks: tasks.table });
+  const continuations = stitchContinuations({
+    spans,
+    tasks: tasks.table,
+    asyncEdges,
+    functions,
+    precisionUs: ing.precisionUs,
+  });
+  const result = aggregateTrack({
+    tree,
+    samples: raw.samples,
+    spans,
+    tasks: tasks.table,
+    taskSampleStart: tasks.sampleStart,
+    taskSampleEnd: tasks.sampleEnd,
+    tickOffset: raw.ticks.offset,
+    tickLine: sm.tickLines[index] ?? new Uint32Array(0),
+    tickCount: raw.ticks.ticks,
+    hits: raw.tree.hits,
+    functions,
+  });
+  const n = raw.samples.length;
+  const durationUs =
+    n === 0
+      ? 0
+      : (raw.samples.time[n - 1] ?? 0) + (raw.samples.dur[n - 1] ?? 0) - (raw.samples.time[0] ?? 0);
+  const track: Track = {
+    id: raw.info.id,
+    kind: raw.info.kind,
+    label: trackLabel(raw.info, detection, index),
+    role: detection.roles[index] ?? 'target',
+    entry: detection.entries[index] ?? '',
+    rootFn: rootOf[index] ?? 0,
+    ...(raw.info.parent ? { parent: raw.info.parent } : {}),
+    callTree: tree,
+    samples: raw.samples,
+    spans,
+    tasks: tasks.table,
+    asyncEdges,
+    continuations,
+    events: raw.events,
+    lines: result.lines,
+    agg: result.agg,
+    fnIds: result.fnIds,
+    busyUs: result.busyUs,
+    durationUs,
+  };
+  return { track, aggregate: result };
+}
+
+/** Missing source maps: a problem in the target's own code, expected noise in dependencies. */
+function missingMapDrafts(functions: FunctionTable, ctx: PassContext): WarningDraft[] {
+  const mapDrafts: WarningDraft[] = [];
+  const invalid = new Set(
+    ctx.warnings.filter((w) => w.kind === 'source-map-invalid').map((w) => w.detail),
+  );
+  for (let f = 0; f < functions.length; f++) {
+    if (functions.mapMissing[f] !== 1) continue;
+    if (invalid.has(ctx.strings.strings[functions.file[f] ?? 0] ?? '')) continue;
+    const o = functions.origin[f] ?? Origin.User;
+    const dependency = o === Origin.Dependency || o === Origin.Framework;
+    const file = ctx.strings.strings[functions.file[f] ?? 0] ?? '';
+    // The user can add a map to their own project, not to a published package they only run.
+    const published = !dependency && packageNameFromPath(file) !== '';
+    mapDrafts.push({
+      kind: dependency
+        ? 'dependency-source-map-missing'
+        : published
+          ? 'target-package-source-map-missing'
+          : 'source-map-missing',
+      severity: dependency || published ? 'info' : 'warn',
+      detail: dependency || published ? displayPath(file) : file,
+    });
+  }
+  return mapDrafts;
+}
+
 export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): ExecutionModel {
   const ctx: PassContext = {
     thresholds: { ...DEFAULT_THRESHOLDS, ...options.thresholds },
@@ -153,71 +256,10 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
   const { functions, rootOf } = withEntryFunctions(base, detection, ctx, rootFns);
 
   // 5-8: per-track passes.
-  const tracks: Track[] = [];
-  const aggregates: TrackAggregateResult[] = [];
-  ing.tracks.forEach((raw, index) => {
-    const tree = toCallTree(raw.tree, sm.frameToFn);
-    const spans = reconstructSpans({
-      tree,
-      samples: raw.samples,
-      origin: functions.origin,
-      gapUs: ing.precisionUs * 3,
-    });
-    const tasks = segmentTasks(
-      { tree, samples: raw.samples, spans, functions, requests: raw.events.requests },
-      ctx,
-    );
-    const asyncEdges = stitchAsync({ records: raw.async, tasks: tasks.table });
-    const continuations = stitchContinuations({
-      spans,
-      tasks: tasks.table,
-      asyncEdges,
-      functions,
-      precisionUs: ing.precisionUs,
-    });
-    const result = aggregateTrack({
-      tree,
-      samples: raw.samples,
-      spans,
-      tasks: tasks.table,
-      taskSampleStart: tasks.sampleStart,
-      taskSampleEnd: tasks.sampleEnd,
-      tickOffset: raw.ticks.offset,
-      tickLine: sm.tickLines[index] ?? new Uint32Array(0),
-      tickCount: raw.ticks.ticks,
-      hits: raw.tree.hits,
-      functions,
-    });
-    aggregates.push(result);
-    const n = raw.samples.length;
-    const durationUs =
-      n === 0
-        ? 0
-        : (raw.samples.time[n - 1] ?? 0) +
-          (raw.samples.dur[n - 1] ?? 0) -
-          (raw.samples.time[0] ?? 0);
-    tracks.push({
-      id: raw.info.id,
-      kind: raw.info.kind,
-      label: trackLabel(raw.info, detection, index),
-      role: detection.roles[index] ?? 'target',
-      entry: detection.entries[index] ?? '',
-      rootFn: rootOf[index] ?? 0,
-      ...(raw.info.parent ? { parent: raw.info.parent } : {}),
-      callTree: tree,
-      samples: raw.samples,
-      spans,
-      tasks: tasks.table,
-      asyncEdges,
-      continuations,
-      events: raw.events,
-      lines: result.lines,
-      agg: result.agg,
-      fnIds: result.fnIds,
-      busyUs: result.busyUs,
-      durationUs,
-    });
-  });
+  const stage: TrackStage = { ing, sm, functions, detection, rootOf, ctx };
+  const built = ing.tracks.map((raw, index) => buildTrack(raw, index, stage));
+  const tracks = built.map((x) => x.track);
+  const aggregates = built.map((x) => x.aggregate);
 
   const { packages, taskKinds } = mergePackages(aggregates, ctx.strings.strings);
 
@@ -234,29 +276,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
     commandLike: detection.commandLike,
   });
 
-  // Missing source maps: a problem in the target's own code, expected noise in dependencies.
-  const mapDrafts: WarningDraft[] = [];
-  const invalid = new Set(
-    ctx.warnings.filter((w) => w.kind === 'source-map-invalid').map((w) => w.detail),
-  );
-  for (let f = 0; f < functions.length; f++) {
-    if (functions.mapMissing[f] !== 1) continue;
-    if (invalid.has(ctx.strings.strings[functions.file[f] ?? 0] ?? '')) continue;
-    const o = functions.origin[f] ?? Origin.User;
-    const dependency = o === Origin.Dependency || o === Origin.Framework;
-    const file = ctx.strings.strings[functions.file[f] ?? 0] ?? '';
-    // The user can add a map to their own project, not to a published package they only run.
-    const published = !dependency && packageNameFromPath(file) !== '';
-    mapDrafts.push({
-      kind: dependency
-        ? 'dependency-source-map-missing'
-        : published
-          ? 'target-package-source-map-missing'
-          : 'source-map-missing',
-      severity: dependency || published ? 'info' : 'warn',
-      detail: dependency || published ? displayPath(file) : file,
-    });
-  }
+  const mapDrafts = missingMapDrafts(functions, ctx);
 
   const model: ExecutionModel = {
     meta: {
