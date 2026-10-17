@@ -4,6 +4,7 @@
 import { Origin } from './model.js';
 import type { ExecutionModel } from './model.js';
 import type { DiffFunction, ModelDiff } from './query/types.js';
+import { compareText } from './util/compare.js';
 
 /** Share-of-busy-time change below this counts as unchanged (0.5 percentage points). */
 export const DIFF_EPSILON = 0.005;
@@ -82,9 +83,7 @@ export function diffModels(base: ExecutionModel, head: ExecutionModel): ModelDif
     };
   });
   functions.sort(
-    (x, y) =>
-      Math.abs(y.selfShareDelta) - Math.abs(x.selfShareDelta) ||
-      (x.key < y.key ? -1 : x.key > y.key ? 1 : 0),
+    (x, y) => Math.abs(y.selfShareDelta) - Math.abs(x.selfShareDelta) || compareText(x.key, y.key),
   );
 
   const byKey = new Map(functions.map((f) => [f.key, f]));

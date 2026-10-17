@@ -3,6 +3,7 @@
 
 import type { ExecutionModel, ModelWarning } from '../model.js';
 import type { CaptureMeta } from '../raw.js';
+import { compareText } from '../util/compare.js';
 import { plural } from '../util/format.js';
 import type { WarningDraft } from './types.js';
 
@@ -89,6 +90,6 @@ export function buildWarnings(drafts: readonly WarningDraft[]): ModelWarning[] {
   return out.sort(
     (a, b) =>
       (a.severity === b.severity ? 0 : a.severity === 'warn' ? -1 : 1) ||
-      (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0),
+      compareText(a.kind, b.kind),
   );
 }

@@ -2,6 +2,7 @@
 // package and per task kind, from the call tree, the spans and V8's line ticks.
 
 import { Origin, TASK_KIND_NAMES } from '../model.js';
+import { compareText } from '../util/compare.js';
 import type {
   CallTree,
   EdgeTable,
@@ -212,10 +213,6 @@ export function aggregateTrack(input: TrackAggregateInput): TrackAggregateResult
     kindBusy,
     kindPlumbing,
   };
-}
-
-function compareText(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 export function mergePackages(

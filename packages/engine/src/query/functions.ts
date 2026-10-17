@@ -5,6 +5,7 @@
 
 import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel } from '../model.js';
+import { compareText } from '../util/compare.js';
 import { runsPerNode } from './callgraph.js';
 import { flameLayoutOfTree } from './flame.js';
 import type {
@@ -101,11 +102,11 @@ export function functionRows(
       case 'origin':
         return a.origin - b.origin;
       case 'name':
-        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+        return compareText(a.name, b.name);
       case 'package':
-        return a.pkg < b.pkg ? -1 : a.pkg > b.pkg ? 1 : 0;
+        return compareText(a.pkg, b.pkg);
       case 'file':
-        return a.file < b.file ? -1 : a.file > b.file ? 1 : 0;
+        return compareText(a.file, b.file);
     }
   };
   const group = (r: FunctionRow): number => (userFirst && r.origin !== Origin.User ? 1 : 0);

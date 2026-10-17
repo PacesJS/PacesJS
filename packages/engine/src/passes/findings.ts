@@ -6,6 +6,7 @@ import type { Thresholds } from '../config.js';
 import { Origin, TASK_KIND_NAMES, TaskKind } from '../model.js';
 import type { ExecutionModel, Finding, FindingKind, FnId, Severity, Track } from '../model.js';
 import { hotPaths } from '../query/paths.js';
+import { compareText } from '../util/compare.js';
 import { formatDuration, formatPercent, plural } from '../util/format.js';
 import { displayPath } from '../util/paths.js';
 import type { PassContext } from './types.js';
@@ -702,6 +703,6 @@ export function findIssues(model: ExecutionModel, ctx: PassContext): Finding[] {
       SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
       b.impact - a.impact ||
       KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
-      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      compareText(a.id, b.id),
   );
 }
