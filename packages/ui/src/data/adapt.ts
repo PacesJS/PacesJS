@@ -16,6 +16,7 @@ import {
   waterfallForTask,
 } from '@pacesjs/engine';
 import type { ExecutionModel, FlameLayout, ModelDiff, OriginId, Track } from '@pacesjs/engine';
+import { cgLocation, cgSubtitle } from './call-graph-label';
 import { fileLine, locationOf, trackOrder } from './scope';
 import type { Scoped } from './scope';
 import type {
@@ -577,24 +578,7 @@ export function callGraphData(
   const nodes: CgNode[] = g.nodes.map((n) => {
     const fn = s.out(n.fn);
     const info = s.info(fn);
-    const loc = info.synthetic
-      ? ''
-      : info.origin === Origin.User || info.origin === Origin.Dependency
-        ? locationOf(info)
-        : '';
-    const sub = n.isEntry
-      ? 'entry point'
-      : info.synthetic
-        ? 'package'
-        : loc
-          ? (loc.split('/').pop() ?? loc)
-          : info.origin === Origin.Node
-            ? 'node'
-            : info.origin === Origin.Native
-              ? 'native'
-              : info.origin === Origin.Gc
-                ? 'V8'
-                : '';
+    const sub = cgSubtitle(info, n.isEntry, cgLocation(info));
     return {
       fn,
       name: info.name || '(anonymous)',
