@@ -14,6 +14,17 @@ export function fmtPct(share: number): string {
   return '<0.1%';
 }
 
+/** A duration column: right-aligned in nine characters. */
+export const timeCol = (us: number): string => padStart(fmtUs(us), 9);
+
+/** A share column: right-aligned in five characters. */
+export const pctCol = (share: number): string => padStart(fmtPct(share), 5);
+
+export const orAnon = (name: string): string => name || '(anonymous)';
+
+/** Shares in JSON, to three decimals. */
+export const round3 = (x: number): number => Math.round(x * 1000) / 1000;
+
 /** `.../node_modules/.pnpm/x@1/node_modules/pkg/lib/a.js` -> `pkg/lib/a.js`. */
 export function shortPath(file: string): string {
   const f = file.replaceAll('\\', '/');

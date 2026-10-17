@@ -25,12 +25,16 @@ import type { SourceResolver } from '../source-resolver.js';
 import {
   fmtPct,
   fmtUs,
+  orAnon,
   padEnd,
   padStart,
   painter,
+  pctCol,
   place,
+  round3,
   shellArg,
   shortPath,
+  timeCol,
   truncate,
 } from './format.js';
 import type { Painter } from './format.js';
@@ -159,7 +163,7 @@ function pick(
   if (r.matches.length > 1 && r.how !== 'id') {
     const lines = r.matches.slice(0, 8).map((m) => {
       const l = locate(model, m.fn);
-      return `  f${m.fn}  ${l.name || '(anonymous)'}  ${place(l.file, l.line)}  total ${fmtUs(m.totalUs)}`;
+      return `  f${m.fn}  ${orAnon(l.name)}  ${place(l.file, l.line)}  total ${fmtUs(m.totalUs)}`;
     });
     const more = r.matches.length > 8 ? `\n  … and ${r.matches.length - 8} more` : '';
     throw new ReportError(
@@ -244,12 +248,12 @@ function renderRows(rows: Layout[], paint: Painter): string[] {
 
 function treeLayout(row: TreeRow): Layout {
   const indent = '  '.repeat(row.depth);
-  const name = row.synthetic ? `▸ ${row.name}` : `${row.name || '(anonymous)'}`;
+  const name = row.synthetic ? `▸ ${row.name}` : `${orAnon(row.name)}`;
   const id = row.synthetic ? '' : ` [${row.id}]`;
   const t = tag(row.origin, row.pkg, row.synthetic);
   return {
     left: `${indent}${truncate(name, NAME_WIDTH)}${id}${t ? ` ${t}` : ''}`,
-    nums: `${padStart(fmtUs(row.totalUs), 9)} ${padStart(fmtPct(row.share), 5)}  self ${padStart(fmtUs(row.selfUs), 9)}`,
+    nums: `${timeCol(row.totalUs)} ${pctCol(row.share)}  self ${timeCol(row.selfUs)}`,
     where: place(row.file, row.line),
   };
 }
@@ -364,7 +368,7 @@ function jsonRow(row: TreeRow): Record<string, unknown> {
     line: row.line,
     totalMs: round(row.totalUs / 1000),
     selfMs: round(row.selfUs / 1000),
-    share: Math.round(row.share * 1000) / 1000,
+    share: round3(row.share),
     collapsed: row.synthetic,
     ...(row.folded ? { folded: row.folded } : {}),
   };
@@ -426,7 +430,7 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
     ctx,
     ti,
     flags,
-    `callers of ${target.name || '(anonymous)'} [f${fn}] · total ${fmtUs(total)} · ~${calls} calls · ${place(target.file, target.line)}`,
+    `callers of ${orAnon(target.name)} [f${fn}] · total ${fmtUs(total)} · ~${calls} calls · ${place(target.file, target.line)}`,
   );
   if (flat.length === 0) {
     return {
@@ -443,8 +447,8 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
     const l = locate(model, node.fn);
     const t = tag(l.origin, l.pkg);
     return {
-      left: `${'  '.repeat(d)}${truncate(node.name || '(anonymous)', NAME_WIDTH)} [f${node.fn}]${t ? ` ${t}` : ''}`,
-      nums: `via ${padStart(fmtUs(node.weightUs), 9)} ${padStart(d === 0 ? fmtPct(total > 0 ? node.weightUs / total : 0) : '', 5)}  ~${node.calls} calls`,
+      left: `${'  '.repeat(d)}${truncate(orAnon(node.name), NAME_WIDTH)} [f${node.fn}]${t ? ` ${t}` : ''}`,
+      nums: `via ${timeCol(node.weightUs)} ${padStart(d === 0 ? fmtPct(total > 0 ? node.weightUs / total : 0) : '', 5)}  ~${node.calls} calls`,
       where: place(node.file, node.line),
     };
   });
@@ -517,8 +521,8 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
   const layout = shown.map((r): Layout => {
     const t = tag(r.origin, r.pkg);
     return {
-      left: `${truncate(r.name || '(anonymous)', NAME_WIDTH)} [f${r.fn}]${t && !pkg ? ` ${t}` : ''}`,
-      nums: `self ${padStart(fmtUs(r.self), 9)} ${padStart(fmtPct(r.selfShare), 5)}  total ${padStart(fmtUs(r.total), 9)}  ~${r.calls} calls`,
+      left: `${truncate(orAnon(r.name), NAME_WIDTH)} [f${r.fn}]${t && !pkg ? ` ${t}` : ''}`,
+      nums: `self ${timeCol(r.self)} ${pctCol(r.selfShare)}  total ${timeCol(r.total)}  ~${r.calls} calls`,
       where: place(r.file, r.line),
     };
   });
@@ -551,7 +555,7 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
       line: r.line,
       selfMs: round(r.self / 1000),
       totalMs: round(r.total / 1000),
-      selfShare: Math.round(r.selfShare * 1000) / 1000,
+      selfShare: round3(r.selfShare),
       calls: r.calls,
     })),
   });
@@ -567,7 +571,7 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     ctx,
     ti,
     flags,
-    `lines of ${info.name || '(anonymous)'} [f${fn}] · self ${fmtUs(info.selfUs)}, total ${fmtUs(info.totalUs)} · ${where}`,
+    `lines of ${orAnon(info.name)} [f${fn}] · self ${fmtUs(info.selfUs)}, total ${fmtUs(info.totalUs)} · ${where}`,
   );
   const out = [...head.lines, ...(note ? [note] : [])];
   const src = ctx.resolver?.resolve(info.file);
@@ -598,14 +602,14 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
       const t = timed.get(n);
       const mark = hotSet.has(n) ? paint.red('▶') : ' ';
       const time = t
-        ? `${padStart(fmtUs(t.selfUs), 9)} ${padStart(fmtPct(t.selfUs / selfSum), 5)}`
+        ? `${timeCol(t.selfUs)} ${pctCol(t.selfUs / selfSum)}`
         : `${' '.repeat(9)} ${' '.repeat(5)}`;
       const code = text ? truncate((text[n - 1] ?? '').replace(/\t/g, '  ').trimEnd(), 110) : '';
       rows.push(`${mark} ${padStart(String(n), 5)} ${time} │ ${code}`);
       jsonLines.push({
         line: n,
         selfMs: t ? round(t.selfUs / 1000) : 0,
-        share: t ? Math.round((t.selfUs / selfSum) * 1000) / 1000 : 0,
+        share: t ? round3(t.selfUs / selfSum) : 0,
         hot: hotSet.has(n),
         ...(text ? { code: text[n - 1] ?? '' } : {}),
       });
@@ -627,7 +631,7 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     out.push('callee time under this function:');
     for (const c of info.calleeTime.slice(0, 6)) {
       out.push(
-        `  ${padStart(fmtUs(c.totalUs), 9)}  ${c.name || '(anonymous)'} [f${c.fn}]${c.pkg ? ` (${c.pkg})` : ''}`,
+        `  ${timeCol(c.totalUs)}  ${orAnon(c.name)} [f${c.fn}]${c.pkg ? ` (${c.pkg})` : ''}`,
       );
     }
   }
@@ -667,7 +671,7 @@ function phasesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput 
       `${p.name}: starts ${fmtUs(p.startMs * 1000)}, lasts ${fmtUs(p.durationMs * 1000)}, busy ${fmtUs(p.busyMs * 1000)} (${fmtPct(p.share)} of busy)`,
     );
     for (const h of p.hottest.slice(0, 3)) {
-      lines.push(`    ${padStart(fmtUs(h.selfMs * 1000), 9)}  ${h.name} ${place(h.file, h.line)}`);
+      lines.push(`    ${timeCol(h.selfMs * 1000)}  ${h.name} ${place(h.file, h.line)}`);
     }
   }
   return finishView('phases', head, lines, [nextCmd(ctx, '--tree'), nextCmd(ctx, '--tasks')], {
@@ -685,7 +689,7 @@ function tasksView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
   for (const t of shown) {
     const id = t.index < 0 ? 'whole' : String(t.index);
     lines.push(
-      `[task ${padEnd(id, 5)}] ${padEnd(t.group, 9)} ${truncate(t.label, 56)}  start ${padStart(fmtUs(t.startUs), 9)}  lasts ${padStart(fmtUs(t.durationUs), 9)}  busy ${padStart(fmtUs(t.busyUs), 9)}${t.longest ? '  (longest)' : ''}`,
+      `[task ${padEnd(id, 5)}] ${padEnd(t.group, 9)} ${truncate(t.label, 56)}  start ${timeCol(t.startUs)}  lasts ${timeCol(t.durationUs)}  busy ${timeCol(t.busyUs)}${t.longest ? '  (longest)' : ''}`,
     );
   }
   const skipped = real.length - shown.length;
@@ -745,8 +749,8 @@ function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
   lines.push(
     ...renderRows(
       self.map((f): Layout => ({
-        left: `${truncate(f.name || '(anonymous)', NAME_WIDTH)}${f.pkg && f.origin !== 'user' ? ` (${f.pkg})` : ''}`,
-        nums: `self ${padStart(fmtUs(f.selfMs * 1000), 9)} ${padStart(fmtPct(f.share), 5)}`,
+        left: `${truncate(orAnon(f.name), NAME_WIDTH)}${f.pkg && f.origin !== 'user' ? ` (${f.pkg})` : ''}`,
+        nums: `self ${timeCol(f.selfMs * 1000)} ${pctCol(f.share)}`,
         where: place(f.file, f.line),
       })),
       paint,
