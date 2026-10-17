@@ -175,22 +175,57 @@ export function foldRows(rows: readonly WaterfallRow[], o: FoldOptions): Folded 
 /** Module loading frames (`require ▸ path`) are not the work the user is looking for. */
 const isLoader = (r: WaterfallRow): boolean => r.name.startsWith('require ▸');
 
+/** The most of a parent's work a child must carry for the chain to keep going into it. */
+const FOLLOW_SHARE = 0.5;
+
 /**
- * The chain to open first: the ancestors of the target's hottest own function (most self time in
- * your code, loaders and the entry root aside). In a stitched run no single chain from the root is
- * heavy, so the widest-child chain would end up inside a dependency; this one ends in real work.
- * `null` when the run has no code of the target to point at.
+ * The chain to open first, ending in the target's own work. A row's work is its time minus the
+ * time spent loading modules under it; the chain starts at the row of your code with the most work
+ * (the entry root aside) and follows the heaviest child of your code while that child carries at
+ * least half of it. Self time is not the guide: it is spread thin across a stitched run, and the
+ * hottest single line is rarely where the work starts. `null` when there is no code of the
+ * target to point at.
  */
 export function hotTargetPath(rows: readonly WaterfallRow[]): number[] | null {
+  const kids = new Map<number, WaterfallRow[]>();
+  for (const r of rows) {
+    const list = kids.get(r.parent) ?? [];
+    list.push(r);
+    kids.set(r.parent, list);
+  }
+  const dur = (r: WaterfallRow): number => r.end - r.start;
+  const loading = new Map<number, number>();
+  const loadingUnder = (r: WaterfallRow): number => {
+    const known = loading.get(r.id);
+    if (known !== undefined) return known;
+    let t = 0;
+    for (const c of kids.get(r.id) ?? []) t += isLoader(c) ? dur(c) : loadingUnder(c);
+    loading.set(r.id, t);
+    return t;
+  };
+  const work = (r: WaterfallRow): number => dur(r) - loadingUnder(r);
+  const own = (r: WaterfallRow): boolean =>
+    r.kind === 'call' && r.origin === Origin.User && !isLoader(r);
+
   let best: WaterfallRow | null = null;
   for (const r of rows) {
-    if (r.kind !== 'call' || r.depth < 1 || r.origin !== Origin.User || isLoader(r)) continue;
-    if (!best || r.selfUs > best.selfUs) best = r;
+    if (r.depth < 1 || !own(r)) continue;
+    if (!best || work(r) > work(best)) best = r;
   }
-  if (!best || best.selfUs <= 0) return null;
+  if (!best || work(best) <= 0) return null;
+  const chain: WaterfallRow[] = [best];
+  for (;;) {
+    const here = chain[chain.length - 1] as WaterfallRow;
+    let next: WaterfallRow | null = null;
+    for (const c of kids.get(here.id) ?? [])
+      if (own(c) && (!next || work(c) > work(next))) next = c;
+    if (!next || work(next) < FOLLOW_SHARE * work(here)) break;
+    chain.push(next);
+  }
   const byId = new Map(rows.map((r) => [r.id, r]));
   const path: number[] = [];
-  for (let r: WaterfallRow | undefined = best; r; r = byId.get(r.parent)) path.push(r.id);
+  for (let r: WaterfallRow | undefined = chain[chain.length - 1]; r; r = byId.get(r.parent))
+    path.push(r.id);
   return path.reverse();
 }
 
@@ -203,6 +238,7 @@ export function initialCollapsed(
   rows: readonly WaterfallRow[],
   criticalRows: readonly number[],
   folds: readonly number[],
+  evidence: ReadonlySet<number> = new Set(),
 ): Set<number> {
   const byId = new Map(rows.map((r) => [r.id, r]));
   const open = new Set<number>();
@@ -220,6 +256,17 @@ export function initialCollapsed(
       if (!r || r.depth > INITIAL_DEPTH || (open.size > 0 && r.share < MIN_PATH_SHARE)) break;
       open.add(id);
     }
+  }
+  // Findings must not hide inside a closed row: open the way to the longest row of each function
+  // a finding names as its evidence (the sync read under a request, say).
+  const longest = new Map<number, WaterfallRow>();
+  for (const r of rows) {
+    if (r.kind !== 'call' || !evidence.has(r.fn)) continue;
+    const held = longest.get(r.fn);
+    if (!held || r.end - r.start > held.end - held.start) longest.set(r.fn, r);
+  }
+  for (const r of longest.values()) {
+    for (let p = byId.get(r.parent); p; p = byId.get(p.parent)) open.add(p.id);
   }
   const closed = new Set<number>(folds);
   for (const r of rows) if (r.hasChildren && !open.has(r.id)) closed.add(r.id);

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { HostAdapter } from '../host/adapter';
 import type { QueryClient } from '../data/protocol';
-import type { ModelSummary, Scope } from '../data/queries';
+import type { ModelSummary, Scope, SelectionInfo } from '../data/queries';
 import { Header } from '../components/Header';
+import { clicksOff, onScrollbar } from './click-off';
+import type { PointerStart } from './click-off';
+import { dockCollapsed as dockIsCollapsed } from '../state/prefs';
 import { fmtRange } from '../util/format';
 import { Overview } from '../components/Overview';
 import { ShortcutSheet } from '../components/ShortcutSheet';
@@ -28,6 +31,16 @@ import type { Selection, Snapshot } from '../state/types';
 import { AppContext } from './context';
 import type { AppContextValue } from './context';
 import { useAsync } from './hooks';
+
+const EMPTY_SELECTION: SelectionInfo = {
+  fn: null,
+  path: null,
+  name: '',
+  track: null,
+  task: null,
+  loc: '',
+  plumbing: false,
+};
 
 interface ShellProps {
   host: HostAdapter;
@@ -92,18 +105,17 @@ export function Shell({
     () => client.describe(scope, snap.selection),
     `describe:${scopeKey}:${JSON.stringify(snap.selection)}`,
   );
-  const selection = useMemo(() => {
-    const base = describeQ.data ?? {
-      fn: null,
-      path: null,
-      name: '',
-      track: null,
-      task: null,
-      loc: '',
-      plumbing: false,
-    };
-    return snap.selection.kind === 'fn' ? { ...base, fn: snap.selection.fn } : base;
-  }, [describeQ.data, snap.selection]);
+  const selection = useMemo((): SelectionInfo => {
+    const sel = snap.selection;
+    // What the selection is, known at once from the selection itself; the query adds names.
+    if (sel.kind === 'none' || sel.kind === 'range') return EMPTY_SELECTION;
+    const base = describeQ.loading ? EMPTY_SELECTION : (describeQ.data ?? EMPTY_SELECTION);
+    if (sel.kind === 'fn') return { ...base, fn: sel.fn };
+    if (sel.kind === 'node') {
+      return { ...base, fn: sel.path[sel.path.length - 1] ?? null, path: sel.path };
+    }
+    return base;
+  }, [describeQ.data, describeQ.loading, snap.selection]);
   const hoverFn = state.hover.kind === 'fn' ? state.hover.fn : null;
   const primaryTrack = snap.track !== ALL_TRACKS ? snap.track : (summary.tracks[0]?.id ?? '');
 
@@ -176,6 +188,55 @@ export function Shell({
 
   const select = (selection: Selection): void => dispatch({ type: 'select', selection });
 
+  /** Clear what is selected, undoing a finding's Show me when that is what is showing. */
+  const clearCurrent = useCallback((): void => {
+    const s = snapshotOf(stateRef.current);
+    const shown = summaryRef.current.findings.find((f) =>
+      isShowing(f, s, stateRef.current.search, showMeContext(summaryRef.current)),
+    );
+    if (shown) dispatch(clearShowMeAction(shown, s));
+    else if (hasSelection(s)) dispatch(CLEAR_SELECTION);
+  }, [dispatch]);
+
+  // Click-off: one listener for the whole app. A click on anything that is not interactive and
+  // not what the user is working with clears the selection (see click-off.ts for the rules).
+  useEffect(() => {
+    let start: PointerStart | null = null;
+    const popoverOpen = (): boolean =>
+      document.querySelector('[role="menu"], [role="dialog"]:not([aria-modal="true"])') !== null;
+    const onDown = (e: PointerEvent): void => {
+      const target = e.target instanceof Element ? e.target : null;
+      start = {
+        x: e.clientX,
+        y: e.clientY,
+        target,
+        blocked: popoverOpen() || (target ? onScrollbar(target, e.clientX, e.clientY) : false),
+      };
+    };
+    const onClick = (e: MouseEvent): void => {
+      const target = e.target instanceof Element ? e.target : null;
+      const begun = start;
+      start = null;
+      const blocked = begun?.blocked === true;
+      const off = clicksOff(
+        begun ? { ...begun, blocked } : null,
+        { x: e.clientX, y: e.clientY, target },
+        {
+          selectedText: window.getSelection()?.toString() ?? '',
+          popoverOpen: false,
+          modalOpen: document.querySelector('[aria-modal="true"]') !== null,
+        },
+      );
+      if (off) clearCurrent();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('click', onClick);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('click', onClick);
+    };
+  }, [clearCurrent]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const action = resolveKey(e);
@@ -246,19 +307,13 @@ export function Shell({
           if (stateRef.current.dockMaximized)
             dispatch({ type: 'set-dock-maximized', maximized: false });
           else if (stateRef.current.shortcutsOpen) dispatch({ type: 'set-shortcuts', open: false });
-          else if (!isTypingTarget(e.target)) {
-            const shown = summaryRef.current.findings.find((f) =>
-              isShowing(f, s, stateRef.current.search, showMeContext(summaryRef.current)),
-            );
-            if (shown) dispatch(clearShowMeAction(shown, s));
-            else if (hasSelection(s)) dispatch(CLEAR_SELECTION);
-          }
+          else if (!isTypingTarget(e.target)) clearCurrent();
           break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [client, dispatch]);
+  }, [client, dispatch, clearCurrent]);
 
   const ctx = showMeContext(summary);
   const finding = summary.findings.find((f) => isShowing(f, snap, state.search, ctx));
@@ -268,6 +323,21 @@ export function Shell({
         selection.name || (snap.range ? fmtRange(snap.range[0], snap.range[1]) : ''),
       )
     : null;
+
+  // The dock follows the selection: slim when nothing with code is selected, extended otherwise.
+  const hasCode = selection.fn !== null && selection.fn < summary.functionCount;
+  const dockCollapsed = dockIsCollapsed(state.dockOverride, hasCode);
+  // The user's say ends when the selection changes between "has code" and "has none".
+  const overrideFor = state.dockOverride?.forCode;
+  useEffect(() => {
+    if (overrideFor !== undefined && overrideFor !== hasCode) {
+      dispatch({ type: 'set-dock-override', override: null });
+    }
+  }, [overrideFor, hasCode, dispatch]);
+  const openDock = (): void =>
+    dispatch({ type: 'set-dock-override', override: { mode: 'open', forCode: hasCode } });
+  const collapseDock = (): void =>
+    dispatch({ type: 'set-dock-override', override: { mode: 'collapsed', forCode: hasCode } });
 
   const value: AppContextValue = {
     host,
@@ -282,6 +352,10 @@ export function Shell({
     hoverFn,
     primaryTrack,
     select,
+    hasCode,
+    dockCollapsed,
+    openDock,
+    collapseDock,
     search: state.search,
   };
 

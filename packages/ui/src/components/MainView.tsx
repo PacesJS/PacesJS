@@ -40,7 +40,9 @@ export function MainView() {
         ))}
       </nav>
       <FilterBar />
-      <ActiveView view={snap.view} />
+      <div className="view-swap" key={snap.view}>
+        <ActiveView view={snap.view} />
+      </div>
     </section>
   );
 }

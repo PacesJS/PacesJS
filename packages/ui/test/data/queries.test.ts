@@ -462,3 +462,26 @@ describe('describe', () => {
     expect(q.describe(scope, { kind: 'none' }).fn).toBeNull();
   });
 });
+
+describe('a hot path in a stitched run', () => {
+  const wrapped = fixtureModel('eslint-cli-wrapped');
+  const wq = createQueries(wrapped, null, nodeElk);
+  const wscope = {
+    track: wrapped.tracks[wrapped.primaryTrack]?.id ?? '',
+    transforms: [...DEFAULT_TRANSFORMS],
+    range: null,
+    hide: [] as number[],
+  };
+
+  it('zooms to the whole chain even though a dependency frame sits above and inside it', async () => {
+    const finding = wrapped.findings.find((f) => f.kind === 'hot-path');
+    const zoomPath = String(finding?.showMe?.options?.['zoomPath'] ?? '')
+      .split(',')
+      .map(Number);
+    const flame = await wq.flame(wscope, { sort: 'heavy', color: 'origin', zoom: [], zoomPath });
+    const names = flame.crumbs.map((c) => c.name);
+    expect(names.length).toBeGreaterThanOrEqual(zoomPath.length);
+    expect(names).toContain('lintFiles');
+    expect(names.at(-1)).toBe('parse');
+  });
+});

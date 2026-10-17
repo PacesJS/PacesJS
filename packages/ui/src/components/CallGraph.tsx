@@ -37,7 +37,8 @@ const ORIGIN_VAR = [
 ] as const;
 
 export function CallGraph() {
-  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select } = useApp();
+  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, openDock } =
+    useApp();
   const [all, setAll] = useState(false);
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
   const box = useElementSize(boxEl);
@@ -45,6 +46,8 @@ export function CallGraph() {
   const [seen, setSeen] = useState({ layout: '', sel: '', size: '' });
   // Once the user zooms or pans, a resize no longer re-fits the graph.
   const [moved, setMoved] = useState(false);
+  // The buttons and keys ease the view; the wheel and dragging follow the pointer 1:1.
+  const [easing, setEasing] = useState(false);
   const viewRef = useRef(view);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const justDragged = useRef(false);
@@ -104,6 +107,7 @@ export function CallGraph() {
       const rect = boxEl.getBoundingClientRect();
       const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
       setMoved(true);
+      setEasing(false);
       setView(zoomAt(viewRef.current, factor, e.clientX - rect.left, e.clientY - rect.top));
     };
     boxEl.addEventListener('wheel', onWheel, { passive: false });
@@ -112,14 +116,17 @@ export function CallGraph() {
 
   const zoomBy = (factor: number): void => {
     setMoved(true);
+    setEasing(true);
     setView(zoomAt(view, factor, box.w / 2, box.h / 2));
   };
   const fit = (): void => {
     setMoved(false);
+    setEasing(true);
     if (res) setView(fitViewport({ w: res.layout.width, h: res.layout.height }, box));
   };
   const actual = (): void => {
     setMoved(true);
+    setEasing(true);
     setView(zoomAt(view, 1 / view.k, box.w / 2, box.h / 2));
   };
 
@@ -127,6 +134,7 @@ export function CallGraph() {
     const move = (dx: number, dy: number): void => {
       e.preventDefault();
       setMoved(true);
+      setEasing(false);
       setView(panBy(view, dx, dy));
     };
     if (e.key === '+' || e.key === '=') {
@@ -159,6 +167,7 @@ export function CallGraph() {
     if (!d.moved) e.currentTarget.setPointerCapture(e.pointerId);
     d.moved = true;
     setMoved(true);
+    setEasing(false);
     d.x = e.clientX;
     d.y = e.clientY;
     setView(panBy(viewRef.current, dx, dy));
@@ -328,6 +337,7 @@ export function CallGraph() {
       >
         <div className="cg-plot">
           <div
+            className={`cg-layer${easing ? ' is-easing' : ''}`}
             style={{
               transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`,
               transformOrigin: '0 0',
@@ -389,7 +399,7 @@ export function CallGraph() {
                     outline: isHover ? '1px solid var(--c-outline)' : undefined,
                   }}
                   onClick={() => select({ kind: 'fn', fn: n.fn })}
-                  onDoubleClick={() => dispatch({ type: 'set-source-collapsed', collapsed: false })}
+                  onDoubleClick={() => openDock()}
                   onPointerEnter={() =>
                     dispatch({ type: 'hover', selection: { kind: 'fn', fn: n.fn } })
                   }

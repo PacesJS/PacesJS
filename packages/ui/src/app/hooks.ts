@@ -96,7 +96,15 @@ export function useCanvas(
     observed.current?.ro.disconnect();
     observed.current = null;
     if (!canvas || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => paint());
+    // One redraw per frame, however many resize notifications arrive while the dock moves.
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        paint();
+      });
+    });
     ro.observe(canvas);
     observed.current = { el: canvas, ro };
   });

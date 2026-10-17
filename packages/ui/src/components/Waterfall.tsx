@@ -144,7 +144,8 @@ function ColumnResizer({ column, label, cols, edge, onLive, onCommit, onFit }: R
 }
 
 export function Waterfall() {
-  const { client, scope, scopeKey, snap, state, dispatch, selection, select, summary } = useApp();
+  const { client, scope, scopeKey, snap, state, dispatch, selection, select, summary, openDock } =
+    useApp();
   const task = snap.options.task;
   const tasksQ = useAsync(() => client.tasks(scope), `tasks:${scopeKey}`);
   const { wfSort, minDurUs, pathOnly } = snap.options;
@@ -168,6 +169,10 @@ export function Waterfall() {
   const taskKey = data ? `${data.trackId}:${data.mode}:${data.taskIndex}` : '';
   const [showSmall, setShowSmall] = useState(false);
   const window = win && win.key === taskKey ? win.w : { start: 0, end: data?.taskUs ?? 1 };
+  const evidence = useMemo(
+    () => new Set(summary.findings.flatMap((f) => f.evidence)),
+    [summary.findings],
+  );
   const threshold = fmtDuration(2 * summary.precisionUs, { approx: false, decimals: 1 });
   const auto = minDurUs < 0;
   // Presentation folds (tiny rows, Node bootstrap) over the engine's rows; nothing is dropped.
@@ -217,7 +222,7 @@ export function Waterfall() {
     const fresh = data !== seenData && data && folded;
     const base: ReadonlySet<number> =
       fresh && data && folded
-        ? initialCollapsed(folded.rows, data.criticalRows, folded.folds)
+        ? initialCollapsed(folded.rows, data.criticalRows, folded.folds, evidence)
         : collapsed;
     const byId = new Map(rows.map((r) => [r.id, r]));
     const open = new Set<number>();
@@ -376,12 +381,6 @@ export function Waterfall() {
     dispatch({ type: 'prefs', prefs: { wfCols: { ...state.prefs.wfCols, [column]: next } } });
   };
 
-  /** Empty space (not a row or a control) clears the selection. */
-  const clearOnEmpty = (target: EventTarget): void => {
-    if (!(target as Element).closest('.wf-row, button, select, input, label, [role="separator"]'))
-      select({ kind: 'none' });
-  };
-
   const move = (e: KeyboardEvent<HTMLDivElement>): void => {
     const idx = visible.findIndex((ri) => (rows[ri] as WaterfallRow).id === selectedRowId);
     const cur = idx >= 0 ? (rows[visible[idx] as number] as WaterfallRow) : null;
@@ -417,7 +416,7 @@ export function Waterfall() {
       }
     } else if (e.key === 'Enter' && cur) {
       e.preventDefault();
-      dispatch({ type: 'set-source-collapsed', collapsed: false });
+      openDock();
     } else if (e.key === 'Backspace') {
       e.preventDefault();
       dispatch({ type: 'back' });
@@ -583,11 +582,16 @@ export function Waterfall() {
         Ctrl + wheel zooms the time axis; drag the column edges to resize them.
       </Hint>
 
-      <div className="wf-scroll" onClick={(e) => clearOnEmpty(e.target)}>
+      <div className="wf-scroll">
         <div className="wf" style={{ ...gridStyle, minWidth }}>
           <div className="wf-grid" style={{ paddingTop: 0 }}>
             <div className="caps">Minimap</div>
-            <div className="wf-minimap" aria-hidden="true" onDoubleClick={() => setWin(null)}>
+            <div
+              className="wf-minimap"
+              data-keeps-selection
+              aria-hidden="true"
+              onDoubleClick={() => setWin(null)}
+            >
               <canvas ref={miniRef} />
               <div
                 className="wf-minimap-window"
@@ -705,9 +709,7 @@ export function Waterfall() {
                     className={`wf-row${isSel ? ' is-selected' : ''}${hoverRow === r.id ? ' is-hover' : ''}${isLinked ? ' is-linked' : ''}`}
                     style={{ top: (from + k) * WF.rowH }}
                     onClick={() => selectRow(r)}
-                    onDoubleClick={() =>
-                      dispatch({ type: 'set-source-collapsed', collapsed: false })
-                    }
+                    onDoubleClick={() => openDock()}
                     onPointerEnter={() => setHoverRow(r.id)}
                     onPointerLeave={() => setHoverRow(null)}
                   >

@@ -1,0 +1,172 @@
+/* Motion. Small, fast and never in the way: only the tokens from tokens.css, transform and
+   opacity on anything that sits on a hot path, nothing on canvases, scrolling, resizing, wheel
+   zoom or drags. Everything lives inside one media query so reduced motion removes all of it. */
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  @keyframes dock-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
+
+  @keyframes dock-in-bottom {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+  }
+
+  @keyframes overlay-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
+  @keyframes chip-in {
+    from {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+  }
+
+  @keyframes shimmer {
+    from {
+      background-position: -240px 0;
+    }
+    to {
+      background-position: 240px 0;
+    }
+  }
+
+  /* Source dock: the layout changes once, at the start, so the canvas views are laid out once;
+     the dock's content then slides and fades in. */
+  .dock {
+    transition:
+      opacity var(--dur-med) var(--ease-out),
+      transform var(--dur-med) var(--ease-out);
+  }
+
+  .dock.is-right > .source {
+    animation: dock-in-right var(--dur-med) var(--ease-out);
+  }
+
+  .dock.is-bottom > .source {
+    animation: dock-in-bottom var(--dur-med) var(--ease-out);
+  }
+
+  .dock-overlay-backdrop {
+    animation: fade-in var(--dur-med) var(--ease-out);
+  }
+
+  .dock-overlay {
+    transform-origin: top right;
+    animation: overlay-in var(--dur-med) var(--ease-out);
+  }
+
+  /* Popovers, menus and tooltips */
+  .menu {
+    animation: pop-in var(--dur-fast) var(--ease-out);
+  }
+
+  .tooltip {
+    animation: pop-in var(--dur-fast) var(--ease-out);
+  }
+
+  .compare-tip {
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+
+  /* Tabs and the views under them */
+  .tab {
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out);
+  }
+
+  .view-swap {
+    animation: fade-in var(--dur-fast) var(--ease-out);
+  }
+
+  /* The details drawer cross-fades when its content is replaced. */
+  .details {
+    animation: fade-in var(--dur-med) var(--ease-out);
+  }
+
+  .selection-bar,
+  .note,
+  .filter-summary {
+    animation: fade-in var(--dur-med) var(--ease-out);
+  }
+
+  /* Findings */
+  .finding-card {
+    transition:
+      transform var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-med) var(--ease-out),
+      background-color var(--dur-med) var(--ease-out);
+  }
+
+  .finding-card:hover {
+    transform: translateY(-2px);
+  }
+
+  /* Transform chips enter with a soft scale. */
+  .chip-item {
+    animation: chip-in var(--dur-med) var(--ease-out);
+  }
+
+  /* Selection and hover highlights fade, not snap (rows, nodes, buttons). */
+  .wf-row,
+  .fn-row,
+  .cg-node,
+  .related-row,
+  .outline-item,
+  .hot-path,
+  .btn,
+  .icon-btn,
+  .filter-chip,
+  .chip-label,
+  .chip-remove {
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out),
+      opacity var(--dur-fast) var(--ease-out);
+  }
+
+  /* A query that takes a moment shows a shimmer, but only after 150 ms so quick ones never flash. */
+  .wf-empty[role='status'] {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0,
+      color-mix(in srgb, var(--c-muted) 14%, transparent) 50%,
+      transparent 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 240px 100%;
+    animation:
+      fade-in var(--dur-med) var(--ease-out) 150ms backwards,
+      shimmer 1.2s var(--ease-in-out) 150ms infinite;
+  }
+
+  /* Call graph: the zoom buttons ease; the wheel and dragging stay 1:1 (no class, no transition). */
+  .cg-layer.is-easing {
+    transition: transform var(--dur-med) var(--ease-out);
+  }
+}

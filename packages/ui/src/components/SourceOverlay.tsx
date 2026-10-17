@@ -18,7 +18,7 @@ import {
 function Overlay({ children }: { children: ReactNode }) {
   const { dispatch } = useApp();
   return (
-    <div className="dock-overlay-backdrop">
+    <div className="dock-overlay-backdrop" data-keeps-selection>
       <div
         className="dock-overlay"
         role="dialog"

@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import { useSource } from '../app/useSource';
 import type { SourceState } from '../app/useSource';
-import { dockCollapsed } from '../state/prefs';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtCount, fmtDuration } from '../util/format';
 import { functionEnd } from '../view/source-lines';
@@ -196,19 +195,27 @@ export function EmptySourceNote({
 }
 
 export function SourcePanel() {
-  const { state, snap, dispatch, selection } = useApp();
+  const {
+    state,
+    snap,
+    dispatch,
+    selection,
+    dockCollapsed: dockIsCollapsed,
+    openDock,
+    collapseDock,
+  } = useApp();
   const source = useSource({ whole: false });
-  const { orientation, wrap, mode } = state.prefs.dock;
+  const { orientation, wrap } = state.prefs.dock;
   const { info, fn } = source;
 
-  if (dockCollapsed(mode, fn !== null)) {
+  if (dockIsCollapsed) {
     return (
-      <section aria-label="Source" className="source card source-collapsed">
+      <section key="rail" aria-label="Source" className="source card source-collapsed">
         <button
           type="button"
           className="icon-btn"
           aria-label="Expand source panel"
-          onClick={() => dispatch({ type: 'set-dock-mode', mode: 'open' })}
+          onClick={openDock}
         >
           <Icon name="expand" />
         </button>
@@ -262,7 +269,7 @@ export function SourcePanel() {
         type="button"
         className="icon-btn source-collapse"
         aria-label="Collapse source panel"
-        onClick={() => dispatch({ type: 'set-source-collapsed', collapsed: true })}
+        onClick={collapseDock}
       >
         <Icon name="collapse" />
       </button>
@@ -271,7 +278,7 @@ export function SourcePanel() {
 
   if (!info || fn === null) {
     return (
-      <section aria-label="Source" className="source card">
+      <section key="panel" aria-label="Source" className="source card">
         <div className="source-head">
           <div className="source-file">
             <Icon name="file" />
@@ -286,7 +293,7 @@ export function SourcePanel() {
 
   const showCode = !source.reason || source.reason.showsText || source.lines.length > 0;
   return (
-    <section aria-label="Source" className="source card">
+    <section key="panel" aria-label="Source" className="source card">
       <SourceHeader source={source} tools={tools} />
       <ChangedBanner changed={source.changed} />
       <SourceReasonNote source={source} />

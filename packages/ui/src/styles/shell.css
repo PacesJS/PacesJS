@@ -1518,12 +1518,6 @@
   opacity: 1;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .compare-tip {
-    transition: opacity 120ms ease;
-  }
-}
-
 /* Selection bar: what Show me is showing, and the way to clear it */
 .selection-bar {
   display: flex;

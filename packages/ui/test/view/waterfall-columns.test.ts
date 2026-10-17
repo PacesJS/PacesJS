@@ -103,7 +103,6 @@ describe('saved preferences', () => {
       wfCols: { call: 400, time: 90, share: 70 },
       dock: {
         orientation: 'bottom',
-        mode: 'collapsed',
         widthFraction: 0.5,
         heightPx: 500,
         wrap: true,
@@ -113,19 +112,28 @@ describe('saved preferences', () => {
   });
 });
 
-describe('dock mode', () => {
-  it('collapses automatically only when nothing is selected', () => {
-    expect(dockCollapsed('auto', false)).toBe(true);
-    expect(dockCollapsed('auto', true)).toBe(false);
+describe('the dock follows the selection', () => {
+  it('is a rail when nothing with code is selected, and extended when something is', () => {
+    expect(dockCollapsed(null, false)).toBe(true);
+    expect(dockCollapsed(null, true)).toBe(false);
   });
 
-  it('obeys the user over the selection', () => {
-    expect(dockCollapsed('collapsed', true)).toBe(true);
-    expect(dockCollapsed('open', false)).toBe(false);
+  it('keeps a manual collapse while a function stays selected', () => {
+    expect(dockCollapsed({ mode: 'collapsed', forCode: true }, true)).toBe(true);
   });
 
-  it('defaults to automatic and ignores an unknown saved mode', () => {
-    expect(DEFAULT_PREFS.dock.mode).toBe('auto');
-    expect(parsePrefs({ dock: { mode: 'sideways' } }).dock.mode).toBe('auto');
+  it('keeps a manual expand only while nothing is selected', () => {
+    expect(dockCollapsed({ mode: 'open', forCode: false }, false)).toBe(false);
+    expect(dockCollapsed({ mode: 'open', forCode: false }, true)).toBe(false);
+  });
+
+  it('does not persist whether the dock is open, only its size and side', () => {
+    expect(Object.keys(DEFAULT_PREFS.dock).sort()).toEqual([
+      'heightPx',
+      'orientation',
+      'widthFraction',
+      'wrap',
+    ]);
+    expect(Object.keys(parsePrefs({ dock: { mode: 'collapsed' } }).dock)).not.toContain('mode');
   });
 });

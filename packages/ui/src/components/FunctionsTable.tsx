@@ -55,7 +55,8 @@ export function sortRows(rows: FnRow[], key: SortKey, dir: 'asc' | 'desc'): FnRo
 const OTHER_CAP = 25;
 
 export function FunctionsTable() {
-  const { client, scope, scopeKey, snap, dispatch, state, selection, hoverFn, summary } = useApp();
+  const { client, scope, scopeKey, snap, dispatch, state, selection, hoverFn, summary, openDock } =
+    useApp();
   const { fnPkg, targetOnly } = snap.options;
   const q = useAsync(
     () =>
@@ -127,7 +128,7 @@ export function FunctionsTable() {
         tabIndex={0}
         className={`fn-row${selected ? ' is-selected' : ''}${hovered ? ' is-hover' : ''}`}
         onClick={() => dispatch({ type: 'select', selection: { kind: 'fn', fn: r.fn } })}
-        onDoubleClick={() => dispatch({ type: 'set-source-collapsed', collapsed: false })}
+        onDoubleClick={() => openDock()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();

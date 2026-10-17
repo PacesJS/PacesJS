@@ -197,7 +197,9 @@ describe('Show me contract', () => {
     const drawer = await screen.findByRole('region', { name: 'Selection details' });
     await userEvent.click(await within(drawer).findByRole('button', { name: /Clear selection/ }));
     await waitFor(() => expect(announced()).toBeUndefined());
-    expect(within(drawer).queryByRole('button', { name: /Clear selection/ })).toBeNull();
+    // The drawer remounts for a new selection, so look it up again.
+    const after = await screen.findByRole('region', { name: 'Selection details' });
+    expect(within(after).queryByRole('button', { name: /Clear selection/ })).toBeNull();
   });
 
   it('toggles off when the active finding is pressed again', async () => {
@@ -585,16 +587,30 @@ describe('source dock', () => {
     expect(screen.getByRole('button', { name: 'Expand source panel' })).toBeTruthy();
   });
 
-  it('remembers the manual choice for the next session', async () => {
+  it('does not save whether the dock was open, only its size and side', async () => {
     const host = open();
     await ready();
     await loaded();
     await userEvent.click(await screen.findByRole('button', { name: 'Collapse source panel' }));
-    await waitFor(async () =>
-      expect(((await host.loadSettings())['uiPrefs'] as { dock: { mode: string } }).dock.mode).toBe(
-        'collapsed',
-      ),
+    await userEvent.click(
+      await screen
+        .findByRole('button', { name: 'Dock below' })
+        .catch(() => screen.getByRole('button', { name: 'Expand source panel' })),
     );
+    const saved = (await host.loadSettings())['uiPrefs'] as
+      { dock?: Record<string, unknown> } | undefined;
+    expect(Object.keys(saved?.dock ?? {})).not.toContain('mode');
+  });
+
+  it('extends again on the next selection after a manual collapse and a clear', async () => {
+    open();
+    await ready();
+    await loaded();
+    await userEvent.click(await screen.findByRole('button', { name: 'Collapse source panel' }));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.keyboard('4');
+    await userEvent.click(await screen.findByRole('row', { name: /formatCurrency/ }));
+    expect(await screen.findByRole('button', { name: 'Collapse source panel' })).toBeTruthy();
   });
 
   it('has no Source tab and ignores the 5 key', async () => {

@@ -17,7 +17,8 @@ interface MenuState {
 }
 
 export function FlameGraph() {
-  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, state } = useApp();
+  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, state, openDock } =
+    useApp();
   const { sort, color, layout, zoom, zoomPath } = snap.options;
   const q = useAsync(
     () => client.flame(scope, { sort, color, zoom, zoomPath }),
@@ -278,11 +279,13 @@ export function FlameGraph() {
             onClick={(e) => {
               setMenu(null);
               const r = pick(e as unknown as React.PointerEvent<HTMLDivElement>);
-              // Empty space is not a frame: clicking it clears the selection.
-              if (r) zoomInto(r.index);
-              else select({ kind: 'none' });
+              // A click on a frame is the plot's own (it zooms and selects); empty canvas is not,
+              // so it reaches the shell, where click-off clears the selection.
+              if (!r) return;
+              e.stopPropagation();
+              zoomInto(r.index);
             }}
-            onDoubleClick={() => dispatch({ type: 'set-source-collapsed', collapsed: false })}
+            onDoubleClick={() => openDock()}
             onContextMenu={(e) => {
               const r = pick(e as unknown as React.PointerEvent<HTMLDivElement>);
               if (!r || data.node[r.index] === -1) return;

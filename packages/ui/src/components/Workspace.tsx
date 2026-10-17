@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 import { useApp } from '../app/context';
-import { DOCK_LIMITS, DEFAULT_PREFS, clamp, clampDock, dockCollapsed } from '../state/prefs';
+import { DOCK_LIMITS, DEFAULT_PREFS, clamp, clampDock } from '../state/prefs';
 import type { DockPrefs } from '../state/prefs';
 import { DetailsDrawer } from './DetailsDrawer';
 import { MainView } from './MainView';
@@ -102,8 +102,8 @@ export function Workspace() {
   const ref = useRef<HTMLDivElement | null>(null);
   const [live, setLive] = useState<DockPrefs | null>(null);
   const dock = live ?? state.prefs.dock;
-  const { selection } = useApp();
-  const collapsed = dockCollapsed(state.prefs.dock.mode, selection.fn !== null);
+  const { dockCollapsed: dockCollapsedNow } = useApp();
+  const collapsed = dockCollapsedNow;
 
   const style = {
     ['--dock-frac' as string]: dock.widthFraction,
@@ -128,7 +128,11 @@ export function Workspace() {
           onCommit={(d) => dispatch({ type: 'prefs', prefs: { dock: d } })}
         />
       )}
-      <aside aria-label="Source dock" className={`dock is-${dock.orientation}`}>
+      <aside
+        aria-label="Source dock"
+        className={`dock is-${dock.orientation}`}
+        data-keeps-selection
+      >
         <SourcePanel />
       </aside>
       {state.dockMaximized ? <SourceOverlay /> : null}

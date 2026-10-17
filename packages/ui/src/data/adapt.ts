@@ -236,6 +236,40 @@ export function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
       }
     }
   }
+  if (best > 0 && (tree.depth[best] ?? 0) >= fns.length) return best;
+  // A chain from the engine can begin below the root of this view: a stitched run hangs a
+  // continuation under whatever the previous task was inside (a dependency frame the hot path
+  // skips). Look for it anywhere, taking the longest match.
+  const inner = fns.map((f) => s.inn(f));
+  if (inner.some((f) => f < 0)) return best;
+  const kids = new Map<number, number[]>();
+  for (let n = 1; n < tree.length; n++) {
+    const p = tree.parent[n] ?? 0;
+    const list = kids.get(p);
+    if (list) list.push(n);
+    else kids.set(p, [n]);
+  }
+  let bestLen = best > 0 ? (tree.depth[best] ?? 0) : 0;
+  for (let start = 1; start < tree.length; start++) {
+    if (tree.fn[start] !== inner[0]) continue;
+    let node = start;
+    let len = 1;
+    while (len < inner.length) {
+      // The nearest descendant: dependency frames between two of your own are skipped.
+      let next: number | undefined;
+      for (let level = kids.get(node) ?? []; level.length > 0 && next === undefined;) {
+        next = level.find((c) => tree.fn[c] === inner[len]);
+        level = level.flatMap((c) => kids.get(c) ?? []);
+      }
+      if (next === undefined) break;
+      node = next;
+      len++;
+    }
+    if (len > bestLen) {
+      bestLen = len;
+      best = node;
+    }
+  }
   return best;
 }
 

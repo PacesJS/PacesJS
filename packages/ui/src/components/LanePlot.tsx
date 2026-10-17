@@ -64,6 +64,7 @@ export function LanePlot({
     <div
       ref={plotRef}
       className="lane-plot"
+      data-keeps-selection
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         setDrag({ x0: px(e.clientX), x1: px(e.clientX) });

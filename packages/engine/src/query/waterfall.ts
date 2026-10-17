@@ -461,7 +461,7 @@ export function waterfallForRun(
   const cont = track.continuations;
   const awaited = new Set<number>();
   const continuing = new Set<number>();
-  const waits: WaterfallRow[] = [];
+  const pendingWaits: Array<{ anchor: WaterfallRow; wait: number }> = [];
   for (let c = 0; c < cont.length; c++) {
     const at = track.spans.start[cont.span[c] ?? 0] ?? 0;
     const candidates = byFn.get(cont.fn[c] ?? 0) ?? [];
@@ -491,25 +491,7 @@ export function waterfallForRun(
         : anchor.start - (track.spans.end[source] ?? anchor.start);
     if (awaited.has(anchor.id) || wait < model.meta.precisionUs) continue;
     awaited.add(anchor.id);
-    waits.push({
-      id: rows.length + waits.length,
-      kind: 'wait',
-      fn: -1,
-      node: -1,
-      start: anchor.start - wait,
-      end: anchor.start,
-      durUs: wait,
-      selfUs: wait,
-      depth: anchor.depth,
-      parent: anchor.parent,
-      share: wait / Math.max(1, end - start),
-      critical: false,
-      hatched: false,
-      task: -1,
-      label: `awaiting ${formatDuration(wait)}`,
-      resumed: false,
-      summaryTasks: [],
-    });
+    pendingWaits.push({ anchor, wait });
   }
   // Merge a continuing caller into the earlier row of the same call under the same parent.
   const resolveAlias = (id: number): number => {
@@ -532,6 +514,38 @@ export function waterfallForRun(
       prev.share = prev.durUs / Math.max(1, end - start);
       prev.hatched = false;
     } else latest.set(key, r);
+  }
+  // An awaiting row hangs under the nearest caller row that was already running when the wait began.
+  const waits: WaterfallRow[] = [];
+  for (const { anchor, wait } of pendingWaits) {
+    const began = anchor.start - wait;
+    let holder: WaterfallRow = rows[resolveAlias(anchor.id)] ?? anchor;
+    for (
+      let p = rows[resolveAlias(holder.parent)];
+      p && p.kind === 'call' && p.depth > 0 && p.start > began;
+      p = rows[resolveAlias(holder.parent)]
+    ) {
+      holder = p;
+    }
+    waits.push({
+      id: rows.length + waits.length,
+      kind: 'wait',
+      fn: -1,
+      node: -1,
+      start: began,
+      end: anchor.start,
+      durUs: wait,
+      selfUs: wait,
+      depth: holder.depth,
+      parent: holder.parent,
+      share: wait / Math.max(1, end - start),
+      critical: false,
+      hatched: false,
+      task: -1,
+      label: `awaiting ${formatDuration(wait)}`,
+      resumed: false,
+      summaryTasks: [],
+    });
   }
   rows = [...rows, ...waits];
 
@@ -572,6 +586,7 @@ export function waterfallForRun(
     first = last;
   }
   rows = reindex([...rows, ...summaries], alias);
+  for (const r of rows) r.critical = false;
   const path = markCritical(rows);
   const shaped = shapeRows(rows, path, options);
   return {

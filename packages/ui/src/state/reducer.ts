@@ -12,7 +12,7 @@ import {
 import type { History } from './history';
 import { addTransform, removeTransform, rewindTo } from './transforms';
 import { DEFAULT_PREFS } from './prefs';
-import type { DockMode, Prefs } from './prefs';
+import type { DockOverride, Prefs } from './prefs';
 import type { Selection, Snapshot, Transform, ViewOptions } from './types';
 
 export interface AppState {
@@ -20,6 +20,8 @@ export interface AppState {
   hover: Selection;
   /** The dock is shown full screen (the Expand button). */
   dockMaximized: boolean;
+  /** The user's collapse or expand of the dock; see `dockCollapsed`. */
+  dockOverride: DockOverride | null;
   shortcutsOpen: boolean;
   /** Ids of dismissed first-run hints (also persisted through settings). */
   dismissed: string[];
@@ -44,9 +46,7 @@ export type AppAction =
   | { type: 'goto'; index: number }
   | { type: 'restore'; snapshot: Snapshot }
   | { type: 'hover'; selection: Selection }
-  /** Reveal the source dock (back to automatic) or collapse it. */
-  | { type: 'set-source-collapsed'; collapsed: boolean }
-  | { type: 'set-dock-mode'; mode: DockMode }
+  | { type: 'set-dock-override'; override: DockOverride | null }
   | { type: 'set-dock-maximized'; maximized: boolean }
   | { type: 'set-shortcuts'; open: boolean }
   | { type: 'dismiss-hint'; id: string }
@@ -62,6 +62,7 @@ export function createState(initial: Snapshot): AppState {
     history: createHistory(initial),
     hover: { kind: 'none' },
     dockMaximized: false,
+    dockOverride: null,
     shortcutsOpen: false,
     dismissed: [],
     search: '',
@@ -90,10 +91,6 @@ function commit(state: AppState, next: Snapshot): AppState {
       ? { ...moved, options: { ...moved.options, zoom: [] } }
       : moved;
   return { ...state, history: push(state.history, snap) };
-}
-
-function withDockMode(state: AppState, mode: DockMode): AppState {
-  return { ...state, prefs: { ...state.prefs, dock: { ...state.prefs.dock, mode } } };
 }
 
 export function reducer(state: AppState, action: AppAction): AppState {
@@ -136,10 +133,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, history: replace(state.history, action.snapshot) };
     case 'hover':
       return { ...state, hover: action.selection };
-    case 'set-source-collapsed':
-      return withDockMode(state, action.collapsed ? 'collapsed' : 'auto');
-    case 'set-dock-mode':
-      return withDockMode(state, action.mode);
+    case 'set-dock-override':
+      return { ...state, dockOverride: action.override };
     case 'set-dock-maximized':
       return { ...state, dockMaximized: action.maximized };
     case 'set-shortcuts':

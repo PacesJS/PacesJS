@@ -24,6 +24,13 @@ export interface AppContextValue {
   /** The track whose tasks and spans the waterfall shows. */
   primaryTrack: string;
   select(selection: Selection): void;
+  /** The selection has source to show: a function or a call, not a task, range or package. */
+  hasCode: boolean;
+  /** The dock is a slim rail (it follows the selection, unless the user chose). */
+  dockCollapsed: boolean;
+  /** Reveal the source dock now; it follows the selection again once that next changes. */
+  openDock(): void;
+  collapseDock(): void;
   /** Search box text, shared with the functions table. */
   search: string;
 }

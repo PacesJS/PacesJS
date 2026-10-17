@@ -79,8 +79,10 @@ function SelectionBar() {
 
 /** Numbers for the current selection: self, total, share, calls, origin, callers and callees. */
 export function DetailsDrawer() {
-  const { client, host, scope, scopeKey, snap, selection, dispatch, summary } = useApp();
+  const { client, host, scope, scopeKey, snap, selection, dispatch, summary, openDock } = useApp();
   const fn = selection.fn;
+  // A new selection remounts the drawer, which cross-fades its content (motion.css).
+  const contentKey = `${snap.selection.kind}:${fn ?? selection.task?.index ?? ''}`;
   const detailsQ = useAsync(
     () => (fn === null ? Promise.resolve(null) : client.details(scope, fn)),
     `details:${scopeKey}:${fn}`,
@@ -99,7 +101,12 @@ export function DetailsDrawer() {
   if (selection.task) {
     const t = selection.task;
     return (
-      <section aria-label="Selection details" className="details card">
+      <section
+        key={contentKey}
+        aria-label="Selection details"
+        className="details card"
+        data-keeps-selection
+      >
         <SelectionBar />
         <div className="details-head">
           <span
@@ -146,7 +153,12 @@ export function DetailsDrawer() {
   if (!d || fn === null) {
     const range = snap.range;
     return (
-      <section aria-label="Selection details" className="details card">
+      <section
+        key={contentKey}
+        aria-label="Selection details"
+        className="details card"
+        data-keeps-selection
+      >
         <SelectionBar />
         <h2 className="section-title">
           {range ? `Range ${fmtRange(range[0], range[1])}` : 'Nothing selected'}
@@ -166,7 +178,12 @@ export function DetailsDrawer() {
   const jumpTo = snap.view === 'waterfall' ? 'flame' : 'waterfall';
 
   return (
-    <section aria-label="Selection details" className="details card">
+    <section
+      key={contentKey}
+      aria-label="Selection details"
+      className="details card"
+      data-keeps-selection
+    >
       <SelectionBar />
       <div className="details-head">
         <span
@@ -176,11 +193,7 @@ export function DetailsDrawer() {
         />
         <h2 className="section-title">{d.name}</h2>
         {d.loc ? (
-          <button
-            type="button"
-            className="details-loc"
-            onClick={() => dispatch({ type: 'set-source-collapsed', collapsed: false })}
-          >
+          <button type="button" className="details-loc" onClick={() => openDock()}>
             {d.loc}
           </button>
         ) : null}

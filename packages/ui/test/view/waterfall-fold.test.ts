@@ -9,7 +9,7 @@ import {
   initialCollapsed,
 } from '../../src/view/waterfall-fold';
 import { visibleRows } from '../../src/view/waterfall-rows';
-import { fixtureModel } from '../helpers/real-model';
+import { fixtureModel, ordersModel } from '../helpers/real-model';
 
 const model = fixtureModel('eslint-cli');
 const queries = createQueries(model);
@@ -127,5 +127,54 @@ describe('first screen', () => {
     const last = folded.rows.find((r) => r.id === hot.at(-1));
     expect(last?.origin).toBe(0);
     expect(last?.name.startsWith('require ▸')).toBe(false);
+  });
+});
+
+describe('the opening chain on a stitched CLI run', () => {
+  const wrapped = fixtureModel('eslint-cli-wrapped');
+  const wq = createQueries(wrapped);
+  const wscope = { ...scope, track: wrapped.tracks[wrapped.primaryTrack]?.id ?? '' };
+  const wrun = wq.waterfall(wscope, -1, { sort: 'time', minDurUs: 0 });
+  const wfolded = foldRows(wrun?.rows ?? [], options);
+
+  it('leads to the work the target does, not to its hottest sampled line', () => {
+    const names = (hotTargetPath(wfolded.rows) ?? []).map(
+      (id) => wfolded.rows.find((r) => r.id === id)?.name,
+    );
+    expect(names).toContain('lintFiles');
+  });
+
+  it('shows that work on the first screen with the bootstrap folded away', () => {
+    const closed = initialCollapsed(wfolded.rows, wrun?.criticalRows ?? [], wfolded.folds);
+    const names = visibleRows(wfolded.rows, closed)
+      .slice(0, 30)
+      .map((i) => wfolded.rows[i]?.name);
+    expect(names).toContain('lintFiles');
+    expect(names).not.toContain('prepareMainThreadExecution');
+  });
+});
+
+describe('findings stay reachable on the first screen', () => {
+  const orders = ordersModel();
+  const oq = createQueries(orders);
+  const oscope = {
+    track: orders.tracks[orders.primaryTrack]?.id ?? '',
+    transforms: [...DEFAULT_TRANSFORMS],
+    range: null,
+    hide: [] as number[],
+  };
+  const longest = oq.tasks(oscope).find((t) => t.longest)?.index ?? 0;
+  const task = oq.waterfall(oscope, longest, { sort: 'time', minDurUs: -1 });
+  const orows = foldRows(task?.rows ?? [], options);
+  const evidence = new Set(orders.findings.flatMap((f) => f.evidence));
+  const visible = (set: ReadonlySet<number>): (string | undefined)[] =>
+    visibleRows(
+      orows.rows,
+      initialCollapsed(orows.rows, task?.criticalRows ?? [], orows.folds, set),
+    ).map((i) => orows.rows[i]?.name);
+
+  it('opens the way to the sync read the finding names, inside a closed template loader', () => {
+    expect(visible(new Set())).not.toContain('readFileSync');
+    expect(visible(evidence)).toContain('readFileSync');
   });
 });

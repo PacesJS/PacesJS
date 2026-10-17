@@ -9,15 +9,8 @@ export interface WfColumns {
 
 export type DockOrientation = 'right' | 'bottom';
 
-/**
- * `auto` opens the dock when a function is selected and collapses it when nothing is; `open` and
- * `collapsed` are the user's own choice and stay until changed.
- */
-export type DockMode = 'auto' | 'open' | 'collapsed';
-
 export interface DockPrefs {
   orientation: DockOrientation;
-  mode: DockMode;
   /** Share of the content width the right dock takes (0.25 to 0.75). */
   widthFraction: number;
   /** Pixel height of the bottom dock. */
@@ -44,15 +37,27 @@ export const DOCK_LIMITS = {
 
 export const DEFAULT_PREFS: Prefs = {
   wfCols: { call: 320, time: 76, share: 60 },
-  dock: { orientation: 'right', mode: 'auto', widthFraction: 0.46, heightPx: 420, wrap: false },
+  dock: { orientation: 'right', widthFraction: 0.46, heightPx: 420, wrap: false },
 };
 
 export const clamp = (n: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, n));
 
-/** Whether the dock shows as a collapsed rail, given the user's mode and the selection. */
-export function dockCollapsed(mode: DockMode, hasSelection: boolean): boolean {
-  return mode === 'collapsed' || (mode === 'auto' && !hasSelection);
+/**
+ * The user's own say over the dock. It applies while the selection keeps the same answer to
+ * "does it have code?" (`forCode`): a collapse made with a function selected lasts until the
+ * selection is cleared, and an expand made with nothing selected lasts until something is
+ * selected. After that the dock follows the selection again. Width and side are what persist.
+ */
+export interface DockOverride {
+  mode: 'open' | 'collapsed';
+  forCode: boolean;
+}
+
+/** Whether the dock is a slim rail: it follows the selection unless the user said otherwise. */
+export function dockCollapsed(override: DockOverride | null, hasCode: boolean): boolean {
+  if (override && override.forCode === hasCode) return override.mode === 'collapsed';
+  return !hasCode;
 }
 
 export function clampColumns(c: WfColumns): WfColumns {
@@ -94,7 +99,6 @@ export function parsePrefs(raw: unknown): Prefs {
     }),
     dock: clampDock({
       orientation: dock['orientation'] === 'bottom' ? 'bottom' : 'right',
-      mode: dock['mode'] === 'open' || dock['mode'] === 'collapsed' ? dock['mode'] : 'auto',
       widthFraction: num(dock['widthFraction'], DEFAULT_PREFS.dock.widthFraction),
       heightPx: num(dock['heightPx'], DEFAULT_PREFS.dock.heightPx),
       wrap: dock['wrap'] === true,

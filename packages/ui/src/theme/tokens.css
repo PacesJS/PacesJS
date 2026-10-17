@@ -7,6 +7,13 @@
   --font-sans: Poppins, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
+  /* Motion: durations and easings. Switched off by prefers-reduced-motion (see motion.css). */
+  --dur-fast: 120ms;
+  --dur-med: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
   --fs-11: 11px;
   --fs-12: 12px;
   --fs-125: 12.5px;

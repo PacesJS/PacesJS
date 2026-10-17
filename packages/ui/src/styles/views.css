@@ -899,3 +899,11 @@
   font-style: italic;
   font-weight: var(--fw-regular, 400);
 }
+
+/* The view under the tabs: one block, so it can cross-fade when the tab changes. */
+.view-swap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-16);
+  min-width: 0;
+}
