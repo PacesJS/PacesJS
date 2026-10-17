@@ -50,10 +50,11 @@ describe('waterfallForRun on an async chain', () => {
     expect(calls.find((r) => nameOf(m, r) === 'reporter')?.depth).toBe(3);
   });
 
-  it('draws a continuation as another segment of the same call, flagged resumed', () => {
+  it('draws the resumed call as another segment, flagged, and its callers as one row each', () => {
     const segments = (name: string) => calls.filter((r) => nameOf(m, r) === name);
     expect(segments('readAndVerify').map((r) => r.resumed)).toEqual([false, true]);
-    expect(segments('run').map((r) => r.resumed)).toEqual([false, true]);
+    expect(segments('run').map((r) => r.resumed)).toEqual([false]);
+    expect(segments('main')).toHaveLength(1);
     expect(segments('verify').map((r) => r.resumed)).toEqual([false]);
   });
 
@@ -63,10 +64,11 @@ describe('waterfallForRun on an async chain', () => {
     const [wait] = waits;
     expect(wait?.label).toMatch(/^awaiting ~7\.\d ms$/);
     expect(wait?.durUs).toBeCloseTo(7000, -3);
-    expect(wait?.depth).toBe(1);
-    expect(wait?.parent).toBe(0);
-    const resumedMain = calls.find((r) => nameOf(m, r) === 'main' && r.resumed);
-    expect(wait?.end).toBeCloseTo(resumedMain?.start ?? 0, -2);
+    // A sibling right before the resumed segment, inside its caller's row.
+    const resumed = calls.find((r) => nameOf(m, r) === 'readAndVerify' && r.resumed);
+    expect(wait?.depth).toBe(resumed?.depth);
+    expect(wait?.parent).toBe(resumed?.parent);
+    expect(wait?.end).toBeCloseTo(resumed?.start ?? 0, -2);
   });
 
   it('keeps ids as indexes, parents before children, and a critical path', () => {
@@ -74,8 +76,8 @@ describe('waterfallForRun on an async chain', () => {
     expect(w.criticalPath.length).toBeGreaterThan(2);
   });
 
-  it('flags only the resumed segments', () => {
-    expect(calls.filter((r) => r.resumed).length).toBe(3);
+  it('flags only the resumed segment, not the callers that continue with it', () => {
+    expect(calls.filter((r) => r.resumed).map((r) => nameOf(m, r))).toEqual(['readAndVerify']);
   });
 });
 

@@ -7,6 +7,7 @@ import type { ExecutionModel, FunctionTable, Track } from './model.js';
 import { aggregateTrack, mergePackages } from './passes/aggregate.js';
 import type { TrackAggregateResult } from './passes/aggregate.js';
 import { stitchAsync } from './passes/async.js';
+import { bridgeRuntimeSamples } from './passes/bridge.js';
 import { stitchContinuations } from './passes/continuations.js';
 import { toCallTree } from './passes/call-tree.js';
 import { classify } from './passes/classification.js';
@@ -123,7 +124,11 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
   };
 
   // 1-4: per-function passes. The target is detected first: it decides which functions are first-party.
-  const ing = ingest(capture, ctx);
+  const ingested = ingest(capture, ctx);
+  const ing =
+    options.bridgeRuntimeSamples === false
+      ? ingested
+      : bridgeRuntimeSamples(ingested, ctx.strings.strings);
   const detection = detectTarget(capture, ing, ctx);
   ctx.target = detection.spec;
   const sm = resolveSourceMaps({ capture, ingest: ing }, ctx);
@@ -168,6 +173,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
       tasks: tasks.table,
       asyncEdges,
       functions,
+      precisionUs: ing.precisionUs,
     });
     const result = aggregateTrack({
       tree,

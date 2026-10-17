@@ -448,7 +448,8 @@ export function waterfallForRun(
     root.hatched = false;
   }
 
-  // Segments after an await: flag the call that resumes (and the callers that resume with it) and draw the wait.
+  // Segments after an await. The resumed call is another row, flagged, with an awaiting row before it.
+  // Its callers are the same calls continuing: they stay one row each instead of repeating per segment.
   const tolerance = 2 * model.meta.precisionUs;
   const byFn = new Map<number, WaterfallRow[]>();
   for (const r of rows) {
@@ -459,27 +460,37 @@ export function waterfallForRun(
   }
   const cont = track.continuations;
   const awaited = new Set<number>();
+  const continuing = new Set<number>();
   const waits: WaterfallRow[] = [];
   for (let c = 0; c < cont.length; c++) {
     const at = track.spans.start[cont.span[c] ?? 0] ?? 0;
-    const anchor = (byFn.get(cont.fn[c] ?? 0) ?? []).find(
-      (r) => Math.abs(r.start - at) <= tolerance,
-    );
-    if (!anchor) continue;
-    let top = anchor;
-    anchor.resumed = true;
-    for (
-      let p = rows[top.parent];
-      p && p.kind === 'call' && p.depth > 0 && Math.abs(p.start - anchor.start) <= tolerance;
-      p = rows[top.parent]
-    ) {
-      p.resumed = true;
-      top = p;
+    const candidates = byFn.get(cont.fn[c] ?? 0) ?? [];
+    const anchor = candidates.find((r) => Math.abs(r.start - at) <= tolerance);
+    // A resumed call that begins inside a longer row of the same function still sits under its callers.
+    const holder =
+      anchor ??
+      candidates
+        .filter((r) => r.start - tolerance <= at && at <= r.end + tolerance)
+        .reduce<WaterfallRow | undefined>(
+          (best, r) => (!best || r.start > best.start ? r : best),
+          undefined,
+        );
+    if (!holder) continue;
+    for (let p = rows[holder.parent]; p && p.kind === 'call' && p.depth > 0; p = rows[p.parent]) {
+      continuing.add(p.id);
     }
+    if (!anchor) continue;
+    // Kind 3 attaches a new call where the previous task yielded: not another segment of a call.
+    const adopted = cont.stitch[c] === 3;
+    if (!adopted) anchor.resumed = true;
     const source = cont.resumeOf[c] ?? -1;
-    const wait = source < 0 ? 0 : anchor.start - (track.spans.end[source] ?? anchor.start);
-    if (awaited.has(top.id) || wait < model.meta.precisionUs) continue;
-    awaited.add(top.id);
+    const wait = adopted
+      ? (cont.waitUs[c] ?? 0)
+      : source < 0
+        ? 0
+        : anchor.start - (track.spans.end[source] ?? anchor.start);
+    if (awaited.has(anchor.id) || wait < model.meta.precisionUs) continue;
+    awaited.add(anchor.id);
     waits.push({
       id: rows.length + waits.length,
       kind: 'wait',
@@ -489,8 +500,8 @@ export function waterfallForRun(
       end: anchor.start,
       durUs: wait,
       selfUs: wait,
-      depth: top.depth,
-      parent: top.parent,
+      depth: anchor.depth,
+      parent: anchor.parent,
       share: wait / Math.max(1, end - start),
       critical: false,
       hatched: false,
@@ -499,6 +510,28 @@ export function waterfallForRun(
       resumed: false,
       summaryTasks: [],
     });
+  }
+  // Merge a continuing caller into the earlier row of the same call under the same parent.
+  const resolveAlias = (id: number): number => {
+    let cur = id;
+    while (alias.has(cur)) cur = alias.get(cur) ?? cur;
+    return cur;
+  };
+  const latest = new Map<string, WaterfallRow>();
+  for (const r of rows) {
+    if (r.kind !== 'call' || r.depth === 0) continue;
+    const key = `${r.node}:${resolveAlias(r.parent)}`;
+    const prev = latest.get(key);
+    // Touching rows (within a sampling interval) are one call cut by a sample of another stack.
+    const touching = prev ? r.start - prev.end <= model.meta.precisionUs : false;
+    if (prev && (touching || (continuing.has(r.id) && prev.end <= r.start + tolerance))) {
+      alias.set(r.id, prev.id);
+      prev.end = Math.max(prev.end, r.end);
+      prev.durUs = prev.end - prev.start;
+      prev.selfUs += r.selfUs;
+      prev.share = prev.durUs / Math.max(1, end - start);
+      prev.hatched = false;
+    } else latest.set(key, r);
   }
   rows = [...rows, ...waits];
 

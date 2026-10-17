@@ -210,7 +210,7 @@ callback), not under the function that called it. The engine infers the logical 
   (`stitch = 2`); otherwise `stitch = 1`.
 - **Data.** `TaskTable` gains `parentSpan` (-1 = none, attach to the run root), `resumeOf` (the earlier span being
   resumed), `waitUs` (gap between that span's end and the resumption: the awaiting time), `stitch`
-  (0 none, 1 inferred, 2 exact), `resumedFn` (-1 when the task has no program frame) and `runtimeOnly` (1 when it
+  (0 none, 1 inferred from an earlier call, 2 exact from async hooks, 3 attached where the previous task yielded), `resumedFn` (-1 when the task has no program frame) and `runtimeOnly` (1 when it
   only runs runtime or plumbing frames). They describe the task's first segment. `Track.continuations`
   (`ContinuationTable`) has one row per stitched segment (`task`, `fn`, `span`, `parentSpan`, `resumeOf`,
   `waitUs`, `stitch`). Tasks with several resumed functions in a row (an inner async function finishing, then
@@ -231,6 +231,40 @@ continuation stays an unstitched root under the entry. (2) A function called fro
 as a fresh callback can be attached to the wrong earlier call (the latest one wins). (3) A callback that is
 the task's entry on every run (a timer function) has no caller to attach to and stays a root. (4) Awaits
 shorter than one sampling interval do not split a call, so no segment exists for them.
+
+### Bridged runtime samples
+
+V8 reports `(program)` (native time with no JS stack) and `(garbage collector)` as separate root children. A call
+that is really continuous then looks like several calls split by a root-level sample, and every view drew each
+piece as its own row. Right after ingest, `analyze` re-attaches a run of such samples that sits between two samples
+whose stacks share a prefix as a leaf child of the deepest shared frame (`AnalyzeOptions.bridgeRuntimeSamples`,
+default `true`). The call stays one span, and the pause appears nested under the running call. Only the parent
+of those samples changes: sample count, durations, self and total time, busy time and the `Native` / `Gc`
+classification are unchanged. If the stacks before and after share nothing (a task boundary), the run touches
+`(idle)`, or the pause is at the start or end of the profile, it stays at the root as before.
+
+### Attaching a continuation where the previous task yielded (`stitch = 3`)
+
+When a continuation has no earlier call of its function to resume (the synchronous first part was shorter than one
+sample, so there is no span), it is attached where the previous task yielded, best effort and labelled
+`stitch = 3` ("attached to where the previous task yielded (inferred)"):
+
+- Only for tasks of kind `main`, `microtask` or `other`, and not for a module load (a loader frame is a root:
+  dynamic imports of plugins). Timer, I/O and request entries have no caller.
+- The parent task is the exact async edge into the task with the smallest wait (ties: the latest scheduler), at any
+  gap; without async data, the nearest earlier task that has program frames, if it ended within two sampling
+  intervals of this task's start. A longer gap stays unattached: nothing says the two are related.
+- Its attachment point is the parent task's last sampled stack: the last run of module-loading frames (unless
+  it starts the stack, which is the entry module wrapping the program) and everything below it is dropped, then
+  runtime and plumbing frames; the deepest remaining target (origin `user`) frame wins, else the deepest remaining
+  frame. If nothing is left, the task stays a root.
+- The parent is always an earlier span, so the attachment can never form a cycle or point at a descendant.
+  `ContinuationTable.resumeOf` is -1 and `waitUs` is the gap after the parent task ended.
+
+In the whole-run waterfall a stitched call's callers are one row each (touching rows of the same call under the
+same parent are merged, so the entry module and `main` appear once, spanning the run). A resumed call keeps its
+own row with `resumed: true` and an `awaiting` row before it, as a sibling inside its caller's row. A `stitch = 3`
+call is a new call under its caller: it is not flagged `resumed`, but gets the awaiting row.
 
 ### Whole-run waterfall
 

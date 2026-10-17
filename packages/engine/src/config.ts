@@ -67,10 +67,15 @@ export interface AnalyzeOptions {
    * Matching functions become first-party (origin `user`). Replaces the package derived from the entry script.
    */
   focus?: string[];
+  /**
+   * Attach `(program)` and `(garbage collector)` samples that interrupt a call as leaf children of the deepest
+   * frame the stacks before and after share, so the call stays one span (default true). Totals are unchanged.
+   */
+  bridgeRuntimeSamples?: boolean;
   /** Overrides the detected run kind (server, cli or script). */
   runKind?: RunKind;
   /** Finding kinds dropped for non-server runs. Default: event-loop-lag and event-loop-blocked. */
   suppressForCli?: FindingKind[];
 }
 
-export const ENGINE_VERSION = '0.3.0';
+export const ENGINE_VERSION = '0.4.0';

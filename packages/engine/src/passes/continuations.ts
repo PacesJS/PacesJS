@@ -5,7 +5,7 @@
 // take precedence. The result is data only (task columns and a continuation table); the
 // `stitch-continuations` transform grafts the stacks.
 
-import { Origin } from '../model.js';
+import { Origin, TaskKind } from '../model.js';
 import type { AsyncEdgeTable, ContinuationTable, SpanTable, TaskTable } from '../model.js';
 
 export interface ContinuationInput {
@@ -13,14 +13,15 @@ export interface ContinuationInput {
   /** Patched in place: parentSpan, resumeOf, waitUs, stitch, resumedFn, runtimeOnly. */
   tasks: TaskTable;
   asyncEdges: AsyncEdgeTable;
-  functions: { origin: Uint8Array; plumbing: Uint8Array };
+  functions: { origin: Uint8Array; plumbing: Uint8Array; loader: Uint8Array };
+  precisionUs: number;
 }
 
 /** Candidates compared per lookup: the latest few calls of a function are enough to pick the right one. */
 const LOOKBACK = 64;
 
 export function stitchContinuations(input: ContinuationInput): ContinuationTable {
-  const { spans, tasks, asyncEdges, functions } = input;
+  const { spans, tasks, asyncEdges, functions, precisionUs } = input;
   const runtime = (fn: number): boolean => {
     const o = functions.origin[fn] ?? Origin.User;
     return (
@@ -54,12 +55,86 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
   const cStitch: number[] = [];
 
   const edgesTo = new Map<number, number[]>();
+  const edgeWait = new Map<number, Map<number, number>>();
   for (let e = 0; e < asyncEdges.length; e++) {
     const to = asyncEdges.to[e] ?? 0;
     const list = edgesTo.get(to);
     if (list) list.push(asyncEdges.from[e] ?? 0);
     else edgesTo.set(to, [asyncEdges.from[e] ?? 0]);
+    const waits = edgeWait.get(to) ?? new Map<number, number>();
+    waits.set(asyncEdges.from[e] ?? 0, asyncEdges.waitUs[e] ?? 0);
+    edgeWait.set(to, waits);
   }
+
+  // Where task P was when it ended: its last stack, without module loading and runtime frames.
+  const yieldMemo = new Map<number, number>();
+  const yieldSpanOf = (p: number): number => {
+    const known = yieldMemo.get(p);
+    if (known !== undefined) return known;
+    const endAt = (tasks.end[p] ?? 0) - 1;
+    let deepest = -1;
+    for (let s = tasks.spanStart[p] ?? 0; s < (tasks.spanEnd[p] ?? 0); s++) {
+      if (
+        (spans.end[s] ?? 0) >= endAt &&
+        (deepest < 0 || (spans.depth[s] ?? 0) > (spans.depth[deepest] ?? 0))
+      ) {
+        deepest = s;
+      }
+    }
+    const chain: number[] = [];
+    for (let s = deepest; s >= 0; s = spans.parent[s] ?? -1) chain.push(s);
+    chain.reverse();
+    const isLoader = (s: number): boolean => functions.loader[spans.fn[s] ?? 0] === 1;
+    // The last run of loader frames is module loading; it and everything below it is not what yielded.
+    // A run that starts the stack is the entry module wrapping the program, not loading.
+    let cut = chain.length;
+    for (let i = chain.length - 1; i > 0; i--) {
+      if (!isLoader(chain[i] ?? 0)) continue;
+      let start = i;
+      while (start > 0 && isLoader(chain[start - 1] ?? 0)) start--;
+      if (start > 0) cut = start;
+      break;
+    }
+    let pick = -1;
+    let pickUser = -1;
+    for (let i = 0; i < cut; i++) {
+      const s = chain[i] ?? 0;
+      const fn = spans.fn[s] ?? 0;
+      if (runtime(fn) || isLoader(s)) continue;
+      pick = s;
+      if (functions.origin[fn] === Origin.User) pickUser = s;
+    }
+    const out = pickUser >= 0 ? pickUser : pick;
+    yieldMemo.set(p, out);
+    return out;
+  };
+  const yieldCandidate = (k: number, fn: number): { span: number; task: number } | undefined => {
+    const kind = tasks.kind[k];
+    // Timer, I/O and request entries have no caller. Loading a module (a dynamic import) is a root too.
+    if (kind !== TaskKind.Microtask && kind !== TaskKind.Other && kind !== TaskKind.Main) {
+      return undefined;
+    }
+    if (functions.loader[fn] === 1) return undefined;
+    const waits = edgeWait.get(k);
+    if (waits) {
+      // The exact edge with the smallest wait, then the latest scheduler.
+      const from = [...waits.keys()].sort(
+        (a, b) => (waits.get(a) ?? 0) - (waits.get(b) ?? 0) || b - a,
+      );
+      for (const f of from) {
+        const span = yieldSpanOf(f);
+        if (span >= 0) return { span, task: f };
+      }
+    }
+    // Without an edge, the task right before it, when it follows closely.
+    for (let j = k - 1; j >= 0; j--) {
+      if (tasks.runtimeOnly[j] === 1) continue;
+      if ((tasks.start[k] ?? 0) - (tasks.end[j] ?? 0) > 2 * precisionUs) return undefined;
+      const span = yieldSpanOf(j);
+      return span >= 0 ? { span, task: j } : undefined;
+    }
+    return undefined;
+  };
 
   const better = (a: number, b: number): boolean =>
     b < 0 ||
@@ -103,11 +178,16 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
           }
         }
       }
+      // No earlier call to resume: attach where the previous task yielded (inferred from adjacency).
+      let yielded: { span: number; task: number } | undefined;
+      if (source < 0) yielded = yieldCandidate(k, fn);
+      if (yielded) kind = 3;
       // An earlier segment that was itself stitched already knows the logical parent.
       const seg = source >= 0 ? segmentOfSpan.get(source) : undefined;
       const stitchedSeg = seg !== undefined && (cStitch[seg] ?? 0) > 0;
-      const parent =
-        source < 0
+      const parent = yielded
+        ? yielded.span
+        : source < 0
           ? -1
           : stitchedSeg && seg !== undefined
             ? (cParent[seg] ?? -1)
@@ -118,8 +198,14 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
       cSpan.push(a);
       cParent.push(parent);
       cResume.push(source);
-      cWait.push(source < 0 ? 0 : Math.max(0, startedAt - (spans.end[source] ?? 0)));
-      cStitch.push(source < 0 ? 0 : kind);
+      cWait.push(
+        yielded
+          ? Math.max(0, startedAt - (tasks.end[yielded.task] ?? startedAt))
+          : source < 0
+            ? 0
+            : Math.max(0, startedAt - (spans.end[source] ?? 0)),
+      );
+      cStitch.push(yielded ? 3 : source < 0 ? 0 : kind);
       segmentOfSpan.set(a, index);
       if (firstSegment < 0) firstSegment = index;
     }

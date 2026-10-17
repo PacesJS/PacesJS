@@ -151,7 +151,7 @@ export interface TaskTable {
   resumeOf: Int32Array;
   /** Gap between the end of that earlier segment and the start of this task's first resumed call, microseconds (awaiting). */
   waitUs: Float64Array;
-  /** How the stitch was made: 0 none, 1 inferred from an earlier call of the same function, 2 exact from async hooks. */
+  /** How the stitch was made: 0 none, 1 inferred from an earlier call of the same function, 2 exact from async hooks, 3 attached where the previous task yielded. */
   stitch: Uint8Array;
   /** First non-runtime, non-plumbing function of the task (the one that resumed), -1 when there is none. */
   resumedFn: Int32Array;
@@ -174,7 +174,7 @@ export interface ContinuationTable {
   /** Earlier segment being resumed, -1 = none. */
   resumeOf: Int32Array;
   waitUs: Float64Array;
-  /** 0 none, 1 inferred, 2 exact from async hooks. */
+  /** 0 none, 1 inferred, 2 exact from async hooks, 3 attached where the previous task yielded. */
   stitch: Uint8Array;
 }
 
