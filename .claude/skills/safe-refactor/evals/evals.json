@@ -1,0 +1,23 @@
+{
+  "skill_name": "safe-refactor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our checkout module under src/checkout has gotten really messy after two years of rushed features. Can you clean it up? There are some giant functions, a lot of copy-paste between the cart and order summary components, and I'm pretty sure some of it is dead. Don't break anything — we ship Monday.",
+      "expected_output": "Profiles the repo, records test-suite health, scans src/checkout, writes .refactor/findings.md with classified findings and explicit leave/defer reasons, stops at a checkpoint with a plan before editing, then writes and locks baseline tests before refactoring, commits per finding, and validates with baseline_guard verify plus the full suite.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "/safe-refactor src/styles — the CSS is a disaster: z-index: 9999 everywhere, tons of !important, and every component hardcodes 14px/16px/#333 even though we have tokens.css. Fix what you can safely.",
+      "expected_output": "Runs scan_css.py, replaces only exact-value literals with existing tokens and verifies via compiled-CSS diff, lists near-miss values without changing them, and defers z-index/!important/absolute-positioning changes unless visual verification (Playwright/Storybook screenshots) is available.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "tech debt pass on packages/api please. lots of functions take like 7 positional args, there's a hand-rolled debounce and deepClone, and services new up their own db clients everywhere so nothing is testable. keep the public package exports the same, other teams depend on them",
+      "expected_output": "Introduces options objects only for internal functions while preserving default semantics, checks library equivalence (debounce leading/trailing, structuredClone vs custom clone) with edge-case baseline tests before swapping, proposes dependency injection without making calls async, and treats exported signatures as approval-required.",
+      "files": []
+    }
+  ]
+}
