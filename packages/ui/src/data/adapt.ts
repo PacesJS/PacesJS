@@ -15,8 +15,16 @@ import {
   waterfallForRun,
   waterfallForTask,
 } from '@pacesjs/engine';
-import type { ExecutionModel, FlameLayout, ModelDiff, OriginId, Track } from '@pacesjs/engine';
-import { locationOf, trackOrder } from './scope';
+import type {
+  ExecutionModel,
+  FlameLayout,
+  ModelDiff,
+  OriginId,
+  Track,
+  Waterfall,
+} from '@pacesjs/engine';
+import { cgLocation, cgSubtitle } from './call-graph-label';
+import { fileLine, locationOf, nameOrAnon, trackOrder } from './scope';
 import type { Scoped } from './scope';
 import type {
   CallGraphData,
@@ -45,7 +53,7 @@ const SANDWICH_CALLER_LEVELS = 3;
 const SANDWICH_CALLEE_LEVELS = 2;
 const MIN_SANDWICH_WIDTH = 0.004;
 
-const taskLabelOf = (model: ExecutionModel, track: Track, i: number): string =>
+export const taskLabelOf = (model: ExecutionModel, track: Track, i: number): string =>
   model.strings[track.tasks.label[i] ?? 0] || 'task';
 
 /** The task picker's rows: grouped by what started them, the entry point first. */
@@ -62,19 +70,6 @@ export function taskOptions(model: ExecutionModel, trackIndex: number): TaskOpti
   }));
 }
 
-export function longestTask(track: Track): number {
-  let best = -1;
-  let bestDur = -1;
-  for (let i = 0; i < track.tasks.length; i++) {
-    const d = (track.tasks.end[i] ?? 0) - (track.tasks.start[i] ?? 0);
-    if (d > bestDur) {
-      bestDur = d;
-      best = i;
-    }
-  }
-  return best;
-}
-
 // ---- Waterfall ----
 
 export interface WaterfallRequest {
@@ -84,6 +79,45 @@ export interface WaterfallRequest {
   /** Sibling order and the shortest call to keep: the engine applies both. */
   sort: 'time' | 'duration' | 'share';
   minDurUs: number;
+}
+
+/**
+ * One engine row as the UI's row, times relative to `t0`. `shift` is how far the rows hang below the
+ * engine's root: 1 when the task itself is row 0 (every id, depth and parent moves down by one).
+ */
+function toWaterfallRow(
+  s: Scoped,
+  r: Waterfall['rows'][number],
+  t0: number,
+  shift: 0 | 1,
+): WaterfallRow {
+  const call = r.kind === 'call';
+  const fn = call ? s.out(r.fn) : -1;
+  const info = fn >= 0 ? s.info(fn) : null;
+  return {
+    id: r.id + shift,
+    kind: r.kind,
+    fn,
+    path: call ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
+    name: info ? nameOrAnon(info.name) : r.label,
+    loc: info ? locationOf(info) : '',
+    origin: info ? info.origin : Origin.Idle,
+    start: r.start - t0,
+    end: r.end - t0,
+    depth: r.depth + shift,
+    parent: shift === 1 && r.parent < 0 ? 0 : r.parent + shift,
+    hasChildren: false,
+    critical: r.critical,
+    belowPrecision: r.hatched,
+    share: r.share,
+    resumed: r.resumed,
+    summaryTasks: r.summaryTasks,
+    selfUs: r.selfUs,
+  };
+}
+
+function markParents(rows: WaterfallRow[]): void {
+  for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
 }
 
 /**
@@ -105,31 +139,8 @@ export function waterfallData(
     // The default: the whole logical execution from the entry script, continuations stitched.
     const wf = waterfallForRun(model, s.trackIndex, { ...opts, transforms: s.view.stack });
     const t0 = wf.start;
-    const rows: WaterfallRow[] = wf.rows.map((r) => {
-      const fn = r.kind === 'call' ? s.out(r.fn) : -1;
-      const info = fn >= 0 ? s.info(fn) : null;
-      return {
-        id: r.id,
-        kind: r.kind,
-        fn,
-        path: r.kind === 'call' ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
-        name: info ? info.name || '(anonymous)' : r.label,
-        loc: info ? locationOf(info) : '',
-        origin: info ? info.origin : Origin.Idle,
-        start: r.start - t0,
-        end: r.end - t0,
-        depth: r.depth,
-        parent: r.parent,
-        hasChildren: false,
-        critical: r.critical,
-        belowPrecision: r.hatched,
-        share: r.share,
-        resumed: r.resumed,
-        summaryTasks: r.summaryTasks,
-        selfUs: r.selfUs,
-      };
-    });
-    for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
+    const rows = wf.rows.map((r) => toWaterfallRow(s, r, t0, 0));
+    markParents(rows);
     return {
       mode,
       taskIndex: -1,
@@ -177,31 +188,8 @@ export function waterfallData(
       selfUs: 0,
     },
   ];
-  for (const r of wf.rows) {
-    const call = r.kind === 'call';
-    const info = call ? s.info(s.out(r.fn)) : null;
-    rows.push({
-      id: r.id + 1,
-      kind: r.kind,
-      fn: call ? s.out(r.fn) : -1,
-      path: call ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
-      name: info ? info.name || '(anonymous)' : r.label,
-      loc: info ? locationOf(info) : '',
-      origin: info ? info.origin : Origin.Idle,
-      start: r.start - t0,
-      end: r.end - t0,
-      depth: r.depth + 1,
-      parent: r.parent < 0 ? 0 : r.parent + 1,
-      hasChildren: false,
-      critical: r.critical,
-      belowPrecision: r.hatched,
-      share: r.share,
-      resumed: r.resumed,
-      summaryTasks: r.summaryTasks,
-      selfUs: r.selfUs,
-    });
-  }
-  for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
+  for (const r of wf.rows) rows.push(toWaterfallRow(s, r, t0, 1));
+  markParents(rows);
   return {
     mode,
     taskIndex: task,
@@ -221,7 +209,19 @@ export function waterfallData(
  * The view node a chain of function ids leads to: the longest prefix that exists in this view
  * (collapsed packages and merged plumbing can remove frames of a hot path). 0 when none does.
  */
-export function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
+function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
+  const best = deepestPrefixNode(s, fns);
+  if (best > 0 && (s.view.tree.depth[best] ?? 0) >= fns.length) return best;
+  // A chain from the engine can begin below the root of this view: a stitched run hangs a
+  // continuation under whatever the previous task was inside (a dependency frame the hot path
+  // skips). Look for it anywhere, taking the longest match.
+  const inner = fns.map((f) => s.inn(f));
+  if (inner.some((f) => f < 0)) return best;
+  return longestChainAnywhere(s.view.tree, inner, best);
+}
+
+/** The deepest node that a prefix of `fns` leads to from the root, or from the entry script's function. */
+function deepestPrefixNode(s: Scoped, fns: readonly number[]): number {
   const tree = s.view.tree;
   // A stitched view is rooted at the entry script's function, which hot paths do not include.
   const entry = tree.length > 1 && tree.parent[1] === 0 ? [tree.fn[1] ?? 0] : [];
@@ -238,12 +238,18 @@ export function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
       }
     }
   }
-  if (best > 0 && (tree.depth[best] ?? 0) >= fns.length) return best;
-  // A chain from the engine can begin below the root of this view: a stitched run hangs a
-  // continuation under whatever the previous task was inside (a dependency frame the hot path
-  // skips). Look for it anywhere, taking the longest match.
-  const inner = fns.map((f) => s.inn(f));
-  if (inner.some((f) => f < 0)) return best;
+  return best;
+}
+
+/**
+ * The end of the longest match of `inner` as a chain anywhere in the tree, where dependency frames
+ * between two links are skipped (the nearest descendant counts). `best` is the match to beat.
+ */
+function longestChainAnywhere(
+  tree: Scoped['view']['tree'],
+  inner: readonly number[],
+  best: number,
+): number {
   const kids = new Map<number, number[]>();
   for (let n = 1; n < tree.length; n++) {
     const p = tree.parent[n] ?? 0;
@@ -313,7 +319,7 @@ export function flameData(
       locs.push('');
     } else {
       const info = s.info(fn[i] ?? 0);
-      names.push(info.name || '(anonymous)');
+      names.push(nameOrAnon(info.name));
       locs.push(info.synthetic ? '' : locationOf(info));
     }
     if (!diff) heat[i] = layout.intensity[i] ?? 0;
@@ -350,7 +356,7 @@ export function flameData(
 // ---- Functions table, details, sandwich ----
 
 /** Share is relative to the wall time of the track (or range), as the column promises. */
-export function baseTimeUs(s: Scoped, range: readonly [number, number] | null): number {
+function baseTimeUs(s: Scoped, range: readonly [number, number] | null): number {
   return Math.max(1, range ? range[1] - range[0] : s.track.durationUs);
 }
 
@@ -375,7 +381,7 @@ export function functionsTable(
     const info = s.info(fn);
     return {
       fn,
-      name: r.name || '(anonymous)',
+      name: nameOrAnon(r.name),
       origin: r.origin,
       pkg: r.pkg,
       selfUs: r.self,
@@ -399,7 +405,7 @@ export function functionsTable(
  * That tree merges the calls once, so the time of one callee never counts a recursive re-entry
  * twice and can never be more than the function's own total.
  */
-export function calleesOf(
+function calleesOf(
   model: ExecutionModel,
   s: Scoped,
   engineFn: number,
@@ -418,11 +424,7 @@ export function calleesOf(
 }
 
 /** The call node at `path` (UI ids from the root): its CPU time, self time and direct callees. */
-export function callAt(
-  model: ExecutionModel,
-  s: Scoped,
-  path: readonly number[],
-): CallNumbers | null {
+export function callAt(s: Scoped, path: readonly number[]): CallNumbers | null {
   const ids = path.map((f) => s.inn(f));
   if (path.length === 0 || ids.some((f) => f < 0)) return null;
   const tree = s.view.tree;
@@ -437,7 +439,7 @@ export function callAt(
     .map(([f, totalUs]) => {
       const fn = s.out(f);
       const info = s.info(fn);
-      return { fn, name: info.name || '(anonymous)', origin: info.origin, totalUs };
+      return { fn, name: nameOrAnon(info.name), origin: info.origin, totalUs };
     })
     .sort((a, b) => b.totalUs - a.totalUs || a.fn - b.fn);
   return { totalUs: tree.total[node] ?? 0, selfUs: tree.self[node] ?? 0, callees };
@@ -501,7 +503,7 @@ export function functionDetails(
   const base = baseTimeUs(s, range);
   return {
     fn,
-    name: info.name || '(anonymous)',
+    name: nameOrAnon(info.name),
     loc: locationOf(info),
     origin: info.origin,
     pkg: info.pkg,
@@ -594,27 +596,10 @@ export function callGraphData(
   const nodes: CgNode[] = g.nodes.map((n) => {
     const fn = s.out(n.fn);
     const info = s.info(fn);
-    const loc = info.synthetic
-      ? ''
-      : info.origin === Origin.User || info.origin === Origin.Dependency
-        ? locationOf(info)
-        : '';
-    const sub = n.isEntry
-      ? 'entry point'
-      : info.synthetic
-        ? 'package'
-        : loc
-          ? (loc.split('/').pop() ?? loc)
-          : info.origin === Origin.Node
-            ? 'node'
-            : info.origin === Origin.Native
-              ? 'native'
-              : info.origin === Origin.Gc
-                ? 'V8'
-                : '';
+    const sub = cgSubtitle(info, n.isEntry, cgLocation(info));
     return {
       fn,
-      name: info.name || '(anonymous)',
+      name: nameOrAnon(info.name),
       sub,
       origin: info.origin,
       isPackage: n.isPackage,
@@ -677,14 +662,14 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     durationUs: Math.max(1, model.meta.durationUs),
     mapMissing: src.mapMissing,
     mapped: model.functions.mapped[engineFn] === 1,
-    loc: src.file ? (src.line > 0 ? `${src.file}:${src.line}` : src.file) : '',
+    loc: src.file ? fileLine(src.file, src.line) : '',
     lineStatus: src.lineInfo.status,
     lineReason: src.lineInfo.reason,
     calleeTime: calleesOf(model, s, engineFn).map((c) => {
       const fn = s.out(c.fn);
       return {
         fn,
-        name: s.info(fn).name || '(anonymous)',
+        name: nameOrAnon(s.info(fn).name),
         origin: s.info(fn).origin,
         selfUs: c.selfUs,
         totalUs: c.totalUs,
@@ -703,7 +688,7 @@ export function fileOutline(model: ExecutionModel, s: Scoped, fn: number): FileO
     .filter((r) => r.file === file && r.fn < model.functions.length)
     .map((r) => ({
       fn: r.fn,
-      name: r.name || '(anonymous)',
+      name: nameOrAnon(r.name),
       line: r.line,
       selfUs: r.self,
       totalUs: r.total,
@@ -720,8 +705,8 @@ export function hotPathRows(model: ExecutionModel, s: Scoped, limit: number): Ho
     const last = p.locations[p.locations.length - 1];
     return {
       fns: p.fns,
-      names: p.locations.map((l) => l.name || '(anonymous)'),
-      loc: last ? (last.line > 0 ? `${last.file}:${last.line}` : last.file) : '',
+      names: p.locations.map((l) => nameOrAnon(l.name)),
+      loc: last ? fileLine(last.file, last.line) : '',
       selfUs: p.selfUs,
       totalUs: p.totalUs,
       share: p.share,

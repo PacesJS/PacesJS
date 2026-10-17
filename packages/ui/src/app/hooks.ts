@@ -23,7 +23,7 @@ function themeKey(): string {
 }
 
 /** "light" or "dark": changes when the OS scheme or `data-theme` changes. */
-export function useThemeName(): string {
+function useThemeName(): string {
   return useSyncExternalStore(subscribeTheme, themeKey, () => 'light');
 }
 
@@ -110,6 +110,20 @@ export function useCanvas(
   });
   useEffect(() => () => observed.current?.ro.disconnect(), []);
   return ref;
+}
+
+/**
+ * A function with a stable identity that always calls the latest `fn`. For handlers handed to
+ * memoized children, so they re-render only when their own data changes.
+ */
+export function useStableCallback<A extends unknown[], R>(
+  fn: (...args: A) => R,
+): (...args: A) => R {
+  const ref = useRef(fn);
+  useEffect(() => {
+    ref.current = fn;
+  });
+  return useCallback((...args: A) => ref.current(...args), []);
 }
 
 export interface AsyncState<T> {

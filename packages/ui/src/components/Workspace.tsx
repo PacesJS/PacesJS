@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 import { useApp } from '../app/context';
-import { DOCK_LIMITS, DEFAULT_PREFS, clamp, clampDock } from '../state/prefs';
+import { DOCK_LIMITS, DEFAULT_PREFS, clampDock } from '../state/prefs';
 import type { DockPrefs } from '../state/prefs';
+import { clamp } from '../view/scale';
 import { DetailsDrawer } from './DetailsDrawer';
 import { MainView } from './MainView';
 import { SourceOverlay } from './SourceOverlay';
@@ -98,12 +99,10 @@ function DockHandle({ dock, containerRef, onLive, onCommit }: HandleProps) {
  * resizable and its size is remembered; the Source tab replaces the dock with the full view.
  */
 export function Workspace() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dockCollapsed: collapsed } = useApp();
   const ref = useRef<HTMLDivElement | null>(null);
   const [live, setLive] = useState<DockPrefs | null>(null);
   const dock = live ?? state.prefs.dock;
-  const { dockCollapsed: dockCollapsedNow } = useApp();
-  const collapsed = dockCollapsedNow;
 
   const style = {
     ['--dock-frac' as string]: dock.widthFraction,

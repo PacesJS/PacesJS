@@ -1,6 +1,7 @@
 import type { WaterfallRow } from '../data/types';
 import { WF_COLUMN_LIMITS, clampColumns } from '../state/prefs';
 import type { WfColumns } from '../state/prefs';
+import { clamp } from './scale';
 
 export type ColumnKey = keyof WfColumns;
 
@@ -52,5 +53,5 @@ export function fitNumericWidth(
 ): number {
   const widest = labels.reduce((m, l) => Math.max(m, measure(l)), 0);
   const limits = WF_COLUMN_LIMITS[key];
-  return Math.round(Math.min(limits.max, Math.max(limits.min, widest + 16)));
+  return Math.round(clamp(widest + 16, limits.min, limits.max));
 }

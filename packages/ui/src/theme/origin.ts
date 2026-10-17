@@ -91,14 +91,8 @@ export function originInfo(origin: number): OriginInfo {
   return ORIGINS[origin] ?? (ORIGINS[4] as OriginInfo);
 }
 
-export const isUserOrigin = (origin: number): boolean => origin === 0;
-
 /** CSS color for DOM use. */
 export function originColor(origin: number, dimNonUser = true): string {
   const o = originInfo(origin);
   return `var(${dimNonUser && origin !== 0 ? o.dim : o.solid})`;
-}
-
-export function originSolid(origin: number): string {
-  return `var(${originInfo(origin).solid})`;
 }

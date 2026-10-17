@@ -79,6 +79,16 @@ export interface SelectionInfo {
   plumbing: boolean;
 }
 
+export const EMPTY_SELECTION: SelectionInfo = {
+  fn: null,
+  path: null,
+  name: '',
+  track: null,
+  task: null,
+  loc: '',
+  plumbing: false,
+};
+
 export interface TaskOption {
   index: number;
   group:

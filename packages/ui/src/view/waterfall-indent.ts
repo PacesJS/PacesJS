@@ -4,13 +4,13 @@
 // can, and the deepest rows offer to re-root there.
 
 /** Full steps for this many levels, then medium steps, then thin ones. */
-export const FULL_LEVELS = 6;
-export const MEDIUM_LEVELS = 16;
+const FULL_LEVELS = 6;
+const MEDIUM_LEVELS = 16;
 export const FULL_STEP_PX = 16;
-export const MEDIUM_STEP_PX = 6;
-export const THIN_STEP_PX = 2;
+const MEDIUM_STEP_PX = 6;
+const THIN_STEP_PX = 2;
 /** The indent never takes more than this share of the column. */
-export const MAX_INDENT_SHARE = 0.5;
+const MAX_INDENT_SHARE = 0.5;
 /** Rows deeper than this carry a `⋯ N` depth badge. */
 export const BADGE_DEPTH = 8;
 /** Rows deeper than this offer "Focus here". */

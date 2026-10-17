@@ -414,14 +414,14 @@
 .cg-node-bar {
   display: block;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--r-tiny);
   background: var(--c-node-bar-track);
 }
 
 .cg-node-fill {
   display: block;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--r-tiny);
 }
 
 .cg-node-stats {
@@ -508,7 +508,7 @@
   background: var(--c-bg);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-6) 20px;
+  gap: var(--sp-6) var(--sp-20);
   font-size: var(--fs-12);
   line-height: var(--lh-16);
   color: var(--c-muted);
@@ -672,7 +672,7 @@
   display: inline-block;
   width: 56px;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--r-tiny);
   background: var(--c-bg);
   overflow: hidden;
 }
@@ -680,7 +680,7 @@
 .fn-bar-fill {
   display: block;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--r-tiny);
 }
 
 .fn-cell-num {

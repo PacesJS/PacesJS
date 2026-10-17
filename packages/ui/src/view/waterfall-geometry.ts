@@ -1,3 +1,5 @@
+import { clamp } from './scale';
+
 /** Layout constants shared with views.css (.wf-row grid: 320px | 1fr | 76px | 60px, gap 12px, pad 8px). */
 export const WF = {
   rowH: 32,
@@ -76,7 +78,7 @@ export function zoomWindow(
   factor: number,
 ): TimeWindow {
   const span = win.end - win.start;
-  const next = Math.min(total, Math.max(total / 2000, span * factor));
+  const next = clamp(span * factor, total / 2000, total);
   const center = win.start + span * anchor;
   let start = center - next * anchor;
   let end = start + next;
@@ -93,7 +95,7 @@ export function zoomWindow(
 
 export function panWindow(win: TimeWindow, total: number, deltaUs: number): TimeWindow {
   const span = win.end - win.start;
-  const start = Math.min(total - span, Math.max(0, win.start + deltaUs));
+  const start = clamp(win.start + deltaUs, 0, total - span);
   return { start, end: start + span };
 }
 

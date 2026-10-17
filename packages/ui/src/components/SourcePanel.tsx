@@ -10,7 +10,7 @@ import { Icon } from './Icon';
 import { SourceCode } from './SourceCode';
 
 /** Path as a breadcrumb: the last segment is the file, long paths keep their tail. */
-export function Breadcrumb({ path }: { path: string }) {
+function Breadcrumb({ path }: { path: string }) {
   const parts = path.split('/').filter(Boolean);
   const shown = parts.length > 4 ? ['…', ...parts.slice(-4)] : parts;
   return (
@@ -82,10 +82,7 @@ interface SourceHeaderProps {
 }
 
 /** What the totals line covers: every call of the function, then the selected call on top. */
-export function totalsLines(
-  source: SourceState,
-  name: string,
-): { call: string | null; all: string } {
+function totalsLines(source: SourceState, name: string): { call: string | null; all: string } {
   const { details, call, calls } = source;
   const all = details
     ? `${calls > 0 ? `All ${fmtCount(calls)} calls` : 'All calls'} of ${name}: ${fmtDuration(details.totalUs)} total (CPU) · ${fmtDuration(details.selfUs)} self`
@@ -214,7 +211,6 @@ export function ChangedBanner({ changed }: { changed: boolean }) {
   );
 }
 
-/** The docked source: resizable, collapsible, with the function and its per-line time. */
 /** Text under an empty dock: nothing selected, or a selection that has no source of its own. */
 export function EmptySourceNote({
   fn,
@@ -240,6 +236,50 @@ export function EmptySourceNote({
   );
 }
 
+/** The wrap-long-lines switch, shared by the dock and the maximized view. */
+export function WrapButton({ wrap }: { wrap: boolean }) {
+  const { state, dispatch } = useApp();
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      aria-label="Wrap long lines"
+      aria-pressed={wrap}
+      title="Wrap long lines"
+      onClick={() =>
+        dispatch({ type: 'prefs', prefs: { dock: { ...state.prefs.dock, wrap: !wrap } } })
+      }
+    >
+      <Icon name="wrap" />
+    </button>
+  );
+}
+
+/** Changed-file banner, the reason note and the code (or why there is none): the body of every source view. */
+export function SourceBody({
+  source,
+  wrap,
+  band,
+}: {
+  source: SourceState;
+  wrap: boolean;
+  band?: { first: number; last: number } | null;
+}) {
+  const showCode = !source.reason || source.reason.showsText || source.lines.length > 0;
+  return (
+    <>
+      <ChangedBanner changed={source.changed} />
+      <SourceReasonNote source={source} />
+      {showCode ? (
+        <SourceCode source={source} wrap={wrap} band={band} />
+      ) : (
+        <p className="source-empty">There is nothing to show for this function.</p>
+      )}
+    </>
+  );
+}
+
+/** The docked source: resizable, collapsible, with the function and its per-line time. */
 export function SourcePanel() {
   const {
     state,
@@ -276,18 +316,7 @@ export function SourcePanel() {
 
   const tools = (
     <>
-      <button
-        type="button"
-        className="icon-btn"
-        aria-label="Wrap long lines"
-        aria-pressed={wrap}
-        title="Wrap long lines"
-        onClick={() =>
-          dispatch({ type: 'prefs', prefs: { dock: { ...state.prefs.dock, wrap: !wrap } } })
-        }
-      >
-        <Icon name="wrap" />
-      </button>
+      <WrapButton wrap={wrap} />
       <button
         type="button"
         className="icon-btn"
@@ -342,17 +371,10 @@ export function SourcePanel() {
     );
   }
 
-  const showCode = !source.reason || source.reason.showsText || source.lines.length > 0;
   return (
     <section key="panel" aria-label="Source" className="source card">
       <SourceHeader source={source} tools={tools} onScope={(m) => setPick({ key, mode: m })} />
-      <ChangedBanner changed={source.changed} />
-      <SourceReasonNote source={source} />
-      {showCode ? (
-        <SourceCode source={source} wrap={wrap} />
-      ) : (
-        <p className="source-empty">There is nothing to show for this function.</p>
-      )}
+      <SourceBody source={source} wrap={wrap} />
       <p className="source-foot">
         Bars = self time on each line, from V8 line ticks, summed over{' '}
         {source.acrossAll.replace('across ', '')} (V8 records no ticks per call). Chips = time spent

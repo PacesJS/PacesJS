@@ -1,3 +1,5 @@
+import { clamp } from '../view/scale';
+
 // Layout preferences: persisted through the host's settings, never part of the URL hash.
 
 export interface WfColumns {
@@ -39,9 +41,6 @@ export const DEFAULT_PREFS: Prefs = {
   wfCols: { call: 320, time: 76, share: 60 },
   dock: { orientation: 'right', widthFraction: 0.46, heightPx: 420, wrap: false },
 };
-
-export const clamp = (n: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, n));
 
 /**
  * The user's own say over the dock. It applies while the selection keeps the same answer to

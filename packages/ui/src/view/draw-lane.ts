@@ -1,10 +1,11 @@
 import type { LaneData } from '../data/types';
 import type { Palette } from '../theme/palette';
+import { roundedRectPath } from './draw-shapes';
 import { packBlocks } from './lod';
 import { linearScale, niceTicks } from './scale';
 
 /** GC pauses over this get the heavier mark; matches the engine's long-task threshold. */
-export const LONG_PAUSE_US = 50_000;
+const LONG_PAUSE_US = 50_000;
 
 export interface LaneDrawOptions {
   /** Index of the selected task, or -1. */
@@ -97,7 +98,7 @@ export function drawLane(
   for (const b of blocks) {
     const origin = lane.taskOrigin[b.first] ?? 0;
     ctx.fillStyle = pal.originSolid[origin] ?? pal.accent;
-    roundRect(ctx, b.x, TASK_TOP, b.w, TASK_H, 3);
+    roundedRectPath(ctx, b.x, TASK_TOP, b.w, TASK_H, 3);
     ctx.fill();
     if (b.count === 1) {
       const label = lane.taskLabels[b.first] ?? '';
@@ -142,24 +143,6 @@ function labelFor(label: string, maxPx: number): string {
   const chars = Math.floor(maxPx / 6.4);
   if (chars < 3) return '';
   return label.length <= chars ? label : `${label.slice(0, chars - 1)}…`;
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
 }
 
 /** Loop-delay polyline (p99 per bin), scaled to the largest value. */

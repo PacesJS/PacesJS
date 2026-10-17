@@ -15,14 +15,24 @@ import {
   overviewData,
   sandwichRows,
   sourceInfo,
+  taskLabelOf,
   taskOptions,
   waterfallData,
 } from './adapt';
 import { browserElk } from './elk-browser';
 import { layoutGraph } from './layout';
 import type { ElkProvider, GraphLayout } from './layout';
-import { locationOf, modelCtx, scopeView, toEngineStack, trackIndexOf, trackOrder } from './scope';
+import {
+  locationOf,
+  modelCtx,
+  nameOrAnon,
+  scopeView,
+  toEngineStack,
+  trackIndexOf,
+  trackOrder,
+} from './scope';
 import type { Scoped } from './scope';
+import { EMPTY_SELECTION } from './types';
 import type {
   CallGraphData,
   CallNumbers,
@@ -102,16 +112,6 @@ export interface Queries {
 }
 
 const CACHE_SIZE = 6;
-const NO_SELECTION: SelectionInfo = {
-  fn: null,
-  path: null,
-  name: '',
-  track: null,
-  task: null,
-  loc: '',
-  plumbing: false,
-};
-
 export function createQueries(
   model: ExecutionModel,
   baseline: ExecutionModel | null = null,
@@ -243,7 +243,7 @@ export function createQueries(
       return sourceInfo(model, scoped(scope), fn);
     },
     callAt(scope, path) {
-      return callAt(model, scoped(scope), path);
+      return callAt(scoped(scope), path);
     },
     outline(scope, fn) {
       return fileOutline(model, scoped(scope), fn);
@@ -261,27 +261,27 @@ export function createQueries(
         const info = s.info(fn);
         return {
           fn,
-          name: info.name || '(anonymous)',
+          name: nameOrAnon(info.name),
           loc: locationOf(info),
           plumbing: info.plumbing,
         };
       };
       switch (selection.kind) {
         case 'fn':
-          return { ...NO_SELECTION, ...named(selection.fn) };
+          return { ...EMPTY_SELECTION, ...named(selection.fn) };
         case 'node': {
           const fn = selection.path[selection.path.length - 1];
-          if (fn === undefined) return NO_SELECTION;
-          return { ...NO_SELECTION, ...named(fn), path: selection.path, track: selection.track };
+          if (fn === undefined) return EMPTY_SELECTION;
+          return { ...EMPTY_SELECTION, ...named(fn), path: selection.path, track: selection.track };
         }
         case 'task': {
           const track = model.tracks.find((t) => t.id === selection.track);
           const i = selection.task;
-          if (!track || i < 0 || i >= track.tasks.length) return NO_SELECTION;
-          const label = model.strings[track.tasks.label[i] ?? 0] || 'task';
+          if (!track || i < 0 || i >= track.tasks.length) return EMPTY_SELECTION;
+          const label = taskLabelOf(model, track, i);
           const start = track.tasks.start[i] ?? 0;
           return {
-            ...NO_SELECTION,
+            ...EMPTY_SELECTION,
             track: selection.track,
             name: label,
             task: {
@@ -295,7 +295,7 @@ export function createQueries(
           };
         }
         default:
-          return NO_SELECTION;
+          return EMPTY_SELECTION;
       }
     },
     packageOf(fn) {

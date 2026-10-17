@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { useApp } from '../app/context';
 import { canBack, canForward } from '../state/history';
-import { displayEntry, fmtRun, fmtSamples } from '../util/format';
+import { displayEntry, fmtCount, fmtRun } from '../util/format';
 import { Icon } from './Icon';
 import { NotesChip } from './NotesChip';
 import { TransformBar } from './TransformBar';
@@ -19,7 +19,8 @@ const ENDED_BY: Record<string, string> = {
 };
 
 export function Header({ searchRef, sessionPath }: HeaderProps) {
-  const { summary, state, snap, dispatch, onSearchEnter } = useHeader();
+  const { summary, state, snap, dispatch } = useApp();
+  const onSearchEnter = () => dispatch({ type: 'go', patch: { view: 'functions' } });
   const command = summary.command.join(' ');
   const perTrack = Math.max(
     0,
@@ -72,7 +73,7 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
           <div className="header-stat">
             <dt>Samples</dt>
             <dd>
-              {fmtSamples(perTrack)}
+              {fmtCount(perTrack)}
               {summary.tracks.length > 1 ? ' / track' : ''}
             </dd>
           </div>
@@ -153,15 +154,4 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
       <TransformBar sessionPath={sessionPath} hasBaseline={summary.hasBaseline} />
     </header>
   );
-}
-
-function useHeader() {
-  const app = useApp();
-  return {
-    summary: app.summary,
-    state: app.state,
-    snap: app.snap,
-    dispatch: app.dispatch,
-    onSearchEnter: () => app.dispatch({ type: 'go', patch: { view: 'functions' } }),
-  };
 }

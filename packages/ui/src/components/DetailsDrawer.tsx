@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import type { RelatedRow } from '../data/types';
+import { showInView } from '../state/show-in';
 import { originColor, originInfo } from '../theme/origin';
 import {
   CLEAR_SELECTION,
@@ -10,7 +12,7 @@ import {
   showMeContext,
   showingText,
 } from '../state/showme';
-import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
+import { fmtCount, fmtDuration, fmtRange, fmtSeconds, fmtShare } from '../util/format';
 
 function RelatedList({ title, rows }: { title: string; rows: RelatedRow[] }) {
   const { select } = useApp();
@@ -78,6 +80,16 @@ function SelectionBar() {
 }
 
 /** Numbers for the current selection: self, total, share, calls, origin, callers and callees. */
+/** The card every selection shows in the drawer; a new `key` remounts it, which cross-fades the content. */
+function DetailsSection({ children }: { children: ReactNode }) {
+  return (
+    <section aria-label="Selection details" className="details card" data-keeps-selection>
+      <SelectionBar />
+      {children}
+    </section>
+  );
+}
+
 export function DetailsDrawer() {
   const { client, host, scope, scopeKey, snap, selection, dispatch, summary, openDock } = useApp();
   const fn = selection.fn;
@@ -107,13 +119,7 @@ export function DetailsDrawer() {
   if (selection.task) {
     const t = selection.task;
     return (
-      <section
-        key={contentKey}
-        aria-label="Selection details"
-        className="details card"
-        data-keeps-selection
-      >
-        <SelectionBar />
+      <DetailsSection key={contentKey}>
         <div className="details-head">
           <span
             className="details-dot"
@@ -145,27 +151,21 @@ export function DetailsDrawer() {
           </div>
           <div className="stat">
             <dt>Started at</dt>
-            <dd>{(t.startUs / 1_000_000).toFixed(2)} s</dd>
+            <dd>{fmtSeconds(t.startUs, 2)}</dd>
           </div>
           <div className="stat">
             <dt>Over 50 ms</dt>
             <dd>{t.durationUs > 50_000 ? 'Yes, a long task' : 'No'}</dd>
           </div>
         </dl>
-      </section>
+      </DetailsSection>
     );
   }
 
   if (!d || fn === null) {
     const range = snap.range;
     return (
-      <section
-        key={contentKey}
-        aria-label="Selection details"
-        className="details card"
-        data-keeps-selection
-      >
-        <SelectionBar />
+      <DetailsSection key={contentKey}>
         <h2 className="section-title">
           {range ? `Range ${fmtRange(range[0], range[1])}` : 'Nothing selected'}
         </h2>
@@ -174,7 +174,7 @@ export function DetailsDrawer() {
             ? `${fmtDuration(range[1] - range[0], { approx: false })} on ${trackLabel}. Select a function, call or task to see its numbers.`
             : 'Select a function, a call, a task or a time range to see its numbers here. Selection is shared by every view.'}
         </p>
-      </section>
+      </DetailsSection>
     );
   }
 
@@ -184,13 +184,7 @@ export function DetailsDrawer() {
   const jumpTo = snap.view === 'waterfall' ? 'flame' : 'waterfall';
 
   return (
-    <section
-      key={contentKey}
-      aria-label="Selection details"
-      className="details card"
-      data-keeps-selection
-    >
-      <SelectionBar />
+    <DetailsSection key={contentKey}>
       <div className="details-head">
         <span
           className="details-dot"
@@ -205,21 +199,13 @@ export function DetailsDrawer() {
         ) : null}
         <span className={`origin-pill${user ? '' : ' is-other'}`}>{info.label}</span>
         <div className="details-actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() =>
-              dispatch({ type: 'go', patch: { view: jumpTo, selection: { kind: 'fn', fn } } })
-            }
-          >
+          <button type="button" className="btn" onClick={() => dispatch(showInView(jumpTo, fn))}>
             {jump}
           </button>
           <button
             type="button"
             className="btn"
-            onClick={() =>
-              dispatch({ type: 'go', patch: { view: 'functions', selection: { kind: 'fn', fn } } })
-            }
+            onClick={() => dispatch(showInView('functions', fn))}
           >
             Show callers
           </button>
@@ -268,6 +254,6 @@ export function DetailsDrawer() {
         <RelatedList title="Callers" rows={d.callers} />
         <RelatedList title="Callees and self" rows={d.callees} />
       </div>
-    </section>
+    </DetailsSection>
   );
 }

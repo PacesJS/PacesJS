@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { useApp } from '../app/context';
+import { useHoverFn } from '../app/hover';
 import { useAsync, useElementSize } from '../app/hooks';
 import type { CgNode } from '../data/types';
 import { NODE_H } from '../data/layout';
@@ -37,8 +38,8 @@ const ORIGIN_VAR = [
 ] as const;
 
 export function CallGraph() {
-  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, openDock } =
-    useApp();
+  const { client, scope, scopeKey, snap, dispatch, selection, select, openDock } = useApp();
+  const hoverFn = useHoverFn();
   const [all, setAll] = useState(false);
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
   const box = useElementSize(boxEl);
@@ -437,13 +438,7 @@ export function CallGraph() {
               );
             })}
             {graph.edges
-              .filter(
-                (e) =>
-                  near !== null &&
-                  near.has(e.from) &&
-                  near.has(e.to) &&
-                  (e.from === selFn || e.to === selFn || near.has(e.from)),
-              )
+              .filter((e) => near !== null && near.has(e.from) && near.has(e.to))
               .map((e) => {
                 const a = nodeBox(e.from);
                 const b = nodeBox(e.to);

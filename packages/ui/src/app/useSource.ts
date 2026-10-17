@@ -70,10 +70,10 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
     () => (fn === null ? Promise.resolve(null) : client.details(scope, fn)),
     `src-details:${scopeKey}:${fn}`,
   );
-  const path_ = selection.path;
-  const callKey = snap.selection.kind === 'node' && path_ ? path_.join('.') : '';
+  const nodePath = selection.path;
+  const callKey = snap.selection.kind === 'node' && nodePath ? nodePath.join('.') : '';
   const callQ = useAsync(
-    () => (callKey && path_ ? client.callAt(scope, path_) : Promise.resolve(null)),
+    () => (callKey && nodePath ? client.callAt(scope, nodePath) : Promise.resolve(null)),
     `call:${scopeKey}:${callKey}`,
   );
   const call = callKey ? (callQ.data ?? null) : null;
@@ -123,39 +123,37 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
   );
   // The highlight is always the definition; hot lines are only gutter bars. A jump moves the scroll.
   const targetLine = snap.options.line > 0 ? snap.options.line : definitionLine;
-  const callees =
-    scopeMode === 'call' && call
-      ? call.callees.map((c) => ({ fn: c.fn, name: c.name, origin: c.origin, us: c.totalUs }))
-      : (info?.calleeTime ?? []).map((c) => ({
-          fn: c.fn,
-          name: c.name,
-          origin: c.origin,
-          us: c.totalUs,
-        }));
+  // The callees the chips and the "where the time went" list cover: this call's, or all calls'.
+  const inCall = scopeMode === 'call' && call ? call : null;
+  const callees = (inCall?.callees ?? info?.calleeTime ?? []).map((c) => ({
+    fn: c.fn,
+    name: c.name,
+    origin: c.origin,
+    us: c.totalUs,
+  }));
 
   const chips = useMemo(() => {
     if (!details || allLines.length === 0) return [];
-    const shown =
-      scopeMode === 'call' && call
-        ? call.callees.map((c) => ({
+    const shown = inCall
+      ? inCall.callees.map((c) => ({
+          fn: c.fn,
+          name: c.name,
+          totalUs: c.totalUs,
+          origin: c.origin,
+        }))
+      : details.callees
+          .filter((c) => c.kind === 'callee')
+          .map((c) => ({
             fn: c.fn,
             name: c.name,
-            totalUs: c.totalUs,
+            totalUs: c.frac * details.totalUs,
             origin: c.origin,
-          }))
-        : details.callees
-            .filter((c) => c.kind === 'callee')
-            .map((c) => ({
-              fn: c.fn,
-              name: c.name,
-              totalUs: c.frac * details.totalUs,
-              origin: c.origin,
-            }));
+          }));
     return matchCallSites(
       lines.map((l) => l.text),
       shown,
     );
-  }, [allLines, details, lines, scopeMode, call]);
+  }, [allLines, details, lines, inCall]);
 
   const reason = info
     ? sourceReason({

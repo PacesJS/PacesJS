@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { useCanvas, usePalette } from '../app/hooks';
 import type { LaneData } from '../data/types';
 import { drawLane, taskAtTime } from '../view/draw-lane';
-import { fmtDuration } from '../util/format';
+import { fmtDuration, fmtSeconds } from '../util/format';
+import { clamp } from '../view/scale';
 
 interface LanePlotProps {
   lane: LaneData;
@@ -46,7 +47,7 @@ export function LanePlot({
   const usAt = (clientX: number): number => {
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return 0;
-    const f = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const f = clamp((clientX - rect.left) / rect.width, 0, 1);
     return f * lane.durationUs;
   };
   const tolUs = (): number => {
@@ -110,7 +111,7 @@ export function LanePlot({
             {lane.taskLabels[tipTask] || 'task'} · {fmtDuration(tipDur)}
           </span>
           <span className="tooltip-sub">
-            at {(tipStart / 1_000_000).toFixed(2)} s
+            at {fmtSeconds(tipStart, 2)}
             {lane.taskLong[tipTask] === 1 ? ' · long task' : ''}
             {tipTask === selectedTask ? ' · selected' : ''}
           </span>

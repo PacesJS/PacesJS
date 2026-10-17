@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
+import { useHoverFn } from '../app/hover';
 import { useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
+import { showInView } from '../state/show-in';
+import type { ViewId } from '../state/types';
 import { originInfo } from '../theme/origin';
 import { fmtDuration, fmtRange, fmtShare } from '../util/format';
-import { fillRound } from '../view/draw-bars';
+import { roundedRectPath } from '../view/draw-shapes';
+import { flameFill } from '../view/flame-fill';
 import { FLAME, flameHeight, flameRects, hitRect } from '../view/flame-geometry';
 import type { FlameRect } from '../view/flame-geometry';
 import { Hint } from './Hint';
@@ -16,9 +20,15 @@ interface MenuState {
   fn: number;
 }
 
+const SHOW_IN: Array<{ view: ViewId; label: string }> = [
+  { view: 'waterfall', label: 'Show in waterfall' },
+  { view: 'functions', label: 'Show callers' },
+  { view: 'callgraph', label: 'Show in call graph' },
+];
+
 export function FlameGraph() {
-  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, state, openDock } =
-    useApp();
+  const { client, scope, scopeKey, snap, dispatch, selection, select, state, openDock } = useApp();
+  const hoverFn = useHoverFn();
   const { sort, color, layout, zoom, zoomPath } = snap.options;
   const q = useAsync(
     () => client.flame(scope, { sort, color, zoom, zoomPath }),
@@ -53,31 +63,18 @@ export function FlameGraph() {
         const i = r.index;
         const origin = data.origin[i] ?? 4;
         const isRoot = data.node[i] === -1;
-        let fill: string;
-        const d = data.delta ? (data.delta[i] ?? 0) : null;
-        if (isRoot) fill = pal.flameRoot;
-        else if (d !== null) {
-          const hue = d < 0 ? pal.diffFaster : pal.diffSlower;
-          fill = `color-mix(in srgb, ${hue} ${Math.round(12 + 83 * Math.sqrt(Math.abs(d)))}%, transparent)`;
-        } else if (color === 'self')
-          fill = `color-mix(in srgb, ${pal.accent} ${Math.round(15 + 80 * Math.sqrt(data.heat[i] ?? 0))}%, transparent)`;
-        else
-          fill =
-            origin === 0
-              ? (pal.originSolid[0] ?? pal.accent)
-              : (pal.originDim[origin] ?? pal.accent);
         const dimmed =
           search !== '' && !`${data.names[i]} ${data.locs[i]}`.toLowerCase().includes(search);
         ctx.globalAlpha = dimmed ? 0.25 : 1;
-        ctx.fillStyle = fill;
-        fillRound(ctx, r.x, r.y, r.w, r.h, 4);
+        ctx.fillStyle = flameFill(pal, data, i, color);
+        roundedRectPath(ctx, r.x, r.y, r.w, r.h, 4);
         ctx.fill();
         const isSel = selFn !== null && !isRoot && data.fn[i] === selFn;
         const isHover = hoverFn !== null && !isRoot && data.fn[i] === hoverFn;
         if (isSel || isHover) {
           ctx.strokeStyle = pal.outline;
           ctx.lineWidth = isSel ? 2 : 1;
-          fillRound(ctx, r.x + 1, r.y + 1, Math.max(1, r.w - 2), r.h - 2, 3);
+          roundedRectPath(ctx, r.x + 1, r.y + 1, Math.max(1, r.w - 2), r.h - 2, 3);
           ctx.stroke();
         }
         if (r.label) {
@@ -370,48 +367,20 @@ export function FlameGraph() {
                 onClose={() => setMenu(null)}
                 style={{ left: menu.x, top: menu.y, minWidth: 200 }}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    dispatch({
-                      type: 'go',
-                      patch: { view: 'waterfall', selection: { kind: 'fn', fn: menu.fn } },
-                    });
-                    setMenu(null);
-                  }}
-                >
-                  Show in waterfall
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    dispatch({
-                      type: 'go',
-                      patch: { view: 'functions', selection: { kind: 'fn', fn: menu.fn } },
-                    });
-                    setMenu(null);
-                  }}
-                >
-                  Show callers
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    dispatch({
-                      type: 'go',
-                      patch: { view: 'callgraph', selection: { kind: 'fn', fn: menu.fn } },
-                    });
-                    setMenu(null);
-                  }}
-                >
-                  Show in call graph
-                </button>
+                {SHOW_IN.map((item) => (
+                  <button
+                    key={item.view}
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      dispatch(showInView(item.view, menu.fn));
+                      setMenu(null);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
                 <button
                   type="button"
                   role="menuitem"

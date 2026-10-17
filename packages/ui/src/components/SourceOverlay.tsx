@@ -4,15 +4,7 @@ import { useAsync } from '../app/hooks';
 import { useSource } from '../app/useSource';
 import { originColor } from '../theme/origin';
 import { fmtDuration } from '../util/format';
-import { Icon } from './Icon';
-import { SourceCode } from './SourceCode';
-import {
-  ChangedBanner,
-  EmptySourceNote,
-  SourceHeader,
-  SourceReasonNote,
-  functionBand,
-} from './SourcePanel';
+import { EmptySourceNote, SourceBody, SourceHeader, WrapButton, functionBand } from './SourcePanel';
 
 /** The dock, maximized: the whole file full screen, with an outline of the functions that ran in it. */
 function Overlay({ children }: { children: ReactNode }) {
@@ -49,18 +41,7 @@ export function SourceOverlay() {
 
   const tools = (
     <>
-      <button
-        type="button"
-        className="icon-btn"
-        aria-label="Wrap long lines"
-        aria-pressed={wrap}
-        title="Wrap long lines"
-        onClick={() =>
-          dispatch({ type: 'prefs', prefs: { dock: { ...state.prefs.dock, wrap: !wrap } } })
-        }
-      >
-        <Icon name="wrap" />
-      </button>
+      <WrapButton wrap={wrap} />
       <button
         type="button"
         className="btn btn-sm"
@@ -84,7 +65,6 @@ export function SourceOverlay() {
 
   const outline = outlineQ.data;
   const band = functionBand(source.fileTexts, info.startLine);
-  const showCode = !source.reason || source.reason.showsText || source.lines.length > 0;
   return (
     <Overlay>
       <div className="source-view">
@@ -118,13 +98,7 @@ export function SourceOverlay() {
         </nav>
         <section aria-label="Source" className="source card source-full">
           <SourceHeader source={source} tools={tools} />
-          <ChangedBanner changed={source.changed} />
-          <SourceReasonNote source={source} />
-          {showCode ? (
-            <SourceCode source={source} wrap={wrap} band={band} />
-          ) : (
-            <p className="source-empty">There is nothing to show for this function.</p>
-          )}
+          <SourceBody source={source} wrap={wrap} band={band} />
           <p className="source-foot">
             Bars = self time on each line, from V8 line ticks. The shaded lines are the function
             itself.

@@ -35,7 +35,7 @@ interface Ready {
 }
 
 /** Open on the top finding; with no findings, open the flame graph. A hash in the URL wins. */
-export function openingSnapshot(summary: ModelSummary, hash: string, topShowMe?: ShowMe): Snapshot {
+function openingSnapshot(summary: ModelSummary, hash: string, topShowMe?: ShowMe): Snapshot {
   if (hash.length > 1) return hashToSnapshot(hash);
   const base = initialSnapshot();
   const top = summary.findings[0];

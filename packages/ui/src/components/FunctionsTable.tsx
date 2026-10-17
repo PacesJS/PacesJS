@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import type { FnRow } from '../data/types';
-import { originColor, originInfo } from '../theme/origin';
-import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
+import { fmtRange, fmtSeconds } from '../util/format';
+import { FunctionRow } from './FunctionRow';
 import { Hint } from './Hint';
 import { HotPaths } from './HotPaths';
 import { Legend } from './Legend';
@@ -41,7 +41,7 @@ function value(r: FnRow, key: SortKey): number | string {
   }
 }
 
-export function sortRows(rows: FnRow[], key: SortKey, dir: 'asc' | 'desc'): FnRow[] {
+function sortRows(rows: FnRow[], key: SortKey, dir: 'asc' | 'desc'): FnRow[] {
   const sign = dir === 'asc' ? 1 : -1;
   return rows.slice().sort((a, b) => {
     const va = value(a, key);
@@ -55,8 +55,7 @@ export function sortRows(rows: FnRow[], key: SortKey, dir: 'asc' | 'desc'): FnRo
 const OTHER_CAP = 25;
 
 export function FunctionsTable() {
-  const { client, scope, scopeKey, snap, dispatch, state, selection, hoverFn, summary, openDock } =
-    useApp();
+  const { client, scope, scopeKey, snap, dispatch, state, selection, summary, openDock } = useApp();
   const { fnPkg, targetOnly } = snap.options;
   const q = useAsync(
     () =>
@@ -65,6 +64,15 @@ export function FunctionsTable() {
         ...(fnPkg ? { pkg: fnPkg } : {}),
       }),
     `functions:${scopeKey}:${state.search}:${targetOnly}:${fnPkg}`,
+  );
+  const selectFn = useCallback(
+    (fn: number) => dispatch({ type: 'select', selection: { kind: 'fn', fn } }),
+    [dispatch],
+  );
+  const hoverFn = useCallback(
+    (fn: number | null) =>
+      dispatch({ type: 'hover', selection: fn === null ? { kind: 'none' } : { kind: 'fn', fn } }),
+    [dispatch],
   );
   const [userFirst, setUserFirst] = useState(true);
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
@@ -113,71 +121,21 @@ export function FunctionsTable() {
   const selectedRow = rows.find((r) => r.fn === selection.fn) ?? null;
   const sortLabel = COLUMNS.find((c) => c.key === sort.key)?.label.toLowerCase() ?? 'self';
   const rangeSuffix = snap.range
-    ? ` · range ${fmtRange(snap.range[0], snap.range[1])} (${((snap.range[1] - snap.range[0]) / 1_000_000).toFixed(2)} s on ${snap.track === 'all' ? 'all tracks' : snap.track})`
+    ? ` · range ${fmtRange(snap.range[0], snap.range[1])} (${fmtSeconds(snap.range[1] - snap.range[0], 2)} on ${snap.track === 'all' ? 'all tracks' : snap.track})`
     : '';
 
-  const renderRow = (r: FnRow) => {
-    const selected = selection.fn === r.fn;
-    const hovered = hoverFn === r.fn;
-    return (
-      <div
-        key={r.fn}
-        ref={selected ? selectedRef : undefined}
-        role="row"
-        aria-selected={selected}
-        tabIndex={0}
-        className={`fn-row${selected ? ' is-selected' : ''}${hovered ? ' is-hover' : ''}`}
-        onClick={() => dispatch({ type: 'select', selection: { kind: 'fn', fn: r.fn } })}
-        onDoubleClick={() => openDock()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            dispatch({ type: 'select', selection: { kind: 'fn', fn: r.fn } });
-          }
-        }}
-        onPointerEnter={() => dispatch({ type: 'hover', selection: { kind: 'fn', fn: r.fn } })}
-        onPointerLeave={() => dispatch({ type: 'hover', selection: { kind: 'none' } })}
-      >
-        <span role="cell" className="fn-cell fn-cell-name">
-          <span
-            className="wf-dot"
-            aria-hidden="true"
-            style={{ background: originColor(r.origin, false) }}
-          />
-          <span className={`fn-name${r.origin === 0 ? ' is-user' : ''}`}>{r.name}</span>
-        </span>
-        <span role="cell" className="fn-cell fn-cell-origin">
-          {originInfo(r.origin).label}
-        </span>
-        <span role="cell" className="fn-cell fn-cell-self">
-          <span className="fn-bar" aria-hidden="true">
-            <span
-              className="fn-bar-fill"
-              style={{
-                width: `${Math.max(3, (r.selfUs / maxSelf) * 100)}%`,
-                background: originColor(r.origin),
-              }}
-            />
-          </span>
-          <span className="num" style={{ fontWeight: 600 }}>
-            {fmtDuration(r.selfUs)}
-          </span>
-        </span>
-        <span role="cell" className="fn-cell fn-cell-num">
-          {fmtDuration(r.totalUs)}
-        </span>
-        <span role="cell" className="fn-cell fn-cell-num">
-          {fmtShare(r.share)}
-        </span>
-        <span role="cell" className="fn-cell fn-cell-calls">
-          {r.calls > 0 ? fmtCount(r.calls) : '—'}
-        </span>
-        <span role="cell" className="fn-cell fn-cell-loc" title={r.loc}>
-          {r.loc}
-        </span>
-      </div>
-    );
-  };
+  const renderRow = (r: FnRow) => (
+    <FunctionRow
+      key={r.fn}
+      r={r}
+      maxSelf={maxSelf}
+      selected={selection.fn === r.fn}
+      selectedRef={selectedRef}
+      onSelect={selectFn}
+      onOpen={openDock}
+      onHover={hoverFn}
+    />
+  );
 
   return (
     <>

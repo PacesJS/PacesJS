@@ -50,10 +50,8 @@ export type AppAction =
   | { type: 'set-dock-maximized'; maximized: boolean }
   | { type: 'set-shortcuts'; open: boolean }
   | { type: 'dismiss-hint'; id: string }
-  | { type: 'set-dismissed'; ids: string[] }
   | { type: 'search'; text: string }
   | { type: 'toggle-pin'; track: string }
-  | { type: 'set-pinned'; tracks: string[] }
   | { type: 'prefs'; prefs: Partial<Prefs> }
   | { type: 'dismiss-notes' };
 
@@ -143,8 +141,6 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return state.dismissed.includes(action.id)
         ? state
         : { ...state, dismissed: [...state.dismissed, action.id] };
-    case 'set-dismissed':
-      return { ...state, dismissed: action.ids };
     case 'search':
       return { ...state, search: action.text };
     case 'toggle-pin':
@@ -154,8 +150,6 @@ export function reducer(state: AppState, action: AppAction): AppState {
           ? state.pinned.filter((t) => t !== action.track)
           : [...state.pinned, action.track],
       };
-    case 'set-pinned':
-      return { ...state, pinned: action.tracks };
     case 'dismiss-notes':
       return { ...state, notesDismissed: true };
     case 'prefs':

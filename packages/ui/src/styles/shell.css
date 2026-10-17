@@ -72,7 +72,7 @@
 .header-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-4) 20px;
+  gap: var(--sp-4) var(--sp-20);
 }
 
 .header-stat {
@@ -567,7 +567,7 @@
 
 .lane-grid {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: var(--lane-head-w) minmax(0, 1fr);
   column-gap: var(--sp-12);
 }
 
@@ -654,7 +654,7 @@
 
 .lane-delay {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: var(--lane-head-w) minmax(0, 1fr);
   column-gap: var(--sp-12);
   align-items: center;
 }

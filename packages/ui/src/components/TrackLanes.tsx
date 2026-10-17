@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync, useCanvas, usePalette } from '../app/hooks';
 import type { LaneData } from '../data/types';
 import { drawDelay, laneTicks } from '../view/draw-lane';
-import { fmtAxis, fmtDuration, fmtRange } from '../util/format';
+import { fmtAxis, fmtDuration, fmtRange, fmtSeconds } from '../util/format';
+import { clamp } from '../view/scale';
 import { Icon } from './Icon';
 import { LanePlot } from './LanePlot';
 
@@ -18,7 +19,7 @@ function DelayPlot({ lane }: { lane: LaneData }) {
       <canvas ref={ref} className="lane-canvas" aria-hidden="true" />
       <span className="lane-delay-peak">
         peak {fmtDuration(lane.peakDelayUs, { approx: false })} at{' '}
-        {(lane.peakDelayAtUs / 1_000_000).toFixed(1)} s
+        {fmtSeconds(lane.peakDelayAtUs, 1)}
       </span>
     </div>
   );
@@ -29,6 +30,17 @@ export function TrackLanes() {
   const { client, snap, state, dispatch, selection, summary } = useApp();
   const overview = useAsync(() => client.overview(), 'overview').data;
   const [hover, setHover] = useState<{ lane: string; task: number }>({ lane: '', task: -1 });
+  // Stable between renders so an unrelated state change (a hover elsewhere) repaints no lane canvas.
+  const ticks = useMemo(() => (overview ? laneTicks(overview.durationUs) : []), [overview]);
+  const lanes = useMemo(
+    () =>
+      [...(overview?.lanes ?? [])].sort((a, b) => {
+        const pa = state.pinned.includes(a.id) ? 0 : 1;
+        const pb = state.pinned.includes(b.id) ? 0 : 1;
+        return pa - pb;
+      }),
+    [overview, state.pinned],
+  );
   if (!overview)
     return (
       <div className="status-line" role="status">
@@ -36,13 +48,7 @@ export function TrackLanes() {
       </div>
     );
 
-  const ticks = laneTicks(overview.durationUs);
-  const lanes = [...overview.lanes].sort((a, b) => {
-    const pa = state.pinned.includes(a.id) ? 0 : 1;
-    const pb = state.pinned.includes(b.id) ? 0 : 1;
-    return pa - pb;
-  });
-  const frac = (us: number): number => Math.min(1, Math.max(0, us / overview.durationUs));
+  const frac = (us: number): number => clamp(us / overview.durationUs, 0, 1);
   const range = snap.range;
 
   return (
@@ -139,7 +145,7 @@ export function TrackLanes() {
                         })
                       }
                     >
-                      {`${lane.taskLabels[i] || 'task'}, ${fmtDuration((lane.taskEnd[i] ?? 0) - (lane.taskStart[i] ?? 0))}, at ${((lane.taskStart[i] ?? 0) / 1_000_000).toFixed(2)} s`}
+                      {`${lane.taskLabels[i] || 'task'}, ${fmtDuration((lane.taskEnd[i] ?? 0) - (lane.taskStart[i] ?? 0))}, at ${fmtSeconds(lane.taskStart[i] ?? 0, 2)}`}
                     </button>
                   </li>
                 ))}
@@ -153,8 +159,8 @@ export function TrackLanes() {
             role="group"
             aria-label={`Selected range ${fmtRange(range[0], range[1])}`}
             style={{
-              left: `calc(212px + (100% - 212px) * ${frac(range[0])})`,
-              width: `calc((100% - 212px) * ${frac(range[1]) - frac(range[0])})`,
+              left: `calc(var(--lane-head-w) + var(--sp-12) + (100% - var(--lane-head-w) - var(--sp-12)) * ${frac(range[0])})`,
+              width: `calc((100% - var(--lane-head-w) - var(--sp-12)) * ${frac(range[1]) - frac(range[0])})`,
             }}
           >
             <span className="range-label">{fmtRange(range[0], range[1])}</span>
