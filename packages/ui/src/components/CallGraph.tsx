@@ -1,31 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent, PointerEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
-import { DRAG_PX } from '../app/click-off';
 import { useHoverFn } from '../app/hover';
+import { useGraphViewport } from '../app/useGraphViewport';
 import { useAsync, useElementSize } from '../app/hooks';
 import type { CgNode } from '../data/types';
 import { NODE_H } from '../data/layout';
 import type { PlacedNode } from '../data/layout';
 import { fmtCount, fmtDuration } from '../util/format';
 import { edgeAnchors, edgeKey, edgePath, showViaLabel } from '../view/graph-edges';
-import {
-  ZOOM_STEP,
-  centerOn,
-  detailAt,
-  fitViewport,
-  focusViewport,
-  isInView,
-  panBy,
-  percent,
-  zoomAt,
-} from '../view/graph-viewport';
-import type { Viewport } from '../view/graph-viewport';
+import { ZOOM_STEP, detailAt, percent } from '../view/graph-viewport';
 import { Hint } from './Hint';
 import { Legend } from './Legend';
 import { Switch } from './Switch';
-
-const PAN_KEY_PX = 60;
 
 const ORIGIN_VAR = [
   '--c-origin-you',
@@ -43,18 +29,6 @@ export function CallGraph() {
   const [all, setAll] = useState(false);
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
   const box = useElementSize(boxEl);
-  const [view, setView] = useState<Viewport>({ k: 1, x: 0, y: 0 });
-  const [seen, setSeen] = useState({ layout: '', sel: '', size: '' });
-  // Once the user zooms or pans, a resize no longer re-fits the graph.
-  const [moved, setMoved] = useState(false);
-  // The buttons and keys ease the view; the wheel and dragging follow the pointer 1:1.
-  const [easing, setEasing] = useState(false);
-  const viewRef = useRef(view);
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  const justDragged = useRef(false);
-  useEffect(() => {
-    viewRef.current = view;
-  });
   const revealIds = snap.options.reveal;
   const reveal = (ids: number[]): void =>
     dispatch({
@@ -77,106 +51,17 @@ export function CallGraph() {
 
   const selBox = selFn === null ? undefined : pos.get(selFn);
 
-  // Place the graph: fit it when a new layout arrives (centred on the selection when there is
-  // one), and pan to the selection when it moves out of sight. State is adjusted while rendering.
-  const layoutKey = res
-    ? `${res.layout.width}x${res.layout.height}:${res.layout.nodes.length}`
-    : '';
-  const sizeKey = `${Math.round(box.w / 24)}x${Math.round(box.h / 24)}`;
-  if (
-    res &&
-    box.w > 0 &&
-    (seen.layout !== layoutKey || seen.sel !== String(selFn) || seen.size !== sizeKey)
-  ) {
-    setSeen({ layout: layoutKey, sel: String(selFn), size: sizeKey });
-    const content = { w: res.layout.width, h: res.layout.height };
-    const fresh = seen.layout !== layoutKey || seen.size === '';
-    const resized = seen.size !== sizeKey && !moved;
-    if (fresh || resized) {
-      setView(selBox ? focusViewport(content, selBox, box) : fitViewport(content, box));
-    } else if (selBox && !isInView(view, selBox, box)) {
-      setView(centerOn(view, selBox, box));
-    }
-  }
-
-  // Wheel and trackpad zoom toward the cursor. A native listener: React's wheel handler is
-  // passive and could not stop the page from scrolling.
-  useEffect(() => {
-    if (!boxEl) return;
-    const onWheel = (e: WheelEvent): void => {
-      e.preventDefault();
-      const rect = boxEl.getBoundingClientRect();
-      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
-      setMoved(true);
-      setEasing(false);
-      setView(zoomAt(viewRef.current, factor, e.clientX - rect.left, e.clientY - rect.top));
-    };
-    boxEl.addEventListener('wheel', onWheel, { passive: false });
-    return () => boxEl.removeEventListener('wheel', onWheel);
-  }, [boxEl]);
-
-  const zoomBy = (factor: number): void => {
-    setMoved(true);
-    setEasing(true);
-    setView(zoomAt(view, factor, box.w / 2, box.h / 2));
-  };
-  const fit = (): void => {
-    setMoved(false);
-    setEasing(true);
-    if (res) setView(fitViewport({ w: res.layout.width, h: res.layout.height }, box));
-  };
-  const actual = (): void => {
-    setMoved(true);
-    setEasing(true);
-    setView(zoomAt(view, 1 / view.k, box.w / 2, box.h / 2));
-  };
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
-    const move = (dx: number, dy: number): void => {
-      e.preventDefault();
-      setMoved(true);
-      setEasing(false);
-      setView(panBy(view, dx, dy));
-    };
-    if (e.key === '+' || e.key === '=') {
-      e.preventDefault();
-      zoomBy(ZOOM_STEP);
-    } else if (e.key === '-' || e.key === '_') {
-      e.preventDefault();
-      zoomBy(1 / ZOOM_STEP);
-    } else if (e.key === '0') {
-      e.preventDefault();
-      actual();
-    } else if (e.key === 'ArrowLeft') move(PAN_KEY_PX, 0);
-    else if (e.key === 'ArrowRight') move(-PAN_KEY_PX, 0);
-    else if (e.key === 'ArrowUp') move(0, PAN_KEY_PX);
-    else if (e.key === 'ArrowDown') move(0, -PAN_KEY_PX);
-  };
-
-  // Dragging pans. The pointer is captured only once it has moved, so plain clicks still reach
-  // the nodes underneath.
-  const onPointerDown = (e: PointerEvent<HTMLDivElement>): void => {
-    if (e.button !== 0) return;
-    drag.current = { x: e.clientX, y: e.clientY, moved: false };
-  };
-  const onPointerMove = (e: PointerEvent<HTMLDivElement>): void => {
-    const d = drag.current;
-    if (!d) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    if (!d.moved && Math.hypot(dx, dy) < DRAG_PX) return;
-    if (!d.moved) e.currentTarget.setPointerCapture(e.pointerId);
-    d.moved = true;
-    setMoved(true);
-    setEasing(false);
-    d.x = e.clientX;
-    d.y = e.clientY;
-    setView(panBy(viewRef.current, dx, dy));
-  };
-  const endDrag = (): void => {
-    justDragged.current = drag.current?.moved === true;
-    drag.current = null;
-  };
+  const { view, easing, zoomBy, fit, actual, handlers } = useGraphViewport({
+    boxEl,
+    box,
+    layout: res && {
+      w: res.layout.width,
+      h: res.layout.height,
+      nodeCount: res.layout.nodes.length,
+    },
+    selFn,
+    selBox,
+  });
 
   if (q.error)
     return (
@@ -324,17 +209,7 @@ export function CallGraph() {
         tabIndex={0}
         role="group"
         aria-label={`Call graph with ${graph.nodes.length} functions. Scroll to zoom, drag to pan, plus and minus to zoom, 0 for 100%, arrows to pan.`}
-        onKeyDown={onKeyDown}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onClickCapture={(e) => {
-          if (justDragged.current) {
-            justDragged.current = false;
-            e.stopPropagation();
-          }
-        }}
+        {...handlers}
       >
         <div className="cg-plot">
           <div
