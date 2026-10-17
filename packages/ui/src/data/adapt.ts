@@ -15,7 +15,14 @@ import {
   waterfallForRun,
   waterfallForTask,
 } from '@pacesjs/engine';
-import type { ExecutionModel, FlameLayout, ModelDiff, OriginId, Track } from '@pacesjs/engine';
+import type {
+  ExecutionModel,
+  FlameLayout,
+  ModelDiff,
+  OriginId,
+  Track,
+  Waterfall,
+} from '@pacesjs/engine';
 import { cgLocation, cgSubtitle } from './call-graph-label';
 import { fileLine, locationOf, nameOrAnon, trackOrder } from './scope';
 import type { Scoped } from './scope';
@@ -75,6 +82,45 @@ export interface WaterfallRequest {
 }
 
 /**
+ * One engine row as the UI's row, times relative to `t0`. `shift` is how far the rows hang below the
+ * engine's root: 1 when the task itself is row 0 (every id, depth and parent moves down by one).
+ */
+function toWaterfallRow(
+  s: Scoped,
+  r: Waterfall['rows'][number],
+  t0: number,
+  shift: 0 | 1,
+): WaterfallRow {
+  const call = r.kind === 'call';
+  const fn = call ? s.out(r.fn) : -1;
+  const info = fn >= 0 ? s.info(fn) : null;
+  return {
+    id: r.id + shift,
+    kind: r.kind,
+    fn,
+    path: call ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
+    name: info ? nameOrAnon(info.name) : r.label,
+    loc: info ? locationOf(info) : '',
+    origin: info ? info.origin : Origin.Idle,
+    start: r.start - t0,
+    end: r.end - t0,
+    depth: r.depth + shift,
+    parent: shift === 1 && r.parent < 0 ? 0 : r.parent + shift,
+    hasChildren: false,
+    critical: r.critical,
+    belowPrecision: r.hatched,
+    share: r.share,
+    resumed: r.resumed,
+    summaryTasks: r.summaryTasks,
+    selfUs: r.selfUs,
+  };
+}
+
+function markParents(rows: WaterfallRow[]): void {
+  for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
+}
+
+/**
  * Engine waterfall rows with the task itself as row 0 (the engine's first row is the first frame
  * of the task), every other row one level deeper. Wait rows hang off the task row.
  */
@@ -93,31 +139,8 @@ export function waterfallData(
     // The default: the whole logical execution from the entry script, continuations stitched.
     const wf = waterfallForRun(model, s.trackIndex, { ...opts, transforms: s.view.stack });
     const t0 = wf.start;
-    const rows: WaterfallRow[] = wf.rows.map((r) => {
-      const fn = r.kind === 'call' ? s.out(r.fn) : -1;
-      const info = fn >= 0 ? s.info(fn) : null;
-      return {
-        id: r.id,
-        kind: r.kind,
-        fn,
-        path: r.kind === 'call' ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
-        name: info ? nameOrAnon(info.name) : r.label,
-        loc: info ? locationOf(info) : '',
-        origin: info ? info.origin : Origin.Idle,
-        start: r.start - t0,
-        end: r.end - t0,
-        depth: r.depth,
-        parent: r.parent,
-        hasChildren: false,
-        critical: r.critical,
-        belowPrecision: r.hatched,
-        share: r.share,
-        resumed: r.resumed,
-        summaryTasks: r.summaryTasks,
-        selfUs: r.selfUs,
-      };
-    });
-    for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
+    const rows = wf.rows.map((r) => toWaterfallRow(s, r, t0, 0));
+    markParents(rows);
     return {
       mode,
       taskIndex: -1,
@@ -165,31 +188,8 @@ export function waterfallData(
       selfUs: 0,
     },
   ];
-  for (const r of wf.rows) {
-    const call = r.kind === 'call';
-    const info = call ? s.info(s.out(r.fn)) : null;
-    rows.push({
-      id: r.id + 1,
-      kind: r.kind,
-      fn: call ? s.out(r.fn) : -1,
-      path: call ? nodePath(s.view.tree, r.node).map((f) => s.out(f)) : [],
-      name: info ? nameOrAnon(info.name) : r.label,
-      loc: info ? locationOf(info) : '',
-      origin: info ? info.origin : Origin.Idle,
-      start: r.start - t0,
-      end: r.end - t0,
-      depth: r.depth + 1,
-      parent: r.parent < 0 ? 0 : r.parent + 1,
-      hasChildren: false,
-      critical: r.critical,
-      belowPrecision: r.hatched,
-      share: r.share,
-      resumed: r.resumed,
-      summaryTasks: r.summaryTasks,
-      selfUs: r.selfUs,
-    });
-  }
-  for (const r of rows) if (r.parent >= 0) (rows[r.parent] as WaterfallRow).hasChildren = true;
+  for (const r of wf.rows) rows.push(toWaterfallRow(s, r, t0, 1));
+  markParents(rows);
   return {
     mode,
     taskIndex: task,
