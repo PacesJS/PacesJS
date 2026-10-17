@@ -1,6 +1,7 @@
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import type { RelatedRow } from '../data/types';
+import { showInView } from '../state/show-in';
 import { originColor, originInfo } from '../theme/origin';
 import {
   CLEAR_SELECTION,
@@ -205,21 +206,13 @@ export function DetailsDrawer() {
         ) : null}
         <span className={`origin-pill${user ? '' : ' is-other'}`}>{info.label}</span>
         <div className="details-actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() =>
-              dispatch({ type: 'go', patch: { view: jumpTo, selection: { kind: 'fn', fn } } })
-            }
-          >
+          <button type="button" className="btn" onClick={() => dispatch(showInView(jumpTo, fn))}>
             {jump}
           </button>
           <button
             type="button"
             className="btn"
-            onClick={() =>
-              dispatch({ type: 'go', patch: { view: 'functions', selection: { kind: 'fn', fn } } })
-            }
+            onClick={() => dispatch(showInView('functions', fn))}
           >
             Show callers
           </button>

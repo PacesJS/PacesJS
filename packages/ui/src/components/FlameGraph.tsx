@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
+import { showInView } from '../state/show-in';
+import type { ViewId } from '../state/types';
 import { originInfo } from '../theme/origin';
 import { fmtDuration, fmtRange, fmtShare } from '../util/format';
 import { roundedRectPath } from '../view/draw-shapes';
@@ -16,6 +18,12 @@ interface MenuState {
   y: number;
   fn: number;
 }
+
+const SHOW_IN: Array<{ view: ViewId; label: string }> = [
+  { view: 'waterfall', label: 'Show in waterfall' },
+  { view: 'functions', label: 'Show callers' },
+  { view: 'callgraph', label: 'Show in call graph' },
+];
 
 export function FlameGraph() {
   const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, state, openDock } =
@@ -358,48 +366,20 @@ export function FlameGraph() {
                 onClose={() => setMenu(null)}
                 style={{ left: menu.x, top: menu.y, minWidth: 200 }}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    dispatch({
-                      type: 'go',
-                      patch: { view: 'waterfall', selection: { kind: 'fn', fn: menu.fn } },
-                    });
-                    setMenu(null);
-                  }}
-                >
-                  Show in waterfall
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    dispatch({
-                      type: 'go',
-                      patch: { view: 'functions', selection: { kind: 'fn', fn: menu.fn } },
-                    });
-                    setMenu(null);
-                  }}
-                >
-                  Show callers
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    dispatch({
-                      type: 'go',
-                      patch: { view: 'callgraph', selection: { kind: 'fn', fn: menu.fn } },
-                    });
-                    setMenu(null);
-                  }}
-                >
-                  Show in call graph
-                </button>
+                {SHOW_IN.map((item) => (
+                  <button
+                    key={item.view}
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      dispatch(showInView(item.view, menu.fn));
+                      setMenu(null);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
                 <button
                   type="button"
                   role="menuitem"

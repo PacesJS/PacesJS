@@ -1,5 +1,6 @@
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
+import { showInView } from '../state/show-in';
 import { fmtDuration, fmtShare } from '../util/format';
 
 const LIMIT = 5;
@@ -33,8 +34,7 @@ export function HotPaths() {
                 aria-label={`Open hot path ${tail.join(' to ')} in the flame graph`}
                 onClick={() =>
                   dispatch({
-                    type: 'go',
-                    patch: { view: 'flame', selection: { kind: 'fn', fn: last } },
+                    ...showInView('flame', last),
                     options: { zoomPath: p.fns, zoom: [] },
                   })
                 }
