@@ -291,3 +291,33 @@ export function initialCollapsed(
   for (const r of rows) if (r.hasChildren && !open.has(r.id)) closed.add(r.id);
   return closed;
 }
+
+/**
+ * The collapsed set after the rows or the selection changed: a fresh result opens along the chain to
+ * the target's hottest function and closes the rest; a selected row keeps its ancestors open. Null when
+ * the set stays as it is.
+ */
+export function reconcileCollapsed(i: {
+  rows: readonly WaterfallRow[];
+  folded: Folded | null;
+  /** The folded result is new since the last reconcile. */
+  fresh: boolean;
+  criticalRows: readonly number[];
+  evidence: ReadonlySet<number>;
+  selectedRowId: number | null;
+  collapsed: ReadonlySet<number>;
+}): ReadonlySet<number> | null {
+  const base: ReadonlySet<number> =
+    i.fresh && i.folded
+      ? initialCollapsed(i.folded.rows, i.criticalRows, i.folded.folds, i.evidence)
+      : i.collapsed;
+  const byId = new Map(i.rows.map((r) => [r.id, r]));
+  const open = new Set<number>();
+  if (i.selectedRowId !== null) {
+    for (let p = byId.get(i.selectedRowId)?.parent ?? -1; p !== -1; p = byId.get(p)?.parent ?? -1) {
+      open.add(p);
+    }
+  }
+  const next = new Set([...base].filter((id) => !open.has(id)));
+  return i.fresh || next.size !== i.collapsed.size ? next : null;
+}

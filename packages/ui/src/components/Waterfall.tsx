@@ -22,7 +22,7 @@ import {
   zoomWindow,
 } from '../view/waterfall-geometry';
 import type { TimeWindow } from '../view/waterfall-geometry';
-import { foldRows, hotTargetPath, initialCollapsed } from '../view/waterfall-fold';
+import { foldRows, hotTargetPath, reconcileCollapsed } from '../view/waterfall-fold';
 import {
   BADGE_DEPTH,
   FOCUS_DEPTH,
@@ -30,7 +30,9 @@ import {
   indentFor,
   middleEllipsis,
 } from '../view/waterfall-indent';
-import { barDetails, durLabel, rowLocation, samePath, tipStyle } from '../view/waterfall-labels';
+import { rowFacts, selectedRowIdOf } from '../view/waterfall-facts';
+import { waterfallKeyAction } from '../view/waterfall-keys';
+import { barDetails, durLabel, rowLocation, tipStyle } from '../view/waterfall-labels';
 import { visibleRows } from '../view/waterfall-rows';
 import type { WaterfallSort } from '../view/waterfall-rows';
 import { ColumnResizer } from './ColumnResizer';
@@ -133,23 +135,7 @@ export function Waterfall() {
     [data, auto, hiding, minDurUs, foldLabel],
   );
   const rows = useMemo(() => folded?.rows ?? [], [folded]);
-  // Per call: CPU time (its own and its callees', never the awaiting between its segments) and how many direct callees the minimum duration hides under it.
-  const rowFacts = useMemo(() => {
-    const cpu = new Map<number, number>();
-    const members = new Map<number, number>();
-    for (const r of rows) members.set(r.parent, (members.get(r.parent) ?? 0) + 1);
-    const hidden = new Map<number, number>();
-    for (let i = rows.length - 1; i >= 0; i--) {
-      const r = rows[i] as WaterfallRow;
-      const mine = (cpu.get(r.id) ?? 0) + r.selfUs;
-      cpu.set(r.id, mine);
-      if (r.parent !== -1) cpu.set(r.parent, (cpu.get(r.parent) ?? 0) + mine);
-      if (r.kind === 'fold' && r.fold === 'small') {
-        hidden.set(r.parent, (hidden.get(r.parent) ?? 0) + (members.get(r.id) ?? 0));
-      }
-    }
-    return { cpu, hidden };
-  }, [rows]);
+  const facts = useMemo(() => rowFacts(rows), [rows]);
 
   const visible = useMemo(
     () => visibleRows(rows, collapsed, pathOnly && data ? data.criticalRows : null),
@@ -159,20 +145,10 @@ export function Waterfall() {
   const slice = visible.slice(from, to);
 
   const sel = snap.selection;
-  const selectedRowId = useMemo((): number | null => {
-    if (!data) return null;
-    const hit = (r: WaterfallRow): boolean => {
-      if (sel.kind === 'node') return r.kind === 'call' && samePath(sel.path, r.path);
-      if (sel.kind === 'task') return r.kind === 'task' && sel.track === data.trackId;
-      if (sel.kind === 'fn') return r.kind === 'call' && r.fn === sel.fn;
-      return false;
-    };
-    if (sel.kind === 'node' && sel.row !== undefined) {
-      const exact = rows.find((r) => r.id === sel.row);
-      if (exact && hit(exact)) return exact.id;
-    }
-    return rows.find(hit)?.id ?? null;
-  }, [data, rows, sel]);
+  const selectedRowId = useMemo(
+    () => (data ? selectedRowIdOf(rows, sel, data.trackId) : null),
+    [data, rows, sel],
+  );
 
   // Each new result opens along the chain to the target's hottest function and closes the rest;
   // a selected row keeps its ancestors open. A newly selected row opens the ancestors that hide
@@ -180,20 +156,16 @@ export function Waterfall() {
   const [seenData, setSeenData] = useState<typeof folded>(null);
   const [seenRow, setSeenRow] = useState<number | null>(null);
   if ((data && folded && folded !== seenData) || selectedRowId !== seenRow) {
-    const fresh = folded !== seenData && data && folded;
-    const base: ReadonlySet<number> =
-      fresh && data && folded
-        ? initialCollapsed(folded.rows, data.criticalRows, folded.folds, evidence)
-        : collapsed;
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    const open = new Set<number>();
-    if (selectedRowId !== null) {
-      for (let p = byId.get(selectedRowId)?.parent ?? -1; p !== -1; p = byId.get(p)?.parent ?? -1) {
-        open.add(p);
-      }
-    }
-    const next = new Set([...base].filter((id) => !open.has(id)));
-    if (fresh || next.size !== collapsed.size) setCollapsed(next);
+    const next = reconcileCollapsed({
+      rows,
+      folded,
+      fresh: folded !== seenData && Boolean(data && folded),
+      criticalRows: data?.criticalRows ?? [],
+      evidence,
+      selectedRowId,
+      collapsed,
+    });
+    if (next) setCollapsed(next);
     setSeenData(folded);
     setSeenRow(selectedRowId);
   }
@@ -343,45 +315,13 @@ export function Waterfall() {
   };
 
   const move = (e: KeyboardEvent<HTMLDivElement>): void => {
-    const idx = visible.findIndex((ri) => (rows[ri] as WaterfallRow).id === selectedRowId);
-    const cur = idx >= 0 ? (rows[visible[idx] as number] as WaterfallRow) : null;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const next =
-        idx < 0
-          ? 0
-          : Math.max(0, Math.min(visible.length - 1, idx + (e.key === 'ArrowDown' ? 1 : -1)));
-      const r = rows[visible[next] as number];
-      if (r) selectRow(r);
-    } else if (e.key === 'ArrowLeft' && cur) {
-      e.preventDefault();
-      if (cur.hasChildren && !collapsed.has(cur.id)) setCollapsed(new Set([...collapsed, cur.id]));
-      else {
-        for (let k = idx - 1; k >= 0; k--) {
-          const pr = rows[visible[k] as number] as WaterfallRow;
-          if (pr.depth < cur.depth) {
-            selectRow(pr);
-            break;
-          }
-        }
-      }
-    } else if (e.key === 'ArrowRight' && cur) {
-      e.preventDefault();
-      if (collapsed.has(cur.id)) {
-        const n = new Set(collapsed);
-        n.delete(cur.id);
-        setCollapsed(n);
-      } else {
-        const nxt = rows[visible[idx + 1] as number];
-        if (nxt && nxt.depth > cur.depth) selectRow(nxt);
-      }
-    } else if (e.key === 'Enter' && cur) {
-      e.preventDefault();
-      openDock();
-    } else if (e.key === 'Backspace') {
-      e.preventDefault();
-      dispatch({ type: 'back' });
-    }
+    const action = waterfallKeyAction(e.key, { visible, rows, collapsed, selectedRowId });
+    if (!action) return;
+    e.preventDefault();
+    if (action.type === 'select') selectRow(action.row);
+    else if (action.type === 'collapse') setCollapsed(action.collapsed);
+    else if (action.type === 'open-dock') openDock();
+    else if (action.type === 'back') dispatch({ type: 'back' });
   };
 
   const onWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
@@ -684,7 +624,7 @@ export function Waterfall() {
                 const label = middleEllipsis(r.name, Math.max(room, 24), (t) =>
                   measureText(t, nameFont),
                 );
-                const hiddenKids = rowFacts.hidden.get(r.id) ?? 0;
+                const hiddenKids = facts.hidden.get(r.id) ?? 0;
                 const hiddenNote =
                   hiddenKids > 0
                     ? `${hiddenKids} ${hiddenKids === 1 ? 'callee' : 'callees'} under ${foldLabel} hidden`
@@ -698,7 +638,7 @@ export function Waterfall() {
                   .filter(Boolean)
                   .join(' · ');
                 const details = barDetails(r, threshold, data.mode === 'run' ? 'run' : 'task', {
-                  cpuUs: rowFacts.cpu.get(r.id) ?? 0,
+                  cpuUs: facts.cpu.get(r.id) ?? 0,
                 });
                 const rect = barRect(r.start, r.end, window, bar.x0, bar.x1);
                 const barBox = details && !rect.hidden ? rect : null;
