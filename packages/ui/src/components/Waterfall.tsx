@@ -3,25 +3,18 @@ import type { CSSProperties, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { focusTransform } from '../state/focus';
 import { useApp } from '../app/context';
+import { useBarTooltip } from '../app/useBarTooltip';
+import { useTimeWindow } from '../app/useTimeWindow';
 import { measureText, useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
 import type { WaterfallRow } from '../data/types';
 import type { WfColumns } from '../state/prefs';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtAxis, fmtDuration, fmtShare } from '../util/format';
 import { drawBar } from '../view/draw-bars';
-import { clamp, niceTicks } from '../view/scale';
+import { niceTicks } from '../view/scale';
 import { MIN_BAR_PX, fitCallWidth, fitNumericWidth, gridTemplate } from '../view/waterfall-columns';
 import type { ColumnKey } from '../view/waterfall-columns';
-import {
-  WF,
-  barColumn,
-  barRect,
-  labelFitsBar,
-  panWindow,
-  visibleSlice,
-  zoomWindow,
-} from '../view/waterfall-geometry';
-import type { TimeWindow } from '../view/waterfall-geometry';
+import { WF, barColumn, barRect, labelFitsBar, visibleSlice } from '../view/waterfall-geometry';
 import { foldRows, hotTargetPath, reconcileCollapsed } from '../view/waterfall-fold';
 import {
   BADGE_DEPTH,
@@ -73,8 +66,6 @@ const MIN_DURATIONS: Array<{ us: number; label: string }> = [
   { us: 20_000, label: '20 ms' },
 ];
 
-const TIP_DELAY_MS = 150;
-
 export function Waterfall() {
   const { client, scope, scopeKey, snap, state, dispatch, selection, select, summary, openDock } =
     useApp();
@@ -91,16 +82,8 @@ export function Waterfall() {
 
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
   const [hoverRow, setHoverRow] = useState<number | null>(null);
-  // The bar tooltip waits a moment so passing over bars does not flicker.
-  const [tip, setTip] = useState<{ text: string; x: number; y: number; top: number } | null>(null);
-  const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hideTip = (): void => {
-    if (tipTimer.current !== null) globalThis.clearTimeout(tipTimer.current);
-    tipTimer.current = null;
-    setTip(null);
-  };
+  const { tip, show: showTip, hide: hideTip } = useBarTooltip();
   const [liveCols, setLiveCols] = useState<WfColumns | null>(null);
-  const [win, setWin] = useState<{ key: string; w: TimeWindow } | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [rowsEl, setRowsEl] = useState<HTMLDivElement | null>(null);
@@ -110,7 +93,12 @@ export function Waterfall() {
 
   const taskKey = data ? `${data.trackId}:${data.mode}:${data.taskIndex}` : '';
   const [showSmall, setShowSmall] = useState(false);
-  const window = win && win.key === taskKey ? win.w : { start: 0, end: data?.taskUs ?? 1 };
+  const {
+    window,
+    reset: resetWindow,
+    onWheel,
+    onPanStart,
+  } = useTimeWindow({ taskKey, taskUs: data?.taskUs ?? 1, rowsEl, cols });
   const evidence = useMemo(
     () => new Set(summary.findings.flatMap((f) => f.evidence)),
     [summary.findings],
@@ -324,16 +312,6 @@ export function Waterfall() {
     else if (action.type === 'back') dispatch({ type: 'back' });
   };
 
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
-    if (!(e.ctrlKey || e.metaKey)) return;
-    e.preventDefault();
-    const rect = rowsEl?.getBoundingClientRect();
-    if (!rect) return;
-    const col = barColumn(rect.width, cols);
-    const anchor = clamp((e.clientX - rect.left - col.x0) / (col.x1 - col.x0), 0, 1);
-    setWin({ key: taskKey, w: zoomWindow(window, total, anchor, e.deltaY > 0 ? 1.25 : 0.8) });
-  };
-
   const winStartPct = (window.start / total) * 100;
   const winWidthPct = ((window.end - window.start) / total) * 100;
   const order = SORTS.find((s) => s.value === wfSort)?.label.toLowerCase() ?? 'time order';
@@ -491,7 +469,7 @@ export function Waterfall() {
               className="wf-minimap"
               data-keeps-selection
               aria-hidden="true"
-              onDoubleClick={() => setWin(null)}
+              onDoubleClick={resetWindow}
             >
               <canvas ref={miniRef} />
               <div
@@ -567,23 +545,7 @@ export function Waterfall() {
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
             onKeyDown={move}
             onWheel={onWheel}
-            onPointerDown={(e) => {
-              if (e.button !== 0 || !e.shiftKey) return;
-              const start = e.clientX;
-              const w0 = window;
-              const rect = rowsEl?.getBoundingClientRect();
-              if (!rect) return;
-              const col = barColumn(rect.width, cols);
-              const usPerPx = (w0.end - w0.start) / (col.x1 - col.x0);
-              const onMove = (ev: PointerEvent): void =>
-                setWin({ key: taskKey, w: panWindow(w0, total, -(ev.clientX - start) * usPerPx) });
-              const onUp = (): void => {
-                document.removeEventListener('pointermove', onMove);
-                document.removeEventListener('pointerup', onUp);
-              };
-              document.addEventListener('pointermove', onMove);
-              document.addEventListener('pointerup', onUp);
-            }}
+            onPointerDown={onPanStart}
           >
             <div ref={setRowsEl} className="wf-rows" style={{ height: visible.length * WF.rowH }}>
               <canvas
@@ -733,19 +695,7 @@ export function Waterfall() {
                         className="wf-bar-hit"
                         aria-hidden="true"
                         style={{ left: barBox.x, width: barBox.w, top: WF.barTop, height: WF.barH }}
-                        onPointerEnter={(e) => {
-                          const el = e.currentTarget;
-                          hideTip();
-                          tipTimer.current = globalThis.setTimeout(() => {
-                            const b = el.getBoundingClientRect();
-                            setTip({
-                              text: details,
-                              x: b.left + b.width / 2,
-                              y: b.bottom,
-                              top: b.top,
-                            });
-                          }, TIP_DELAY_MS);
-                        }}
+                        onPointerEnter={(e) => showTip(e.currentTarget, details)}
                         onPointerLeave={hideTip}
                       />
                     ) : null}
