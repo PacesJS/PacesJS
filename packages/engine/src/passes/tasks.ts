@@ -76,9 +76,14 @@ function basename(path: string): string {
   return i < 0 ? path : path.slice(i + 1);
 }
 
-export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
-  const { tree, samples, spans, functions, requests } = input;
-  const strings = ctx.strings.strings;
+interface Names {
+  nameOf: (fn: number) => string;
+  fileOf: (fn: number) => string;
+  /** The name, or `(anonymous in <file>)` for an anonymous function. */
+  display: (fn: number) => string;
+}
+
+function namesOf(functions: TaskFunctions, strings: string[]): Names {
   const nameOf = (fn: number): string => strings[functions.name[fn] ?? 0] ?? '';
   const fileOf = (fn: number): string => strings[functions.file[fn] ?? 0] ?? '';
   const display = (fn: number): string => {
@@ -87,22 +92,37 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
     const file = basename(fileOf(fn));
     return file ? `(anonymous in ${file})` : '(anonymous)';
   };
+  return { nameOf, fileOf, display };
+}
 
-  // The function of each node's ancestor directly under the root.
+/** The function of each node's ancestor directly under the root. */
+function entryOfNodes(tree: CallTree): Int32Array {
   const entryOf = new Int32Array(tree.length).fill(-1);
   for (let n = 1; n < tree.length; n++) {
     const p = tree.parent[n] ?? 0;
     entryOf[n] = p === 0 ? (tree.fn[n] ?? 0) : (entryOf[p] ?? -1);
   }
+  return entryOf;
+}
 
+interface Segments {
+  /** Sample index range of each task: [startIdx, endIdx). */
+  startIdx: number[];
+  endIdx: number[];
+  /** The request each task ran in (-1 for none) and its entry function. */
+  taskReq: number[];
+  taskEntry: number[];
+}
+
+/** Cuts the samples into tasks: at idle, at a change of entry frame, and at the edges of a request. */
+function findSegments(input: TaskInput, names: Names): Segments {
+  const { tree, samples, functions, requests } = input;
+  const entryOf = entryOfNodes(tree);
   const reqCount = requests.time.length;
   const active: number[] = [];
   let nextReq = 0;
 
-  const startIdx: number[] = [];
-  const endIdx: number[] = [];
-  const taskReq: number[] = [];
-  const taskEntry: number[] = [];
+  const seg: Segments = { startIdx: [], endIdx: [], taskReq: [], taskEntry: [] };
   let open = false;
   let curEntry = -1;
   let curReq = -1;
@@ -110,10 +130,10 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
   let last = 0;
 
   const close = (): void => {
-    startIdx.push(first);
-    endIdx.push(last + 1);
-    taskReq.push(curReq);
-    taskEntry.push(curEntry);
+    seg.startIdx.push(first);
+    seg.endIdx.push(last + 1);
+    seg.taskReq.push(curReq);
+    seg.taskEntry.push(curEntry);
     open = false;
   };
 
@@ -132,7 +152,7 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
       if (open) close();
       continue;
     }
-    const neutral = entry < 0 || entryOrigin === Origin.Gc || nameOf(entry) === '(program)';
+    const neutral = entry < 0 || entryOrigin === Origin.Gc || names.nameOf(entry) === '(program)';
     if (neutral) {
       if (open) last = i;
       continue;
@@ -147,6 +167,69 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
     last = i;
   }
   if (open) close();
+  return seg;
+}
+
+/** Module evaluation can run under a microtask (ESM), so look a few frames down as well. */
+function isStartup(input: TaskInput, names: Names, sampleIndex: number, file: string): boolean {
+  const { tree, samples } = input;
+  if (MAIN_FILE_PREFIXES.some((p) => file.startsWith(p))) return true;
+  let chain = 0;
+  const stackTop: number[] = [];
+  for (let n = samples.node[sampleIndex] ?? 0; n > 0; n = tree.parent[n] ?? 0) stackTop.push(n);
+  stackTop.reverse();
+  for (const n of stackTop) {
+    if (chain++ >= 5) break;
+    const f = names.fileOf(tree.fn[n] ?? 0);
+    if (MAIN_FILE_PREFIXES.some((p) => f.startsWith(p))) return true;
+  }
+  return false;
+}
+
+function kindOfTask(
+  input: TaskInput,
+  names: Names,
+  firstSample: number,
+  entry: number,
+  inRequest: boolean,
+): TaskKindId {
+  const entryName = names.nameOf(entry);
+  if (inRequest) return TaskKind.Request;
+  if (TIMER_ENTRIES.has(entryName)) return TaskKind.Timer;
+  if (IMMEDIATE_ENTRIES.has(entryName)) return TaskKind.Immediate;
+  if (isStartup(input, names, firstSample, names.fileOf(entry))) return TaskKind.Main;
+  if (MICROTASK_ENTRIES.has(entryName)) return TaskKind.Microtask;
+  if (IO_ENTRIES.has(entryName)) return TaskKind.Io;
+  return TaskKind.Other;
+}
+
+/**
+ * First meaningful frame of a task: the shallowest user frame that is not plumbing, else the shallowest
+ * non-plumbing dependency frame, else the entry frame itself.
+ */
+function subjectOf(input: TaskInput, a: number, b: number, entry: number): number {
+  const { tree, samples, functions } = input;
+  let meaningful = -1;
+  let fallback = -1;
+  const scan = Math.min(b, a + 300);
+  for (let i = a; i < scan && meaningful < 0; i++) {
+    for (let n = samples.node[i] ?? 0; n > 0; n = tree.parent[n] ?? 0) {
+      const fn = tree.fn[n] ?? 0;
+      if ((functions.plumbing[fn] ?? 0) === 1) continue;
+      const o = functions.origin[fn] ?? 0;
+      if (o === Origin.User) meaningful = fn;
+      else if (o === Origin.Dependency || o === Origin.Framework) fallback = fn;
+    }
+    if (meaningful < 0 && fallback >= 0 && i >= a + 20) break;
+  }
+  return meaningful >= 0 ? meaningful : fallback >= 0 ? fallback : entry;
+}
+
+export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
+  const { tree, samples, spans, functions, requests } = input;
+  const strings = ctx.strings.strings;
+  const names = namesOf(functions, strings);
+  const { startIdx, endIdx, taskReq, taskEntry } = findSegments(input, names);
 
   const length = startIdx.length;
   const start = new Float64Array(length);
@@ -172,49 +255,11 @@ export function segmentTasks(input: TaskInput, ctx: PassContext): TaskResult {
     spanEnd[k] = lowerBound(spans.start, end[k] ?? 0);
 
     const entry = taskEntry[k] ?? 0;
-    const entryName = nameOf(entry);
-    const entryFile = fileOf(entry);
-    // Module evaluation can run under a microtask (ESM), so look a few frames down as well.
-    const isStartup = (sampleIndex: number, file: string): boolean => {
-      if (MAIN_FILE_PREFIXES.some((p) => file.startsWith(p))) return true;
-      let chain = 0;
-      const stackTop: number[] = [];
-      for (let n = samples.node[sampleIndex] ?? 0; n > 0; n = tree.parent[n] ?? 0) stackTop.push(n);
-      stackTop.reverse();
-      for (const n of stackTop) {
-        if (chain++ >= 5) break;
-        const f = fileOf(tree.fn[n] ?? 0);
-        if (MAIN_FILE_PREFIXES.some((p) => f.startsWith(p))) return true;
-      }
-      return false;
-    };
-    let taskKind: TaskKindId = TaskKind.Other;
-    if ((taskReq[k] ?? -1) >= 0) taskKind = TaskKind.Request;
-    else if (TIMER_ENTRIES.has(entryName)) taskKind = TaskKind.Timer;
-    else if (IMMEDIATE_ENTRIES.has(entryName)) taskKind = TaskKind.Immediate;
-    else if (isStartup(a, entryFile)) taskKind = TaskKind.Main;
-    else if (MICROTASK_ENTRIES.has(entryName)) taskKind = TaskKind.Microtask;
-    else if (IO_ENTRIES.has(entryName)) taskKind = TaskKind.Io;
+    const taskKind = kindOfTask(input, names, a, entry, (taskReq[k] ?? -1) >= 0);
     kind[k] = taskKind;
 
-    // First meaningful frame: the shallowest user frame that is not plumbing, else the shallowest
-    // non-plumbing dependency frame, else the entry frame itself.
-    let meaningful = -1;
-    let fallback = -1;
-    const scan = Math.min(b, a + 300);
-    for (let i = a; i < scan && meaningful < 0; i++) {
-      for (let n = samples.node[i] ?? 0; n > 0; n = tree.parent[n] ?? 0) {
-        const fn = tree.fn[n] ?? 0;
-        if ((functions.plumbing[fn] ?? 0) === 1) continue;
-        const o = functions.origin[fn] ?? 0;
-        if (o === Origin.User) meaningful = fn;
-        else if (o === Origin.Dependency || o === Origin.Framework) fallback = fn;
-      }
-      if (meaningful < 0 && fallback >= 0 && i >= a + 20) break;
-    }
-    const subject = meaningful >= 0 ? meaningful : fallback >= 0 ? fallback : entry;
     // Entry kind prefix plus the first frame of the target's own code.
-    const what = display(subject);
+    const what = names.display(subjectOf(input, a, b, entry));
     const text =
       taskKind === TaskKind.Request
         ? `request · ${strings[requests.label[taskReq[k] ?? 0] ?? 0] ?? ''}`
