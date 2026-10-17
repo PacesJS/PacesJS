@@ -221,9 +221,16 @@ export function sampleLabel(selfUs: number, precisionUs: number): string {
 }
 
 /** Tooltip for a line's gutter: why a faint bar is approximate, and where V8 put rolled-up time. */
-export function gutterTitle(selfUs: number, precisionUs: number, from: readonly number[]): string {
+export function gutterTitle(
+  selfUs: number,
+  precisionUs: number,
+  from: readonly number[],
+  across = '',
+): string {
   if (selfUs <= 0) return '';
   const parts: string[] = [];
+  // The bar is a sum over every call of the function, a handful of samples at most.
+  if (across) parts.push(`${sampleLabel(selfUs, precisionUs)} ${across}.`);
   if (isLowConfidence(selfUs, precisionUs)) {
     parts.push(
       `About ${sampleLabel(selfUs, precisionUs)}: below the measurement precision, so the time on this line is approximate.`,

@@ -30,6 +30,7 @@ export const QUERY_NAMES: readonly QueryName[] = [
   'sandwich',
   'callGraph',
   'source',
+  'callAt',
   'outline',
   'hotPaths',
   'hidden',

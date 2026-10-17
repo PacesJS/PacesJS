@@ -9,6 +9,7 @@ import {
   initialCollapsed,
 } from '../../src/view/waterfall-fold';
 import { visibleRows } from '../../src/view/waterfall-rows';
+import type { WaterfallRow } from '../../src/data/types';
 import { fixtureModel, ordersModel } from '../helpers/real-model';
 
 const model = fixtureModel('eslint-cli');
@@ -130,27 +131,48 @@ describe('first screen', () => {
   });
 });
 
-describe('the opening chain on a stitched CLI run', () => {
-  const wrapped = fixtureModel('eslint-cli-wrapped');
-  const wq = createQueries(wrapped);
-  const wscope = { ...scope, track: wrapped.tracks[wrapped.primaryTrack]?.id ?? '' };
-  const wrun = wq.waterfall(wscope, -1, { sort: 'time', minDurUs: 0 });
-  const wfolded = foldRows(wrun?.rows ?? [], options);
-
-  it('leads to the work the target does, not to its hottest sampled line', () => {
-    const names = (hotTargetPath(wfolded.rows) ?? []).map(
-      (id) => wfolded.rows.find((r) => r.id === id)?.name,
-    );
-    expect(names).toContain('lintFiles');
+describe('the opening chain follows CPU time, not the clock', () => {
+  const row = (
+    id: number,
+    parent: number,
+    depth: number,
+    name: string,
+    startMs: number,
+    endMs: number,
+    selfMs: number,
+  ): WaterfallRow => ({
+    id,
+    kind: 'call',
+    fn: id,
+    path: [id],
+    name,
+    loc: '',
+    origin: 0,
+    start: startMs * 1000,
+    end: endMs * 1000,
+    depth,
+    parent,
+    hasChildren: false,
+    critical: false,
+    belowPrecision: false,
+    share: 0,
+    resumed: false,
+    summaryTasks: [],
+    selfUs: selfMs * 1000,
   });
 
-  it('shows that work on the first screen with the bootstrap folded away', () => {
-    const closed = initialCollapsed(wfolded.rows, wrun?.criticalRows ?? [], wfolded.folds);
-    const names = visibleRows(wfolded.rows, closed)
-      .slice(0, 30)
-      .map((i) => wfolded.rows[i]?.name);
-    expect(names).toContain('lintFiles');
-    expect(names).not.toContain('prepareMainThreadExecution');
+  // `waits` spans 1300 ms on the clock but only runs 5 ms; `works` is the real work.
+  const rows = [
+    row(0, -1, 0, 'entry', 0, 1400, 1),
+    row(1, 0, 1, 'waits', 0, 1300, 1),
+    row(2, 1, 2, 'waitsChild', 0, 4, 4),
+    row(3, 0, 1, 'works', 1300, 1400, 5),
+    row(4, 3, 2, 'workHard', 1300, 1390, 90),
+  ];
+
+  it('opens the chain with the most CPU time, not the widest on the clock', () => {
+    const names = (hotTargetPath(rows) ?? []).map((id) => rows.find((r) => r.id === id)?.name);
+    expect(names).toEqual(['entry', 'works', 'workHard']);
   });
 });
 

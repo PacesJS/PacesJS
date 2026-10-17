@@ -161,9 +161,15 @@ test.describe('very deep call chains', () => {
   });
 
   test('deep rows say how deep they are and offer to focus there', async ({ page }) => {
+    // Levels 9 to 12 carry a badge; deeper rows turn it into the Focus here button.
+    await expect(
+      rowsOf(page)
+        .filter({ has: page.locator('span.wf-depth') })
+        .first(),
+    ).toContainText(/⋯ \d+/);
     const deep = rowsOf(page)
-      .filter({ has: page.locator('.wf-depth') })
-      .last();
+      .filter({ has: page.getByRole('button', { name: /Focus here/ }) })
+      .first();
     await expect(deep.locator('.wf-depth')).toHaveText(/^⋯ \d+$/);
     const focus = deep.getByRole('button', { name: /Focus here/ });
     await expect(focus).toBeVisible();

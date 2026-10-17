@@ -83,14 +83,35 @@ function durLabel(r: WaterfallRow, threshold = '2 ms'): string {
   return fmtDuration(r.end - r.start, { decimals: 1 });
 }
 
-/** What a bar says when you point at it: how long, how much of the whole, and when. */
-function barDetails(r: WaterfallRow, threshold: string, whole: string): string {
+/** Waiting shorter than this is not worth a row of its own wording. */
+const MIN_AWAIT_US = 1000;
+/** A call spends this share of its extent not running before it counts as awaiting. */
+const AWAIT_SHARE = 0.1;
+
+/** CPU time of a row against its elapsed extent, for calls that await (or resume after one). */
+interface Elapsed {
+  cpuUs: number;
+}
+
+/**
+ * What a bar says when you point at it: how long, how much of the whole, and when. A call that
+ * awaits spans wall-clock time, so it says how much of that was CPU and how much was waiting.
+ */
+function barDetails(r: WaterfallRow, threshold: string, whole: string, elapsed?: Elapsed): string {
   if (r.kind === 'wait') return `idle ${fmtDuration(r.end - r.start, { decimals: 1 })}`;
   if (r.kind === 'fold' && r.fold === 'small') return '';
   const span = `${(r.start / 1000).toFixed(1)}–${(r.end / 1000).toFixed(1)} ms`;
-  const lead = r.belowPrecision
-    ? `< ${threshold}, below sampling precision`
-    : durLabel(r, threshold);
+  const dur = r.end - r.start;
+  let lead: string;
+  if (r.belowPrecision) lead = `< ${threshold}, below sampling precision`;
+  else if (
+    elapsed &&
+    r.kind === 'call' &&
+    dur - elapsed.cpuUs >= Math.max(MIN_AWAIT_US, AWAIT_SHARE * dur)
+  ) {
+    const waiting = Math.max(0, dur - elapsed.cpuUs);
+    lead = `elapsed ${fmtDuration(dur, { approx: false, decimals: 1 })} (CPU ${fmtDuration(elapsed.cpuUs, { decimals: 1 })}, ${fmtDuration(waiting, { decimals: 0 })} awaiting)`;
+  } else lead = durLabel(r, threshold);
   return `${lead} · ${fmtShare(r.share)} of the ${whole} · ${span}`;
 }
 
@@ -190,8 +211,10 @@ export function Waterfall() {
   const tasksQ = useAsync(() => client.tasks(scope), `tasks:${scopeKey}`);
   const { wfSort, minDurUs, pathOnly } = snap.options;
   const wfQ = useAsync(
-    () => client.waterfall(scope, task, { sort: wfSort, minDurUs }),
-    `wf:${scopeKey}:${task}:${wfSort}:${minDurUs}`,
+    // The engine keeps every row; the Min duration picker folds them here, so a row whose callees
+    // are all too short still has its chevron and a summary row to open.
+    () => client.waterfall(scope, task, { sort: wfSort, minDurUs: -1 }),
+    `wf:${scopeKey}:${task}:${wfSort}`,
   );
   const data = wfQ.data;
 
@@ -221,22 +244,43 @@ export function Waterfall() {
     () => new Set(summary.findings.flatMap((f) => f.evidence)),
     [summary.findings],
   );
-  const threshold = fmtDuration(2 * summary.precisionUs, { approx: false, decimals: 1 });
   const auto = minDurUs < 0;
+  const threshold = fmtDuration(2 * summary.precisionUs, { approx: false, decimals: 1 });
+  // What the fold rows call the cut-off: the precision, or the picked minimum duration.
+  const foldLabel = auto ? threshold : fmtDuration(minDurUs, { approx: false, decimals: 0 });
+  const hiding = auto || minDurUs > 0;
   // Presentation folds (tiny rows, Node bootstrap) over the engine's rows; nothing is dropped.
   const folded = useMemo(
     () =>
       data
         ? foldRows(data.rows, {
-            hideSmall: auto,
-            bootstrap: auto && data.mode === 'run',
-            threshold,
+            hideSmall: hiding,
+            bootstrap: hiding && data.mode === 'run',
+            ...(auto ? {} : { minUs: minDurUs }),
+            threshold: foldLabel,
             keep: new Set(),
           })
         : null,
-    [data, auto, threshold],
+    [data, auto, hiding, minDurUs, foldLabel],
   );
   const rows = useMemo(() => folded?.rows ?? [], [folded]);
+  // Per call: CPU time (its own and its callees', never the awaiting between its segments) and how many direct callees the minimum duration hides under it.
+  const rowFacts = useMemo(() => {
+    const cpu = new Map<number, number>();
+    const members = new Map<number, number>();
+    for (const r of rows) members.set(r.parent, (members.get(r.parent) ?? 0) + 1);
+    const hidden = new Map<number, number>();
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const r = rows[i] as WaterfallRow;
+      const mine = (cpu.get(r.id) ?? 0) + r.selfUs;
+      cpu.set(r.id, mine);
+      if (r.parent !== -1) cpu.set(r.parent, (cpu.get(r.parent) ?? 0) + mine);
+      if (r.kind === 'fold' && r.fold === 'small') {
+        hidden.set(r.parent, (hidden.get(r.parent) ?? 0) + (members.get(r.id) ?? 0));
+      }
+    }
+    return { cpu, hidden };
+  }, [rows]);
 
   const visible = useMemo(
     () => visibleRows(rows, collapsed, pathOnly && data ? data.criticalRows : null),
@@ -264,10 +308,10 @@ export function Waterfall() {
   // Each new result opens along the chain to the target's hottest function and closes the rest;
   // a selected row keeps its ancestors open. A newly selected row opens the ancestors that hide
   // it. (State is adjusted while rendering.)
-  const [seenData, setSeenData] = useState<typeof data>(undefined);
+  const [seenData, setSeenData] = useState<typeof folded>(null);
   const [seenRow, setSeenRow] = useState<number | null>(null);
-  if ((data && folded && data !== seenData) || selectedRowId !== seenRow) {
-    const fresh = data !== seenData && data && folded;
+  if ((data && folded && folded !== seenData) || selectedRowId !== seenRow) {
+    const fresh = folded !== seenData && data && folded;
     const base: ReadonlySet<number> =
       fresh && data && folded
         ? initialCollapsed(folded.rows, data.criticalRows, folded.folds, evidence)
@@ -281,7 +325,7 @@ export function Waterfall() {
     }
     const next = new Set([...base].filter((id) => !open.has(id)));
     if (fresh || next.size !== collapsed.size) setCollapsed(next);
-    setSeenData(data);
+    setSeenData(folded);
     setSeenRow(selectedRowId);
   }
 
@@ -609,9 +653,9 @@ export function Waterfall() {
             </select>
           </div>
         </div>
-        {auto && folded && folded.hiddenSmall > 0 ? (
+        {hiding && folded && folded.hiddenSmall > 0 ? (
           <span className="filter-summary" role="status">
-            Hiding rows under {threshold} ({folded.hiddenSmall})
+            Hiding rows under {foldLabel} ({folded.hiddenSmall})
             <button
               type="button"
               className="filter-reset"
@@ -675,7 +719,10 @@ export function Waterfall() {
                 </span>
               ))}
             </div>
-            <div className="caps wf-col-right wf-head-cell">
+            <div
+              className="caps wf-col-right wf-head-cell"
+              title="Elapsed time of the call (includes awaiting)"
+            >
               <ColumnResizer
                 column="time"
                 label="Time"
@@ -768,14 +815,22 @@ export function Waterfall() {
                 const label = middleEllipsis(r.name, Math.max(room, 24), (t) =>
                   measureText(t, nameFont),
                 );
+                const hiddenKids = rowFacts.hidden.get(r.id) ?? 0;
+                const hiddenNote =
+                  hiddenKids > 0
+                    ? `${hiddenKids} ${hiddenKids === 1 ? 'callee' : 'callees'} under ${foldLabel} hidden`
+                    : '';
                 const nameTitle = [
                   r.name,
                   where,
                   r.depth > BADGE_DEPTH ? `level ${r.depth + 1}` : '',
+                  hiddenNote,
                 ]
                   .filter(Boolean)
                   .join(' · ');
-                const details = barDetails(r, threshold, data.mode === 'run' ? 'run' : 'task');
+                const details = barDetails(r, threshold, data.mode === 'run' ? 'run' : 'task', {
+                  cpuUs: rowFacts.cpu.get(r.id) ?? 0,
+                });
                 const rect = barRect(r.start, r.end, window, bar.x0, bar.x1);
                 const barBox = details && !rect.hidden ? rect : null;
                 return (
@@ -785,7 +840,9 @@ export function Waterfall() {
                     aria-level={r.depth + 1}
                     aria-expanded={r.hasChildren ? !collapsed.has(r.id) : undefined}
                     aria-selected={isSel}
-                    aria-description={details || undefined}
+                    aria-description={
+                      [details, hiddenNote].filter(Boolean).join(' · ') || undefined
+                    }
                     aria-label={`${r.name}, ${info.label}, ${durLabel(r, threshold)}, ${fmtShare(r.share)} of ${r.kind === 'task' ? 'itself' : 'task'}${r.critical ? ', critical path' : ''}`}
                     className={`wf-row${isSel ? ' is-selected' : ''}${hoverRow === r.id ? ' is-hover' : ''}${isLinked ? ' is-linked' : ''}`}
                     style={{ top: (from + k) * WF.rowH }}

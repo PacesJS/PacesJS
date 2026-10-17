@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import { useSource } from '../app/useSource';
@@ -76,10 +77,54 @@ interface SourceHeaderProps {
   source: SourceState;
   /** Tool buttons on the path row. */
   tools: ReactNode;
+  /** Switch between all calls and the selected call (only offered when a call is selected). */
+  onScope?: (mode: 'all' | 'call') => void;
+}
+
+/** What the totals line covers: every call of the function, then the selected call on top. */
+export function totalsLines(
+  source: SourceState,
+  name: string,
+): { call: string | null; all: string } {
+  const { details, call, calls } = source;
+  const all = details
+    ? `${calls > 0 ? `All ${fmtCount(calls)} calls` : 'All calls'} of ${name}: ${fmtDuration(details.totalUs)} total (CPU) · ${fmtDuration(details.selfUs)} self`
+    : ' ';
+  return {
+    call: call
+      ? `This call: ${fmtDuration(call.totalUs)} total (CPU) · ${fmtDuration(call.selfUs)} self`
+      : null,
+    all,
+  };
+}
+
+/** `All calls | This call`: which calls the callee chips cover. */
+function ScopeToggle({
+  mode,
+  onScope,
+}: {
+  mode: 'all' | 'call';
+  onScope: (mode: 'all' | 'call') => void;
+}) {
+  return (
+    <div className="scope-toggle" role="group" aria-label="Which calls the callee chips cover">
+      {(['all', 'call'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          className="scope-toggle-btn"
+          aria-pressed={mode === m}
+          onClick={() => onScope(m)}
+        >
+          {m === 'all' ? 'All calls' : 'This call'}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /** Path, function name, origin, `file:line`, totals, activity sparkline and "Open in editor". */
-export function SourceHeader({ source, tools }: SourceHeaderProps) {
+export function SourceHeader({ source, tools, onScope }: SourceHeaderProps) {
   const { host, snap, summary, selection } = useApp();
   const { info, details } = source;
   if (!info) return null;
@@ -89,6 +134,7 @@ export function SourceHeader({ source, tools }: SourceHeaderProps) {
   const peakIndex = info.spark.indexOf(Math.max(...info.spark));
   const peakSec = ((peakIndex + 0.5) / info.spark.length) * (info.durationUs / 1_000_000);
   const origin = details ? originInfo(details.origin) : null;
+  const totals = totalsLines(source, selection.name);
   return (
     <div className="source-head">
       <div className="source-file">
@@ -117,11 +163,11 @@ export function SourceHeader({ source, tools }: SourceHeaderProps) {
             {origin ? <span className="origin-pill is-other">{origin.label}</span> : null}
             {info.loc ? <code className="source-loc">{info.loc}</code> : null}
           </div>
-          <span className="source-totals">
-            {details
-              ? `${fmtDuration(details.totalUs)} total · ${fmtDuration(details.selfUs)} self · ${details.calls > 0 ? fmtCount(details.calls) : '—'} calls est.`
-              : ' '}
-          </span>
+          {totals.call ? <span className="source-totals is-call">{totals.call}</span> : null}
+          <span className="source-totals">{totals.all}</span>
+          {source.call && onScope ? (
+            <ScopeToggle mode={source.scopeMode} onScope={onScope} />
+          ) : null}
         </div>
         <div className="spark-wrap">
           <div
@@ -204,7 +250,12 @@ export function SourcePanel() {
     openDock,
     collapseDock,
   } = useApp();
-  const source = useSource({ whole: false });
+  // A call row defaults to its own call; a function (from a table, flame or the source) to all.
+  const [pick, setPick] = useState<{ key: string; mode: 'all' | 'call' } | null>(null);
+  const key = `${snap.selection.kind}:${selection.path?.join('.') ?? selection.fn}`;
+  const wantsCall = snap.selection.kind === 'node';
+  const mode = pick && pick.key === key ? pick.mode : wantsCall ? 'call' : 'all';
+  const source = useSource({ whole: false, mode });
   const { orientation, wrap } = state.prefs.dock;
   const { info, fn } = source;
 
@@ -294,7 +345,7 @@ export function SourcePanel() {
   const showCode = !source.reason || source.reason.showsText || source.lines.length > 0;
   return (
     <section key="panel" aria-label="Source" className="source card">
-      <SourceHeader source={source} tools={tools} />
+      <SourceHeader source={source} tools={tools} onScope={(m) => setPick({ key, mode: m })} />
       <ChangedBanner changed={source.changed} />
       <SourceReasonNote source={source} />
       {showCode ? (
@@ -303,8 +354,10 @@ export function SourcePanel() {
         <p className="source-empty">There is nothing to show for this function.</p>
       )}
       <p className="source-foot">
-        Bars = self time on each line, from V8 line ticks. Chips = time spent in the callee from
-        that line; select one to follow it.
+        Bars = self time on each line, from V8 line ticks, summed over{' '}
+        {source.acrossAll.replace('across ', '')}
+        (V8 records no ticks per call). Chips = time spent in the callee from that line,{' '}
+        {source.scopeMode === 'call' ? 'in this call' : source.acrossAll}; select one to follow it.
         {snap.options.line > 0 ? ` Opened at line ${snap.options.line}.` : ''}
       </p>
     </section>

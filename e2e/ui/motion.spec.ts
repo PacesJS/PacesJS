@@ -37,8 +37,9 @@ test.describe('motion tokens', () => {
 test.describe('with normal motion', () => {
   test('the dock slides: it has a non-zero transition', async ({ app }) => {
     await settled(app);
-    const d = seconds(await css(app, 'aside.dock', 'transition-duration'));
-    expect(Math.max(...d)).toBeGreaterThan(0);
+    await expect
+      .poll(async () => Math.max(...seconds(await css(app, 'aside.dock', 'transition-duration'))))
+      .toBeGreaterThan(0);
   });
 
   test('a popover fades in', async ({ app }) => {

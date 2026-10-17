@@ -32,6 +32,8 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
     definitionLine,
     chips,
     fn,
+    scopeMode,
+    acrossAll,
   } = source;
   const targetRef = useRef<HTMLLIElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +87,17 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                       : undefined
                 }
               >
-                <span className="source-gutter" title={gutterTitle(self, precisionUs, from)}>
+                <span
+                  className="source-gutter"
+                  title={gutterTitle(
+                    self,
+                    precisionUs,
+                    from,
+                    scopeMode === 'call'
+                      ? `${acrossAll}; per-call line ticks are not recorded`
+                      : acrossAll,
+                  )}
+                >
                   {l.n === hottest && self > 0 ? (
                     <span className="source-val">
                       {/* One sample's milliseconds are only the sampling interval: say what it is. */}
@@ -94,7 +106,7 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                   ) : null}
                   {self > 0 ? (
                     <span
-                      className={`source-bar${low ? ' is-faint' : ''}`}
+                      className={`source-bar${low || scopeMode === 'call' ? ' is-faint' : ''}`}
                       aria-hidden="true"
                       style={{ width: gutterWidth(self, maxSelf) }}
                     />
@@ -111,7 +123,7 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                     <button
                       type="button"
                       className="call-chip"
-                      title="Time spent in the callee, matched to this line by name"
+                      title={`Time spent in the callee ${scopeMode === 'call' ? 'in this call' : acrossAll}, matched to this line by name`}
                       onClick={() => chip.fn !== null && select({ kind: 'fn', fn: chip.fn })}
                     >
                       <span

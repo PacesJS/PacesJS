@@ -1756,3 +1756,43 @@
   outline: 1px solid color-mix(in srgb, var(--c-accent) 55%, transparent);
   outline-offset: -1px;
 }
+
+/* Which calls a number covers: one call, or every call of the function. */
+.scope-line {
+  margin: 0 0 var(--sp-6);
+  font-size: var(--fs-13);
+  line-height: var(--lh-18);
+  color: var(--c-muted);
+}
+
+.scope-line.is-call,
+.source-totals.is-call {
+  color: var(--c-ink);
+  font-weight: var(--fw-semi);
+}
+
+.scope-toggle {
+  display: inline-flex;
+  margin-top: var(--sp-6);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-chip);
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.scope-toggle-btn {
+  min-height: 28px;
+  padding: 0 var(--sp-12);
+  border: 0;
+  background: transparent;
+  color: var(--c-muted);
+  font: inherit;
+  font-size: var(--fs-12);
+  cursor: pointer;
+}
+
+.scope-toggle-btn[aria-pressed='true'] {
+  background: var(--c-accent-tint);
+  color: var(--c-ink);
+  font-weight: var(--fw-semi);
+}

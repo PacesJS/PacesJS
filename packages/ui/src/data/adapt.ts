@@ -1,6 +1,7 @@
 import {
   Origin,
   callGraph,
+  childrenOf,
   describeTasks,
   findNode,
   hotPaths,
@@ -19,6 +20,7 @@ import { locationOf, trackOrder } from './scope';
 import type { Scoped } from './scope';
 import type {
   CallGraphData,
+  CallNumbers,
   CgEdge,
   CgNode,
   Details,
@@ -392,6 +394,55 @@ export function functionsTable(
   return { rows: rows.map(toRow), totalFns: all.length, baseUs: base };
 }
 
+/**
+ * The functions `fn` calls directly, with their time under it, from the engine's callee tree.
+ * That tree merges the calls once, so the time of one callee never counts a recursive re-entry
+ * twice and can never be more than the function's own total.
+ */
+export function calleesOf(
+  model: ExecutionModel,
+  s: Scoped,
+  engineFn: number,
+): Array<{ fn: number; selfUs: number; totalUs: number }> {
+  const sw = sandwich(model, s.view, engineFn);
+  const out: Array<{ fn: number; selfUs: number; totalUs: number }> = [];
+  for (let i = 0; i < sw.callees.length; i++) {
+    if (sw.callees.depth[i] !== 2) continue;
+    out.push({
+      fn: sw.callees.fn[i] ?? 0,
+      selfUs: sw.callees.self[i] ?? 0,
+      totalUs: sw.callees.total[i] ?? 0,
+    });
+  }
+  return out.sort((a, b) => b.totalUs - a.totalUs || a.fn - b.fn);
+}
+
+/** The call node at `path` (UI ids from the root): its CPU time, self time and direct callees. */
+export function callAt(
+  model: ExecutionModel,
+  s: Scoped,
+  path: readonly number[],
+): CallNumbers | null {
+  const ids = path.map((f) => s.inn(f));
+  if (path.length === 0 || ids.some((f) => f < 0)) return null;
+  const tree = s.view.tree;
+  const node = findNode(tree, ids);
+  if (node <= 0) return null;
+  const byFn = new Map<number, number>();
+  for (const c of childrenOf(tree, node)) {
+    const f = tree.fn[c] ?? 0;
+    byFn.set(f, (byFn.get(f) ?? 0) + (tree.total[c] ?? 0));
+  }
+  const callees = [...byFn.entries()]
+    .map(([f, totalUs]) => {
+      const fn = s.out(f);
+      const info = s.info(fn);
+      return { fn, name: info.name || '(anonymous)', origin: info.origin, totalUs };
+    })
+    .sort((a, b) => b.totalUs - a.totalUs || a.fn - b.fn);
+  return { totalUs: tree.total[node] ?? 0, selfUs: tree.self[node] ?? 0, callees };
+}
+
 export function functionDetails(
   model: ExecutionModel,
   s: Scoped,
@@ -432,16 +483,18 @@ export function functionDetails(
       kind: 'caller',
     });
 
-  const calleeRows: RelatedRow[] = src.callSites.slice(0, 6).map((c) => {
-    const f = s.out(c.callee);
-    return {
-      fn: f,
-      name: s.info(f).name,
-      origin: s.info(f).origin,
-      frac: c.calleeUs / denom,
-      kind: 'callee',
-    };
-  });
+  const calleeRows: RelatedRow[] = calleesOf(model, s, engineFn)
+    .slice(0, 6)
+    .map((c) => {
+      const f = s.out(c.fn);
+      return {
+        fn: f,
+        name: s.info(f).name,
+        origin: s.info(f).origin,
+        frac: c.totalUs / denom,
+        kind: 'callee',
+      };
+    });
   calleeRows.push({ fn: null, name: 'self', origin: -1, frac: row.self / denom, kind: 'self' });
   calleeRows.sort((a, b) => b.frac - a.frac);
 
@@ -627,11 +680,11 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     loc: src.file ? (src.line > 0 ? `${src.file}:${src.line}` : src.file) : '',
     lineStatus: src.lineInfo.status,
     lineReason: src.lineInfo.reason,
-    calleeTime: src.calleeTime.map((c) => {
+    calleeTime: calleesOf(model, s, engineFn).map((c) => {
       const fn = s.out(c.fn);
       return {
         fn,
-        name: c.name || '(anonymous)',
+        name: s.info(fn).name || '(anonymous)',
         origin: s.info(fn).origin,
         selfUs: c.selfUs,
         totalUs: c.totalUs,

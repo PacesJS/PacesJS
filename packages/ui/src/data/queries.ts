@@ -3,6 +3,7 @@ import type { ExecutionModel, ModelDiff } from '@pacesjs/engine';
 import type { Selection } from '../state/types';
 import type { FunctionFilter } from './adapt';
 import {
+  callAt,
   callGraphData,
   egoNeighbourhood,
   fileOutline,
@@ -24,6 +25,7 @@ import { locationOf, modelCtx, scopeView, toEngineStack, trackIndexOf, trackOrde
 import type { Scoped } from './scope';
 import type {
   CallGraphData,
+  CallNumbers,
   CallGraphQuery,
   Details,
   FileOutline,
@@ -87,6 +89,8 @@ export interface Queries {
   sandwich(scope: Scope, fn: number): SandwichRow[];
   callGraph(scope: Scope, query: CallGraphQuery, expandedPackages: string[]): Promise<GraphResult>;
   source(scope: Scope, fn: number): SourceInfo | null;
+  /** The numbers of the call node at `path` (UI function ids from the root), or null. */
+  callAt(scope: Scope, path: number[]): CallNumbers | null;
   outline(scope: Scope, fn: number): FileOutline | null;
   /** The dominant call chains of the scope's track (engine `hotPaths`). */
   hotPaths(scope: Scope, limit: number): HotPathRow[];
@@ -237,6 +241,9 @@ export function createQueries(
     },
     source(scope, fn) {
       return sourceInfo(model, scoped(scope), fn);
+    },
+    callAt(scope, path) {
+      return callAt(model, scoped(scope), path);
     },
     outline(scope, fn) {
       return fileOutline(model, scoped(scope), fn);

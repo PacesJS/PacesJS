@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { useApp } from './context';
 import { useAsync } from './hooks';
-import type { Details, SourceInfo } from '../data/types';
+import type { CallNumbers, Details, SourceInfo } from '../data/types';
 import { matchCallSites } from '../view/call-sites';
 import type { CallSiteChip } from '../view/call-sites';
 import { lineWindow, rollUpToStatements } from '../view/source-lines';
 import { isHostLost } from '../host/http';
+import { fmtCount } from '../util/format';
 import { sourceReason } from '../view/source-reason';
 import type { SourceReason } from '../view/source-reason';
 
@@ -38,6 +39,14 @@ export interface SourceState {
   /** Callees by time, for functions whose own time is tiny. */
   callees: Array<{ fn: number | null; name: string; origin: number; us: number }>;
   chips: CallSiteChip[];
+  /** The numbers of the selected call node, when a call (not a function) is selected. */
+  call: CallNumbers | null;
+  /** What the callee chips and callee list cover: every call of the function, or the selected call. */
+  scopeMode: 'all' | 'call';
+  /** Estimated calls of the function, 0 when unknown. */
+  calls: number;
+  /** "across all ~34 calls": what the line bars and totals cover. */
+  acrossAll: string;
   reason: SourceReason | null;
   loading: boolean;
 }
@@ -45,10 +54,12 @@ export interface SourceState {
 interface Options {
   /** Show the whole file instead of a window around the function. */
   whole: boolean;
+  /** Which calls the callee chips cover; a function (no call) always means all. Default `all`. */
+  mode?: 'all' | 'call';
 }
 
 /** Everything the source dock and the Source view need for the selected function. */
-export function useSource({ whole }: Options): SourceState {
+export function useSource({ whole, mode = 'all' }: Options): SourceState {
   const { client, host, scope, scopeKey, snap, selection, summary } = useApp();
   const fn = selection.fn;
   const infoQ = useAsync(
@@ -59,6 +70,14 @@ export function useSource({ whole }: Options): SourceState {
     () => (fn === null ? Promise.resolve(null) : client.details(scope, fn)),
     `src-details:${scopeKey}:${fn}`,
   );
+  const path_ = selection.path;
+  const callKey = snap.selection.kind === 'node' && path_ ? path_.join('.') : '';
+  const callQ = useAsync(
+    () => (callKey && path_ ? client.callAt(scope, path_) : Promise.resolve(null)),
+    `call:${scopeKey}:${callKey}`,
+  );
+  const call = callKey ? (callQ.data ?? null) : null;
+  const scopeMode: 'all' | 'call' = mode === 'call' && call ? 'call' : 'all';
   const info = fn === null ? null : (infoQ.data ?? null);
   const details = fn === null ? null : (detailsQ.data ?? null);
   const path = info?.path ?? '';
@@ -104,28 +123,39 @@ export function useSource({ whole }: Options): SourceState {
   );
   // The highlight is always the definition; hot lines are only gutter bars. A jump moves the scroll.
   const targetLine = snap.options.line > 0 ? snap.options.line : definitionLine;
-  const callees = (info?.calleeTime ?? []).map((c) => ({
-    fn: c.fn,
-    name: c.name,
-    origin: c.origin,
-    us: c.totalUs,
-  }));
+  const callees =
+    scopeMode === 'call' && call
+      ? call.callees.map((c) => ({ fn: c.fn, name: c.name, origin: c.origin, us: c.totalUs }))
+      : (info?.calleeTime ?? []).map((c) => ({
+          fn: c.fn,
+          name: c.name,
+          origin: c.origin,
+          us: c.totalUs,
+        }));
 
   const chips = useMemo(() => {
     if (!details || allLines.length === 0) return [];
-    const callees = details.callees
-      .filter((c) => c.kind === 'callee')
-      .map((c) => ({
-        fn: c.fn,
-        name: c.name,
-        totalUs: c.frac * details.totalUs,
-        origin: c.origin,
-      }));
+    const shown =
+      scopeMode === 'call' && call
+        ? call.callees.map((c) => ({
+            fn: c.fn,
+            name: c.name,
+            totalUs: c.totalUs,
+            origin: c.origin,
+          }))
+        : details.callees
+            .filter((c) => c.kind === 'callee')
+            .map((c) => ({
+              fn: c.fn,
+              name: c.name,
+              totalUs: c.frac * details.totalUs,
+              origin: c.origin,
+            }));
     return matchCallSites(
       lines.map((l) => l.text),
-      callees,
+      shown,
     );
-  }, [allLines, details, lines]);
+  }, [allLines, details, lines, scopeMode, call]);
 
   const reason = info
     ? sourceReason({
@@ -158,6 +188,13 @@ export function useSource({ whole }: Options): SourceState {
     definitionLine,
     callees,
     chips,
+    call,
+    scopeMode,
+    calls: details?.calls ?? 0,
+    acrossAll:
+      details && details.calls > 0
+        ? `across all ${fmtCount(details.calls)} calls`
+        : 'across all calls',
     reason,
     loading: infoQ.loading || (path !== '' && textQ.loading),
   };

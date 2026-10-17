@@ -91,6 +91,12 @@ export function DetailsDrawer() {
     () => (fn === null ? Promise.resolve(null) : client.source(scope, fn)),
     `src-info:${scopeKey}:${fn}`,
   );
+  const nodePath = snap.selection.kind === 'node' ? selection.path : null;
+  const callQ = useAsync(
+    () => (nodePath ? client.callAt(scope, nodePath) : Promise.resolve(null)),
+    `details-call:${scopeKey}:${nodePath?.join('.') ?? ''}`,
+  );
+  const call = nodePath ? (callQ.data ?? null) : null;
   const d = fn === null ? null : detailsQ.data;
   const src = fn === null ? null : sourceQ.data;
   const trackLabel =
@@ -227,9 +233,17 @@ export function DetailsDrawer() {
           </button>
         </div>
       </div>
+      {call ? (
+        <p className="scope-line is-call">
+          This call: {fmtDuration(call.totalUs)} total (CPU) · {fmtDuration(call.selfUs)} self
+        </p>
+      ) : null}
+      <p className="scope-line">
+        {d.calls > 0 ? `All ${fmtCount(d.calls)} calls` : 'All calls'} of {d.name}
+      </p>
       <dl className="stat-grid">
         <div className="stat stat-big">
-          <dt>Total time</dt>
+          <dt>Total time (CPU)</dt>
           <dd>{fmtDuration(d.totalUs)}</dd>
         </div>
         <div className="stat">

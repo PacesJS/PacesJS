@@ -18,7 +18,12 @@ export interface FoldOptions {
   hideSmall: boolean;
   /** Fold the leading Node and native frames before the first user frame into "node bootstrap". */
   bootstrap: boolean;
-  /** Label of the precision threshold, e.g. "3.2 ms". */
+  /**
+   * An explicit minimum duration (the Min duration picker): calls shorter than this are folded,
+   * whatever their share. Without it the rule is measurement precision and a tiny share.
+   */
+  minUs?: number;
+  /** Label of the threshold, e.g. "3.2 ms". */
   threshold: string;
   /** Rows that must stay visible on their own (the selection). */
   keep: ReadonlySet<number>;
@@ -32,8 +37,10 @@ export interface Folded {
   hiddenSmall: number;
 }
 
-const isNoise = (r: WaterfallRow): boolean =>
-  r.kind === 'call' && r.belowPrecision && r.share < NOISE_SHARE && !r.critical;
+const isNoise = (r: WaterfallRow, minUs?: number): boolean =>
+  r.kind === 'call' &&
+  !r.critical &&
+  (minUs !== undefined ? r.end - r.start < minUs : r.belowPrecision && r.share < NOISE_SHARE);
 
 const isRuntime = (r: WaterfallRow): boolean =>
   r.kind === 'call' && !r.critical && (r.origin === Origin.Node || r.origin === Origin.Native);
@@ -138,7 +145,9 @@ export function foldRows(rows: readonly WaterfallRow[], o: FoldOptions): Folded 
       }
     }
     // Noise rows of one parent share a single fold, placed where the first of them ran.
-    const noise = o.hideSmall ? list.slice(i).filter((r) => isNoise(r) && !o.keep.has(r.id)) : [];
+    const noise = o.hideSmall
+      ? list.slice(i).filter((r) => isNoise(r, o.minUs) && !o.keep.has(r.id))
+      : [];
     let foldId = 0;
     while (i < list.length) {
       const r = list[i] as WaterfallRow;
@@ -179,8 +188,8 @@ const isLoader = (r: WaterfallRow): boolean => r.name.startsWith('require ▸');
 const FOLLOW_SHARE = 0.5;
 
 /**
- * The chain to open first, ending in the target's own work. A row's work is its time minus the
- * time spent loading modules under it; the chain starts at the row of your code with the most work
+ * The chain to open first, ending in the target's own work. A row's work is its CPU time minus the
+ * CPU time spent loading modules under it; the chain starts at the row of your code with the most work
  * (the entry root aside) and follows the heaviest child of your code while that child carries at
  * least half of it. Self time is not the guide: it is spread thin across a stitched run, and the
  * hottest single line is rarely where the work starts. `null` when there is no code of the
@@ -193,17 +202,27 @@ export function hotTargetPath(rows: readonly WaterfallRow[]): number[] | null {
     list.push(r);
     kids.set(r.parent, list);
   }
-  const dur = (r: WaterfallRow): number => r.end - r.start;
+  // CPU time of a row: its own time and everything under it. A row's extent on the clock also
+  // holds the awaiting between its segments, which is not work.
+  const cpu = new Map<number, number>();
+  const cpuOf = (r: WaterfallRow): number => {
+    const known = cpu.get(r.id);
+    if (known !== undefined) return known;
+    let t = r.selfUs;
+    for (const c of kids.get(r.id) ?? []) t += cpuOf(c);
+    cpu.set(r.id, t);
+    return t;
+  };
   const loading = new Map<number, number>();
   const loadingUnder = (r: WaterfallRow): number => {
     const known = loading.get(r.id);
     if (known !== undefined) return known;
     let t = 0;
-    for (const c of kids.get(r.id) ?? []) t += isLoader(c) ? dur(c) : loadingUnder(c);
+    for (const c of kids.get(r.id) ?? []) t += isLoader(c) ? cpuOf(c) : loadingUnder(c);
     loading.set(r.id, t);
     return t;
   };
-  const work = (r: WaterfallRow): number => dur(r) - loadingUnder(r);
+  const work = (r: WaterfallRow): number => cpuOf(r) - loadingUnder(r);
   const own = (r: WaterfallRow): boolean =>
     r.kind === 'call' && r.origin === Origin.User && !isLoader(r);
 

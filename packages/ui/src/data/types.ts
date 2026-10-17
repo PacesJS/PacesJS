@@ -221,6 +221,15 @@ export interface Details {
   callees: RelatedRow[];
 }
 
+/** The numbers of one call node of the tree (this call, not every call of its function). */
+export interface CallNumbers {
+  /** CPU time of the call: its own time and everything it called. */
+  totalUs: number;
+  selfUs: number;
+  /** What the call called directly, largest first. */
+  callees: Array<{ fn: number; name: string; origin: number; totalUs: number }>;
+}
+
 export interface SandwichRow {
   /** Negative = callers above, 0 = the function, positive = callees below. */
   level: number;
