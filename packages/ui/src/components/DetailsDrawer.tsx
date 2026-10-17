@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import type { RelatedRow } from '../data/types';
@@ -79,6 +80,16 @@ function SelectionBar() {
 }
 
 /** Numbers for the current selection: self, total, share, calls, origin, callers and callees. */
+/** The card every selection shows in the drawer; a new `key` remounts it, which cross-fades the content. */
+function DetailsSection({ children }: { children: ReactNode }) {
+  return (
+    <section aria-label="Selection details" className="details card" data-keeps-selection>
+      <SelectionBar />
+      {children}
+    </section>
+  );
+}
+
 export function DetailsDrawer() {
   const { client, host, scope, scopeKey, snap, selection, dispatch, summary, openDock } = useApp();
   const fn = selection.fn;
@@ -108,13 +119,7 @@ export function DetailsDrawer() {
   if (selection.task) {
     const t = selection.task;
     return (
-      <section
-        key={contentKey}
-        aria-label="Selection details"
-        className="details card"
-        data-keeps-selection
-      >
-        <SelectionBar />
+      <DetailsSection key={contentKey}>
         <div className="details-head">
           <span
             className="details-dot"
@@ -153,20 +158,14 @@ export function DetailsDrawer() {
             <dd>{t.durationUs > 50_000 ? 'Yes, a long task' : 'No'}</dd>
           </div>
         </dl>
-      </section>
+      </DetailsSection>
     );
   }
 
   if (!d || fn === null) {
     const range = snap.range;
     return (
-      <section
-        key={contentKey}
-        aria-label="Selection details"
-        className="details card"
-        data-keeps-selection
-      >
-        <SelectionBar />
+      <DetailsSection key={contentKey}>
         <h2 className="section-title">
           {range ? `Range ${fmtRange(range[0], range[1])}` : 'Nothing selected'}
         </h2>
@@ -175,7 +174,7 @@ export function DetailsDrawer() {
             ? `${fmtDuration(range[1] - range[0], { approx: false })} on ${trackLabel}. Select a function, call or task to see its numbers.`
             : 'Select a function, a call, a task or a time range to see its numbers here. Selection is shared by every view.'}
         </p>
-      </section>
+      </DetailsSection>
     );
   }
 
@@ -185,13 +184,7 @@ export function DetailsDrawer() {
   const jumpTo = snap.view === 'waterfall' ? 'flame' : 'waterfall';
 
   return (
-    <section
-      key={contentKey}
-      aria-label="Selection details"
-      className="details card"
-      data-keeps-selection
-    >
-      <SelectionBar />
+    <DetailsSection key={contentKey}>
       <div className="details-head">
         <span
           className="details-dot"
@@ -261,6 +254,6 @@ export function DetailsDrawer() {
         <RelatedList title="Callers" rows={d.callers} />
         <RelatedList title="Callees and self" rows={d.callees} />
       </div>
-    </section>
+    </DetailsSection>
   );
 }
