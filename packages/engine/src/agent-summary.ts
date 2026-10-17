@@ -109,15 +109,13 @@ export interface AgentSummary {
   warnings: string[];
 }
 
-export function buildAgentSummary(model: ExecutionModel): AgentSummary {
-  const where = (fn: FnId): SourceLocation => ({
-    name: functionName(model, fn) || '(anonymous)',
-    file: model.strings[model.functions.file[fn] ?? 0] ?? '',
-    line: model.functions.line[fn] ?? 0,
-  });
-  const busy = model.tracks.reduce((n, t) => n + (t.role === 'target' ? t.busyUs : 0), 0) || 1;
+type Where = (fn: FnId) => SourceLocation;
 
-  const findings: AgentFinding[] = model.findings.slice(0, 10).map((f) => {
+const isTargetTrack = (model: ExecutionModel, ti: number): boolean =>
+  model.tracks[ti]?.role === 'target';
+
+function findingsDigest(model: ExecutionModel, where: Where): AgentFinding[] {
+  return model.findings.slice(0, 10).map((f) => {
     const target = f.showMe.fn;
     return {
       kind: f.kind,
@@ -136,40 +134,30 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
       },
     };
   });
+}
 
-  // Function totals over the target's tracks (workers included, launcher processes left out).
-  const isTarget = (ti: number): boolean => model.tracks[ti]?.role === 'target';
+/** Function totals over the target's tracks (workers included, launcher processes left out). */
+function functionTotals(model: ExecutionModel): {
+  self: Map<FnId, number>;
+  total: Map<FnId, number>;
+} {
   const self = new Map<FnId, number>();
   const total = new Map<FnId, number>();
   model.tracks.forEach((t, ti) => {
-    if (!isTarget(ti)) return;
+    if (!isTargetTrack(model, ti)) return;
     t.fnIds.forEach((fn, i) => {
       self.set(fn, (self.get(fn) ?? 0) + (t.agg.fnSelf[i] ?? 0));
       total.set(fn, (total.get(fn) ?? 0) + (t.agg.fnTotal[i] ?? 0));
     });
   });
-  const real = (fn: FnId): boolean => {
-    const o = model.functions.origin[fn] ?? 0;
-    return o !== Origin.Idle && o !== Origin.Gc && functionName(model, fn) !== '(root)';
-  };
-  const describe = (fn: FnId, selfUs: number): AgentFunction => ({
-    ...where(fn),
-    origin: ORIGIN_NAMES[model.functions.origin[fn] ?? 0] ?? 'user',
-    pkg: model.strings[model.functions.pkg[fn] ?? 0] ?? '',
-    selfMs: ms(selfUs),
-    totalMs: ms(total.get(fn) ?? 0),
-    share: share(selfUs / busy),
-  });
-  const bySelf = [...self.entries()]
-    .filter(([fn, v]) => real(fn) && v > 0)
-    .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
-  const topSelf: AgentFunction[] = bySelf.slice(0, 25).map(([fn, v]) => describe(fn, v));
-  const topFunctions = topSelf.slice(0, 10);
+  return { self, total };
+}
 
-  // Hot paths: the dominant chains of each target track, ranked by total time.
+/** The dominant chains of each target track, ranked by total time. */
+function hotPathsDigest(model: ExecutionModel, where: Where): AgentHotPath[] {
   const chains: Array<{ track: number; us: number; path: AgentHotPath }> = [];
   model.tracks.forEach((t, ti) => {
-    if (!isTarget(ti)) return;
+    if (!isTargetTrack(model, ti)) return;
     for (const p of hotPaths(model, ti, { limit: 8 })) {
       chains.push({
         track: ti,
@@ -185,8 +173,15 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
     }
   });
   chains.sort((a, b) => b.us - a.us || a.track - b.track);
-  const hotPathList = chains.slice(0, 8).map((c) => c.path);
+  return chains.slice(0, 8).map((c) => c.path);
+}
 
+function packagesDigest(
+  model: ExecutionModel,
+  bySelf: Array<[FnId, number]>,
+  describe: (fn: FnId, selfUs: number) => AgentFunction,
+  busy: number,
+): AgentPackage[] {
   const targetPackages = new Set(model.target.packages);
   const pkgFns = new Map<string, Array<[FnId, number]>>();
   for (const [fn, v] of bySelf) {
@@ -196,23 +191,20 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
     if (list) list.push([fn, v]);
     else pkgFns.set(name, [[fn, v]]);
   }
-  const packages: AgentPackage[] = Array.from(
-    { length: Math.min(10, model.packages.length) },
-    (_, i) => {
-      const name = model.strings[model.packages.name[i] ?? 0] ?? '';
-      return {
-        name,
-        isTarget: targetPackages.has(name),
-        selfMs: ms(model.packages.self[i] ?? 0),
-        totalMs: ms(model.packages.total[i] ?? 0),
-        share: share((model.packages.total[i] ?? 0) / busy),
-        topFunctions: (pkgFns.get(name) ?? []).slice(0, 3).map(([fn, v]) => describe(fn, v)),
-      };
-    },
-  );
+  return Array.from({ length: Math.min(10, model.packages.length) }, (_, i) => {
+    const name = model.strings[model.packages.name[i] ?? 0] ?? '';
+    return {
+      name,
+      isTarget: targetPackages.has(name),
+      selfMs: ms(model.packages.self[i] ?? 0),
+      totalMs: ms(model.packages.total[i] ?? 0),
+      share: share((model.packages.total[i] ?? 0) / busy),
+      topFunctions: (pkgFns.get(name) ?? []).slice(0, 3).map(([fn, v]) => describe(fn, v)),
+    };
+  });
+}
 
-  const phases = phasesOf(model, busy);
-
+function taskStatsDigest(model: ExecutionModel): AgentSummary['taskStats'] {
   const durations: Record<string, number[]> = {};
   const longest: Array<{
     track: string;
@@ -250,6 +242,44 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
     };
   }
   longest.sort((a, b) => b.us - a.us || (a.track < b.track ? -1 : 1) || a.startMs - b.startMs);
+  return {
+    count: taskCount,
+    longTasks,
+    byKind,
+    longest: longest.slice(0, 5).map((l) => ({
+      track: l.track,
+      label: l.label,
+      startMs: l.startMs,
+      durationMs: l.durationMs,
+    })),
+  };
+}
+
+export function buildAgentSummary(model: ExecutionModel): AgentSummary {
+  const where: Where = (fn) => ({
+    name: functionName(model, fn) || '(anonymous)',
+    file: model.strings[model.functions.file[fn] ?? 0] ?? '',
+    line: model.functions.line[fn] ?? 0,
+  });
+  const busy = model.tracks.reduce((n, t) => n + (t.role === 'target' ? t.busyUs : 0), 0) || 1;
+
+  const { self, total } = functionTotals(model);
+  const real = (fn: FnId): boolean => {
+    const o = model.functions.origin[fn] ?? 0;
+    return o !== Origin.Idle && o !== Origin.Gc && functionName(model, fn) !== '(root)';
+  };
+  const describe = (fn: FnId, selfUs: number): AgentFunction => ({
+    ...where(fn),
+    origin: ORIGIN_NAMES[model.functions.origin[fn] ?? 0] ?? 'user',
+    pkg: model.strings[model.functions.pkg[fn] ?? 0] ?? '',
+    selfMs: ms(selfUs),
+    totalMs: ms(total.get(fn) ?? 0),
+    share: share(selfUs / busy),
+  });
+  const bySelf = [...self.entries()]
+    .filter(([fn, v]) => real(fn) && v > 0)
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  const topSelf: AgentFunction[] = bySelf.slice(0, 25).map(([fn, v]) => describe(fn, v));
 
   return {
     schemaVersion: 2,
@@ -274,24 +304,14 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
       busyMs: ms(t.busyUs),
       durationMs: ms(t.durationUs),
     })),
-    findings,
-    topFunctions,
+    findings: findingsDigest(model, where),
+    topFunctions: topSelf.slice(0, 10),
     topSelf,
-    hotPaths: hotPathList,
-    packages,
-    phases,
+    hotPaths: hotPathsDigest(model, where),
+    packages: packagesDigest(model, bySelf, describe, busy),
+    phases: phasesOf(model, busy),
     caveats: model.meta.warnings,
-    taskStats: {
-      count: taskCount,
-      longTasks,
-      byKind,
-      longest: longest.slice(0, 5).map((l) => ({
-        track: l.track,
-        label: l.label,
-        startMs: l.startMs,
-        durationMs: l.durationMs,
-      })),
-    },
+    taskStats: taskStatsDigest(model),
     warnings: model.meta.warnings.map((w) => w.summary),
   };
 }
