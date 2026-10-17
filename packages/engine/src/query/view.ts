@@ -6,6 +6,7 @@ import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
 import { stitchPlan } from './stitch.js';
 import type { FunctionInfo, Transform, TransformedView, ViewFnId } from './types.js';
+import { trackAt } from './track-at.js';
 
 interface Working {
   trackIndex: number;
@@ -460,9 +461,7 @@ export function applyTransforms(
   trackIndex: number,
   stack: readonly Transform[],
 ): TransformedView {
-  const track = model.tracks[trackIndex];
-  if (!track)
-    throw new Error(`No track at index ${trackIndex}; the model has ${model.tracks.length}.`);
+  const track = trackAt(model, trackIndex);
   let work: Working = {
     trackIndex,
     tree: track.callTree,

@@ -4,9 +4,10 @@
 // capture, same engine version), and identical on every invocation against it.
 
 import { Origin } from '../model.js';
-import type { ExecutionModel, FnId, OriginId, Track } from '../model.js';
+import type { ExecutionModel, FnId, OriginId } from '../model.js';
 import type { FunctionInfo, Transform, TransformedView } from './types.js';
 import { applyTransforms, describeFunction, nodePath } from './view.js';
+import { trackAt } from './track-at.js';
 
 export type TreeSort = 'total' | 'self' | 'time';
 
@@ -83,14 +84,6 @@ const SHOWN_PREFIX: Transform[] = [
 ];
 
 export const functionId = (fn: number): string => `f${fn}`;
-
-function trackAt(model: ExecutionModel, trackIndex: number): Track {
-  const track = model.tracks[trackIndex];
-  if (!track) {
-    throw new Error(`No track at index ${trackIndex}; the model has ${model.tracks.length}.`);
-  }
-  return track;
-}
 
 const nameOf = (model: ExecutionModel, fn: FnId): string =>
   model.strings[model.functions.name[fn] ?? 0] ?? '';

@@ -3,15 +3,14 @@
 import { Origin, TaskKind } from '../model.js';
 import type { ExecutionModel } from '../model.js';
 import type { TimelineLane, TimelineMarker, TimelineOptions, TimelineTaskBlock } from './types.js';
+import { trackAt } from './track-at.js';
 
 export function timelineLane(
   model: ExecutionModel,
   trackIndex: number,
   options: TimelineOptions = {},
 ): TimelineLane {
-  const track = model.tracks[trackIndex];
-  if (!track)
-    throw new Error(`No track at index ${trackIndex}; the model has ${model.tracks.length}.`);
+  const track = trackAt(model, trackIndex);
   const buckets = Math.max(1, options.buckets ?? 120);
   const start = options.start ?? 0;
   const end = options.end ?? Math.max(model.meta.durationUs, start + 1);

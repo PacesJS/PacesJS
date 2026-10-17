@@ -5,6 +5,7 @@ import type { ExecutionModel } from '../model.js';
 import { displayPath } from '../util/paths.js';
 import type { TaskDescriptor, TaskGroup } from './types.js';
 import { trivialTasks } from './waterfall.js';
+import { trackAt } from './track-at.js';
 
 const GROUP_ORDER: TaskGroup[] = [
   'Whole run',
@@ -35,10 +36,7 @@ function groupOf(kind: number, isEntry: boolean): TaskGroup {
 }
 
 export function describeTasks(model: ExecutionModel, trackIndex: number): TaskDescriptor[] {
-  const track = model.tracks[trackIndex];
-  if (!track) {
-    throw new Error(`No track at index ${trackIndex}; the model has ${model.tracks.length}.`);
-  }
+  const track = trackAt(model, trackIndex);
   const tasks = track.tasks;
   let entryTask = -1;
   for (let k = 0; k < tasks.length && entryTask < 0; k++) {

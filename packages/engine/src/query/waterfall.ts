@@ -15,6 +15,7 @@ import type {
 } from './types.js';
 import { applyTransforms, withoutInversion } from './view.js';
 import { lowerBound } from '../util/search.js';
+import { trackAt } from './track-at.js';
 
 const MAX_ASYNC_EDGES = 20;
 const RUNTIME_BLIPS = new Set(['(program)', '(garbage collector)', '(idle)']);
@@ -502,10 +503,7 @@ export function waterfallForRun(
   trackIndex: number,
   options: RunWaterfallOptions = {},
 ): Waterfall {
-  const track = model.tracks[trackIndex];
-  if (!track) {
-    throw new Error(`No track at index ${trackIndex}; the model has ${model.tracks.length}.`);
-  }
+  const track = trackAt(model, trackIndex);
   const built = applyTransforms(model, trackIndex, options.transforms ?? DEFAULT_TRANSFORMS);
   const full = viewFor(model, built, options);
   const origin = extendedOrigin(model, full);

@@ -3,7 +3,7 @@
 // hot paths which fold plumbing and idle (and optionally other origins) through the transform layer.
 
 import { Origin } from '../model.js';
-import type { ExecutionModel, FnId, OriginId, Track } from '../model.js';
+import type { ExecutionModel, FnId, OriginId } from '../model.js';
 import type {
   CallerNode,
   FunctionLocation,
@@ -13,6 +13,7 @@ import type {
   Transform,
 } from './types.js';
 import { applyTransforms } from './view.js';
+import { trackAt } from './track-at.js';
 
 const ALL_ORIGINS: OriginId[] = [
   Origin.User,
@@ -24,14 +25,6 @@ const ALL_ORIGINS: OriginId[] = [
   Origin.Gc,
 ];
 const MAX_CALLERS_PER_LEVEL = 8;
-
-function trackAt(model: ExecutionModel, trackIndex: number): Track {
-  const track = model.tracks[trackIndex];
-  if (!track) {
-    throw new Error(`No track at index ${trackIndex}; the model has ${model.tracks.length}.`);
-  }
-  return track;
-}
 
 function locate(model: ExecutionModel, fn: FnId): FunctionLocation {
   return {
