@@ -1,4 +1,4 @@
-import { ORIGIN_NAMES } from '@pacesjs/engine';
+import { ORIGIN_NAMES, functionName } from '@pacesjs/engine';
 import type { ExecutionModel, FnId, OriginId } from '@pacesjs/engine';
 
 export const originName = (o: number): string => ORIGIN_NAMES[o] ?? 'user';
@@ -18,7 +18,7 @@ export interface FnFacts {
 export function fnFacts(model: ExecutionModel, fn: FnId, slashes: boolean): FnFacts {
   const file = model.strings[model.functions.file[fn] ?? 0] ?? '';
   return {
-    name: model.strings[model.functions.name[fn] ?? 0] ?? '',
+    name: functionName(model, fn),
     file: slashes ? file.replaceAll('\\', '/') : file,
     line: model.functions.line[fn] ?? 0,
     pkg: model.strings[model.functions.pkg[fn] ?? 0] ?? '',

@@ -9,6 +9,7 @@ import {
   functionRows,
   functionSource,
   resolveSelector,
+  share,
 } from '@pacesjs/engine';
 import type {
   CallerNode,
@@ -33,7 +34,6 @@ import {
   painter,
   pctCol,
   place,
-  round3,
   shellArg,
   shortPath,
   timeCol,
@@ -358,7 +358,7 @@ function jsonRow(row: TreeRow): Record<string, unknown> {
     line: row.line,
     totalMs: round(row.totalUs / 1000),
     selfMs: round(row.selfUs / 1000),
-    share: round3(row.share),
+    share: share(row.share),
     collapsed: row.synthetic,
     ...(row.folded ? { folded: row.folded } : {}),
   };
@@ -545,7 +545,7 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
       line: r.line,
       selfMs: round(r.self / 1000),
       totalMs: round(r.total / 1000),
-      selfShare: round3(r.selfShare),
+      selfShare: share(r.selfShare),
       calls: r.calls,
     })),
   });
@@ -599,7 +599,7 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
       jsonLines.push({
         line: n,
         selfMs: t ? round(t.selfUs / 1000) : 0,
-        share: t ? round3(t.selfUs / selfSum) : 0,
+        share: t ? share(t.selfUs / selfSum) : 0,
         hot: hotSet.has(n),
         ...(text ? { code: text[n - 1] ?? '' } : {}),
       });

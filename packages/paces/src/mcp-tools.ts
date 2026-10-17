@@ -1,11 +1,17 @@
-import { ORIGIN_NAMES, callersOf, hotPaths, packageBreakdown } from '@pacesjs/engine';
+import {
+  ORIGIN_NAMES,
+  callersOf,
+  functionName,
+  hotPaths,
+  ms,
+  packageBreakdown,
+  share,
+} from '@pacesjs/engine';
 import type { CallerNode, ExecutionModel, FnId, Track } from '@pacesjs/engine';
 import type { AgentSummary } from './engine.js';
 import { fnFacts, originName } from './fn-facts.js';
 import type { McpTool } from './mcp.js';
-import { orAnon, round3 as share } from './report/format.js';
-
-const ms = (us: number): number => Math.round(us / 100) / 10;
+import { orAnon } from './report/format.js';
 
 class ToolInputError extends Error {}
 
@@ -95,7 +101,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
     const t = model.tracks[primary] as Track;
     const hits: Array<{ fn: FnId; total: number }> = [];
     t.fnIds.forEach((fn, i) => {
-      if (str_(model.functions.name[fn] ?? 0) !== name) return;
+      if (functionName(model, fn) !== name) return;
       if (file && !str_(model.functions.file[fn] ?? 0).includes(file)) return;
       hits.push({ fn, total: t.agg.fnTotal[i] ?? 0 });
     });
@@ -191,7 +197,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
         const rows = [...self.keys()]
           .filter((fn) => {
             const o = ORIGIN_NAMES[model.functions.origin[fn] ?? 0];
-            const name = str_(model.functions.name[fn] ?? 0);
+            const name = functionName(model, fn);
             if (o === 'idle' || o === 'gc' || name === '(root)') return false;
             if (origin && o !== origin) return false;
             return !pkg || str_(model.functions.pkg[fn] ?? 0) === pkg;
