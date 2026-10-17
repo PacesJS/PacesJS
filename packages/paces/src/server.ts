@@ -109,6 +109,19 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(parts).toString('utf8');
 }
 
+/** Parses a JSON request body; anything unreadable or oversize is answered with 400 here. */
+async function readJsonBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
+  try {
+    return { ok: true, value: JSON.parse(await readBody(req)) };
+  } catch {
+    json(res, 400, { error: 'invalid JSON body' });
+    return { ok: false };
+  }
+}
+
 function streamBytes(res: ServerResponse, bytes: Uint8Array): void {
   res.writeHead(200, {
     'content-type': 'application/octet-stream',
@@ -262,12 +275,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
     }
     if (p === '/api/source' && method === 'GET') return sourceApi(url, res);
     if (p === '/api/open-in-editor' && method === 'POST') {
-      let body: { file?: unknown; line?: unknown };
-      try {
-        body = JSON.parse(await readBody(req)) as typeof body;
-      } catch {
-        return json(res, 400, { error: 'invalid JSON body' });
-      }
+      const parsed = await readJsonBody(req, res);
+      if (!parsed.ok) return;
+      const body = parsed.value as { file?: unknown; line?: unknown };
       if (
         typeof body.file !== 'string' ||
         !Number.isInteger(body.line) ||
@@ -284,12 +294,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
     if (p === '/api/settings') {
       if (method === 'GET') return json(res, 200, readSettings(configDir));
       if (method === 'PUT') {
-        let body: unknown;
-        try {
-          body = JSON.parse(await readBody(req));
-        } catch {
-          return json(res, 400, { error: 'invalid JSON body' });
-        }
+        const parsed = await readJsonBody(req, res);
+        if (!parsed.ok) return;
+        const body = parsed.value;
         if (!body || typeof body !== 'object' || Array.isArray(body)) {
           return json(res, 400, { error: 'settings must be a JSON object' });
         }
