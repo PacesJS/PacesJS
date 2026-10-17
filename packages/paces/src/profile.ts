@@ -341,12 +341,13 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   }
 
   let windowEnd: Promise<'duration'> | undefined;
-  if (flags.duration) {
+  const { duration } = flags;
+  if (duration) {
     windowEnd = new Promise<'duration'>((resolve) => {
       const t = setTimeout(() => {
         broadcast('stop');
         Promise.race([allFlushed, after(5000)]).then(() => resolve('duration'));
-      }, flags.duration! * 1000);
+      }, duration * 1000);
       t.unref();
       void exited.then(() => clearTimeout(t));
     });
