@@ -2,6 +2,7 @@
 
 import type { EventTable, Samples } from '../model.js';
 import type { CdpProfile, RawCapture, RawTrack } from '../raw.js';
+import { depthsOf, subtreeEnds } from '../util/tree-columns.js';
 import { alignClock } from './clock.js';
 import type {
   AsyncRecords,
@@ -126,28 +127,20 @@ function buildTree(
   const length = order.length;
   const parent = Int32Array.from(parentOf);
   const frame = new Uint32Array(length);
-  const depth = new Uint16Array(length);
-  const subtreeEnd = new Uint32Array(length);
   const indexOfId = new Map<number, number>();
   for (let i = 0; i < length; i++) {
     const node = nodes[order[i] ?? 0];
     if (!node) continue;
     frame[i] = frameOf(node);
     indexOfId.set(node.id, i);
-    depth[i] = parent[i] === -1 ? 0 : (depth[parent[i] ?? 0] ?? 0) + 1;
-  }
-  for (let i = length - 1; i >= 0; i--) {
-    if ((subtreeEnd[i] ?? 0) < i + 1) subtreeEnd[i] = i + 1;
-    const p = parent[i] ?? -1;
-    if (p >= 0 && (subtreeEnd[p] ?? 0) < (subtreeEnd[i] ?? 0)) subtreeEnd[p] = subtreeEnd[i] ?? 0;
   }
   return {
     tree: {
       length,
       parent,
       frame,
-      depth,
-      subtreeEnd,
+      depth: depthsOf(parent),
+      subtreeEnd: subtreeEnds(parent),
       self: new Float64Array(length),
       total: new Float64Array(length),
       hits: new Uint32Array(length),

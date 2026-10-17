@@ -4,6 +4,7 @@
 
 import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
+import { depthsOf, subtreeEnds, totalsOf } from '../util/tree-columns.js';
 import { stitchPlan } from './stitch.js';
 import type { FunctionInfo, Transform, TransformedView, ViewFnId } from './types.js';
 import { trackAt } from './track-at.js';
@@ -182,9 +183,7 @@ function finish(
   selfTmp: Float64Array,
 ): Working {
   const m = parent.length;
-  const total = Float64Array.from(selfTmp);
-  for (let i = m - 1; i > 0; i--)
-    total[parent[i] ?? 0] = (total[parent[i] ?? 0] ?? 0) + (total[i] ?? 0);
+  const total = totalsOf(Int32Array.from(parent), selfTmp);
 
   const firstChild = new Int32Array(m).fill(-1);
   const lastChild = new Int32Array(m).fill(-1);
@@ -212,8 +211,6 @@ function finish(
   });
   const tParent = new Int32Array(length);
   const tFn = new Uint32Array(length);
-  const tDepth = new Uint16Array(length);
-  const tEnd = new Uint32Array(length);
   const tSelf = new Float64Array(length);
   const tTotal = new Float64Array(length);
   for (let i = 0; i < length; i++) {
@@ -223,12 +220,6 @@ function finish(
     tTotal[i] = total[old] ?? 0;
     const p = i === 0 ? -1 : (newId[parent[old] ?? 0] ?? 0);
     tParent[i] = p;
-    tDepth[i] = p < 0 ? 0 : (tDepth[p] ?? 0) + 1;
-  }
-  for (let i = length - 1; i >= 0; i--) {
-    if ((tEnd[i] ?? 0) < i + 1) tEnd[i] = i + 1;
-    const p = tParent[i] ?? -1;
-    if (p >= 0 && (tEnd[p] ?? 0) < (tEnd[i] ?? 0)) tEnd[p] = tEnd[i] ?? 0;
   }
   const remapped = new Uint32Array(node.length);
   for (let s = 0; s < node.length; s++) {
@@ -241,8 +232,8 @@ function finish(
       length,
       parent: tParent,
       fn: tFn,
-      depth: tDepth,
-      subtreeEnd: tEnd,
+      depth: depthsOf(tParent),
+      subtreeEnd: subtreeEnds(tParent),
       self: tSelf,
       total: tTotal,
     },

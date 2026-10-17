@@ -5,6 +5,7 @@
 // waterfall where a GC pause is a child of the running call. Only the parent of those samples
 // changes: sample count, durations and every total are preserved. `(idle)` stays a boundary.
 
+import { depthsOf, preorder, subtreeEnds, totalsOf } from '../util/tree-columns.js';
 import type { IngestedTrack, IngestResult, RawTicks, RawTree } from './types.js';
 
 const TRANSPARENT = new Set(['(program)', '(garbage collector)']);
@@ -38,14 +39,7 @@ function rebuild(
     const keep = !(n < L && transparentOld[n] === 1 && (hits[n] ?? 0) === 0);
     if (keep) kids[parent[n] ?? 0]?.push(n);
   }
-  const order: number[] = [];
-  const stack = [0];
-  while (stack.length > 0) {
-    const cur = stack.pop() ?? 0;
-    order.push(cur);
-    const list = kids[cur] ?? [];
-    for (let k = list.length - 1; k >= 0; k--) stack.push(list[k] ?? 0);
-  }
+  const order = preorder(kids);
   const length = order.length;
   const newId = new Int32Array(total).fill(-1);
   order.forEach((n, i) => {
@@ -53,10 +47,7 @@ function rebuild(
   });
   const tParent = new Int32Array(length);
   const tFrame = new Uint32Array(length);
-  const tDepth = new Uint16Array(length);
-  const tEnd = new Uint32Array(length);
   const tSelf = new Float64Array(length);
-  const tTotal = new Float64Array(length);
   const tHits = new Uint32Array(length);
   for (let i = 0; i < length; i++) {
     const n = order[i] ?? 0;
@@ -64,7 +55,6 @@ function rebuild(
     tHits[i] = hits[n] ?? 0;
     const p = i === 0 ? -1 : (newId[parent[n] ?? 0] ?? 0);
     tParent[i] = p;
-    tDepth[i] = p < 0 ? 0 : (tDepth[p] ?? 0) + 1;
   }
   const samples = track.samples;
   const nodes = new Uint32Array(samples.length);
@@ -72,15 +62,6 @@ function rebuild(
     const i = newId[sampleNode[s] ?? 0] ?? 0;
     nodes[s] = i;
     tSelf[i] = (tSelf[i] ?? 0) + (samples.dur[s] ?? 0);
-  }
-  for (let i = length - 1; i >= 0; i--) {
-    tTotal[i] = (tTotal[i] ?? 0) + (tSelf[i] ?? 0);
-    if ((tEnd[i] ?? 0) < i + 1) tEnd[i] = i + 1;
-    const p = tParent[i] ?? -1;
-    if (p >= 0) {
-      tTotal[p] = (tTotal[p] ?? 0) + (tTotal[i] ?? 0);
-      if ((tEnd[p] ?? 0) < (tEnd[i] ?? 0)) tEnd[p] = tEnd[i] ?? 0;
-    }
   }
 
   // Line ticks follow their nodes; added nodes have none.
@@ -107,10 +88,10 @@ function rebuild(
     length,
     parent: tParent,
     frame: tFrame,
-    depth: tDepth,
-    subtreeEnd: tEnd,
+    depth: depthsOf(tParent),
+    subtreeEnd: subtreeEnds(tParent),
     self: tSelf,
-    total: tTotal,
+    total: totalsOf(tParent, tSelf),
     hits: tHits,
   };
   return {

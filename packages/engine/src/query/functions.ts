@@ -6,6 +6,7 @@
 import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel } from '../model.js';
 import { compareText } from '../util/compare.js';
+import { depthsOf, preorder, subtreeEnds, totalsOf } from '../util/tree-columns.js';
 import { runsPerNode } from './callgraph.js';
 import { flameLayoutOfTree } from './flame.js';
 import type {
@@ -144,49 +145,29 @@ function buildTree(
   const m = parent.length;
   const kids: number[][] = Array.from({ length: m }, () => []);
   for (let i = 1; i < m; i++) kids[parent[i] ?? 0]?.push(i);
-  const order: number[] = [];
-  const stack = [0];
-  while (stack.length > 0) {
-    const cur = stack.pop() ?? 0;
-    order.push(cur);
-    const list = kids[cur] ?? [];
-    for (let i = list.length - 1; i >= 0; i--) stack.push(list[i] ?? 0);
-  }
+  const order = preorder(kids);
   const newId = new Int32Array(m);
   order.forEach((old, i) => {
     newId[old] = i;
   });
   const tParent = new Int32Array(m);
   const tFn = new Uint32Array(m);
-  const tDepth = new Uint16Array(m);
-  const tEnd = new Uint32Array(m);
   const tSelf = new Float64Array(m);
-  const tTotal = new Float64Array(m);
   for (let i = 0; i < m; i++) {
     const old = order[i] ?? 0;
     tFn[i] = fn[old] ?? 0;
     tSelf[i] = self[old] ?? 0;
-    tTotal[i] = self[old] ?? 0;
     const p = i === 0 ? -1 : (newId[parent[old] ?? 0] ?? 0);
     tParent[i] = p;
-    tDepth[i] = p < 0 ? 0 : (tDepth[p] ?? 0) + 1;
-  }
-  for (let i = m - 1; i >= 0; i--) {
-    if ((tEnd[i] ?? 0) < i + 1) tEnd[i] = i + 1;
-    const p = tParent[i] ?? -1;
-    if (p >= 0) {
-      tTotal[p] = (tTotal[p] ?? 0) + (tTotal[i] ?? 0);
-      if ((tEnd[p] ?? 0) < (tEnd[i] ?? 0)) tEnd[p] = tEnd[i] ?? 0;
-    }
   }
   return {
     length: m,
     parent: tParent,
     fn: tFn,
-    depth: tDepth,
-    subtreeEnd: tEnd,
+    depth: depthsOf(tParent),
+    subtreeEnd: subtreeEnds(tParent),
     self: tSelf,
-    total: tTotal,
+    total: totalsOf(tParent, tSelf),
   };
 }
 
