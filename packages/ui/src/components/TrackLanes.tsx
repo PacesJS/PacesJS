@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
 import { useAsync, useCanvas, usePalette } from '../app/hooks';
 import type { LaneData } from '../data/types';
@@ -30,6 +30,17 @@ export function TrackLanes() {
   const { client, snap, state, dispatch, selection, summary } = useApp();
   const overview = useAsync(() => client.overview(), 'overview').data;
   const [hover, setHover] = useState<{ lane: string; task: number }>({ lane: '', task: -1 });
+  // Stable between renders so an unrelated state change (a hover elsewhere) repaints no lane canvas.
+  const ticks = useMemo(() => (overview ? laneTicks(overview.durationUs) : []), [overview]);
+  const lanes = useMemo(
+    () =>
+      [...(overview?.lanes ?? [])].sort((a, b) => {
+        const pa = state.pinned.includes(a.id) ? 0 : 1;
+        const pb = state.pinned.includes(b.id) ? 0 : 1;
+        return pa - pb;
+      }),
+    [overview, state.pinned],
+  );
   if (!overview)
     return (
       <div className="status-line" role="status">
@@ -37,12 +48,6 @@ export function TrackLanes() {
       </div>
     );
 
-  const ticks = laneTicks(overview.durationUs);
-  const lanes = [...overview.lanes].sort((a, b) => {
-    const pa = state.pinned.includes(a.id) ? 0 : 1;
-    const pb = state.pinned.includes(b.id) ? 0 : 1;
-    return pa - pb;
-  });
   const frac = (us: number): number => clamp(us / overview.durationUs, 0, 1);
   const range = snap.range;
 
