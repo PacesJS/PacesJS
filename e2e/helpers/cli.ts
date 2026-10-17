@@ -66,10 +66,10 @@ export function runPaces(args: string[], options: RunOptions = {}): Promise<Pace
     child.stderr.on('data', (d: Buffer) => {
       run.stderr += d;
       if (!run.url) {
-        const m = /(http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(run.stderr);
-        if (m) {
-          run.url = m[1];
-          void Promise.resolve(options.onUrl?.(run.url as string)).catch(reject);
+        const url = urlOf(run.stderr);
+        if (url) {
+          run.url = url;
+          void Promise.resolve(options.onUrl?.(url)).catch(reject);
         }
       }
     });
@@ -83,11 +83,22 @@ export function runPaces(args: string[], options: RunOptions = {}): Promise<Pace
   });
 }
 
+/** The host URL (with its token) that paces printed, if it has printed one yet. */
+export function urlOf(text: string): string | undefined {
+  return /(http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(text)?.[1];
+}
+
+/** The header a page sends with every request: the token from the URL it was opened with. */
+export function authHeaders(url: string): Record<string, string> {
+  return { 'x-paces-token': new URL(url).searchParams.get('token') ?? '' };
+}
+
 /** One heartbeat, as a loaded page sends. */
 export async function heartbeat(url: string): Promise<void> {
-  const u = new URL(url);
-  const headers = { 'x-paces-token': u.searchParams.get('token') ?? '' };
-  await fetch(`${u.origin}/api/heartbeat`, { method: 'POST', headers });
+  await fetch(`${new URL(url).origin}/api/heartbeat`, {
+    method: 'POST',
+    headers: authHeaders(url),
+  });
 }
 
 /** The beacon a page sends from `pagehide` (the token rides in the URL: beacons set no headers). */
@@ -100,9 +111,9 @@ export async function goodbye(url: string): Promise<void> {
 
 /** Behaves like a UI that loaded once and was then closed: a heartbeat, then a goodbye. */
 export async function openAndClose(url: string): Promise<{ session: unknown }> {
-  const u = new URL(url);
-  const headers = { 'x-paces-token': u.searchParams.get('token') ?? '' };
-  const session = await (await fetch(`${u.origin}/api/session`, { headers })).json();
+  const session = await (
+    await fetch(`${new URL(url).origin}/api/session`, { headers: authHeaders(url) })
+  ).json();
   await heartbeat(url);
   await goodbye(url);
   return { session };
