@@ -9,3 +9,6 @@ test-results/
 .playwright-mcp/
 *.log
 .DS_Store
+
+# safe-refactor working files
+.refactor/
