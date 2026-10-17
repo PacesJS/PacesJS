@@ -210,6 +210,18 @@ export function waterfallData(
  * (collapsed packages and merged plumbing can remove frames of a hot path). 0 when none does.
  */
 function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
+  const best = deepestPrefixNode(s, fns);
+  if (best > 0 && (s.view.tree.depth[best] ?? 0) >= fns.length) return best;
+  // A chain from the engine can begin below the root of this view: a stitched run hangs a
+  // continuation under whatever the previous task was inside (a dependency frame the hot path
+  // skips). Look for it anywhere, taking the longest match.
+  const inner = fns.map((f) => s.inn(f));
+  if (inner.some((f) => f < 0)) return best;
+  return longestChainAnywhere(s.view.tree, inner, best);
+}
+
+/** The deepest node that a prefix of `fns` leads to from the root, or from the entry script's function. */
+function deepestPrefixNode(s: Scoped, fns: readonly number[]): number {
   const tree = s.view.tree;
   // A stitched view is rooted at the entry script's function, which hot paths do not include.
   const entry = tree.length > 1 && tree.parent[1] === 0 ? [tree.fn[1] ?? 0] : [];
@@ -226,12 +238,18 @@ function zoomNodeOfPath(s: Scoped, fns: readonly number[]): number {
       }
     }
   }
-  if (best > 0 && (tree.depth[best] ?? 0) >= fns.length) return best;
-  // A chain from the engine can begin below the root of this view: a stitched run hangs a
-  // continuation under whatever the previous task was inside (a dependency frame the hot path
-  // skips). Look for it anywhere, taking the longest match.
-  const inner = fns.map((f) => s.inn(f));
-  if (inner.some((f) => f < 0)) return best;
+  return best;
+}
+
+/**
+ * The end of the longest match of `inner` as a chain anywhere in the tree, where dependency frames
+ * between two links are skipped (the nearest descendant counts). `best` is the match to beat.
+ */
+function longestChainAnywhere(
+  tree: Scoped['view']['tree'],
+  inner: readonly number[],
+  best: number,
+): number {
   const kids = new Map<number, number[]>();
   for (let n = 1; n < tree.length; n++) {
     const p = tree.parent[n] ?? 0;
