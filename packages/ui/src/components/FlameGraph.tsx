@@ -4,6 +4,7 @@ import { useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
 import { originInfo } from '../theme/origin';
 import { fmtDuration, fmtRange, fmtShare } from '../util/format';
 import { roundedRectPath } from '../view/draw-shapes';
+import { flameFill } from '../view/flame-fill';
 import { FLAME, flameHeight, flameRects, hitRect } from '../view/flame-geometry';
 import type { FlameRect } from '../view/flame-geometry';
 import { Hint } from './Hint';
@@ -53,23 +54,10 @@ export function FlameGraph() {
         const i = r.index;
         const origin = data.origin[i] ?? 4;
         const isRoot = data.node[i] === -1;
-        let fill: string;
-        const d = data.delta ? (data.delta[i] ?? 0) : null;
-        if (isRoot) fill = pal.flameRoot;
-        else if (d !== null) {
-          const hue = d < 0 ? pal.diffFaster : pal.diffSlower;
-          fill = `color-mix(in srgb, ${hue} ${Math.round(12 + 83 * Math.sqrt(Math.abs(d)))}%, transparent)`;
-        } else if (color === 'self')
-          fill = `color-mix(in srgb, ${pal.accent} ${Math.round(15 + 80 * Math.sqrt(data.heat[i] ?? 0))}%, transparent)`;
-        else
-          fill =
-            origin === 0
-              ? (pal.originSolid[0] ?? pal.accent)
-              : (pal.originDim[origin] ?? pal.accent);
         const dimmed =
           search !== '' && !`${data.names[i]} ${data.locs[i]}`.toLowerCase().includes(search);
         ctx.globalAlpha = dimmed ? 0.25 : 1;
-        ctx.fillStyle = fill;
+        ctx.fillStyle = flameFill(pal, data, i, color);
         roundedRectPath(ctx, r.x, r.y, r.w, r.h, 4);
         ctx.fill();
         const isSel = selFn !== null && !isRoot && data.fn[i] === selFn;
