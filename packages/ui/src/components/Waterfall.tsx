@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { focusTransform } from '../state/focus';
 import { useApp } from '../app/context';
 import { measureText, useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
 import type { WaterfallRow } from '../data/types';
@@ -27,6 +29,13 @@ import {
 } from '../view/waterfall-geometry';
 import type { TimeWindow } from '../view/waterfall-geometry';
 import { foldRows, hotTargetPath, initialCollapsed } from '../view/waterfall-fold';
+import {
+  BADGE_DEPTH,
+  FOCUS_DEPTH,
+  guideLevels,
+  indentFor,
+  middleEllipsis,
+} from '../view/waterfall-indent';
 import { visibleRows } from '../view/waterfall-rows';
 import type { WaterfallSort } from '../view/waterfall-rows';
 import { Hint } from './Hint';
@@ -72,6 +81,17 @@ function durLabel(r: WaterfallRow, threshold = '2 ms'): string {
   if (r.kind === 'fold' && r.fold === 'small') return '';
   if (r.belowPrecision) return `< ${threshold}`;
   return fmtDuration(r.end - r.start, { decimals: 1 });
+}
+
+/** What a bar says when you point at it: how long, how much of the whole, and when. */
+function barDetails(r: WaterfallRow, threshold: string, whole: string): string {
+  if (r.kind === 'wait') return `idle ${fmtDuration(r.end - r.start, { decimals: 1 })}`;
+  if (r.kind === 'fold' && r.fold === 'small') return '';
+  const span = `${(r.start / 1000).toFixed(1)}–${(r.end / 1000).toFixed(1)} ms`;
+  const lead = r.belowPrecision
+    ? `< ${threshold}, below sampling precision`
+    : durLabel(r, threshold);
+  return `${lead} · ${fmtShare(r.share)} of the ${whole} · ${span}`;
 }
 
 const ORIGIN_HINT: Record<number, string> = { 1: 'node_modules', 3: 'node', 4: 'native', 6: 'V8' };
@@ -143,6 +163,26 @@ function ColumnResizer({ column, label, cols, edge, onLive, onCommit, onFit }: R
   );
 }
 
+const TIP_DELAY_MS = 150;
+
+/** Below the bar, or above it near the bottom, and always inside the viewport. */
+function tipStyle(
+  tip: { text: string; x: number; y: number; top: number },
+  vw: number,
+  vh: number,
+): CSSProperties {
+  const width = Math.min(vw - 16, tip.text.length * 7.5 + 28);
+  const left = Math.max(8, Math.min(tip.x - width / 2, vw - width - 8));
+  const below = tip.y + 6 + 44 <= vh;
+  return {
+    position: 'fixed',
+    left,
+    top: below ? tip.y + 6 : Math.max(8, tip.top - 6 - 44),
+    maxWidth: vw - 16,
+    zIndex: 40,
+  };
+}
+
 export function Waterfall() {
   const { client, scope, scopeKey, snap, state, dispatch, selection, select, summary, openDock } =
     useApp();
@@ -157,6 +197,14 @@ export function Waterfall() {
 
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
   const [hoverRow, setHoverRow] = useState<number | null>(null);
+  // The bar tooltip waits a moment so passing over bars does not flicker.
+  const [tip, setTip] = useState<{ text: string; x: number; y: number; top: number } | null>(null);
+  const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTip = (): void => {
+    if (tipTimer.current !== null) globalThis.clearTimeout(tipTimer.current);
+    tipTimer.current = null;
+    setTip(null);
+  };
   const [liveCols, setLiveCols] = useState<WfColumns | null>(null);
   const [win, setWin] = useState<{ key: string; w: TimeWindow } | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -698,6 +746,38 @@ export function Waterfall() {
                 const info = originInfo(r.origin);
                 const isUser = r.origin === 0;
                 const where = rowLocation(r);
+                const indent = indentFor(r.depth, cols.call);
+                const badged = r.kind === 'call' && r.depth > BADGE_DEPTH;
+                const depthBadge = `⋯ ${r.depth}`;
+                const focusAs =
+                  r.kind === 'call' && r.depth > FOCUS_DEPTH
+                    ? focusTransform(r.path, r.fn, summary.functionCount)
+                    : null;
+                const nameFont = `${isUser ? 600 : 500} 14px ${pal.fontSans}`;
+                const room =
+                  cols.call -
+                  indent -
+                  (14 + 8 + 12) -
+                  (focusAs
+                    ? 44 + 6
+                    : badged
+                      ? measureText(depthBadge, `600 11px ${pal.fontSans}`) + 8 + 6
+                      : 0) -
+                  (r.resumed ? 22 : 0) -
+                  2;
+                const label = middleEllipsis(r.name, Math.max(room, 24), (t) =>
+                  measureText(t, nameFont),
+                );
+                const nameTitle = [
+                  r.name,
+                  where,
+                  r.depth > BADGE_DEPTH ? `level ${r.depth + 1}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+                const details = barDetails(r, threshold, data.mode === 'run' ? 'run' : 'task');
+                const rect = barRect(r.start, r.end, window, bar.x0, bar.x1);
+                const barBox = details && !rect.hidden ? rect : null;
                 return (
                   <div
                     key={r.id}
@@ -705,6 +785,7 @@ export function Waterfall() {
                     aria-level={r.depth + 1}
                     aria-expanded={r.hasChildren ? !collapsed.has(r.id) : undefined}
                     aria-selected={isSel}
+                    aria-description={details || undefined}
                     aria-label={`${r.name}, ${info.label}, ${durLabel(r, threshold)}, ${fmtShare(r.share)} of ${r.kind === 'task' ? 'itself' : 'task'}${r.critical ? ', critical path' : ''}`}
                     className={`wf-row${isSel ? ' is-selected' : ''}${hoverRow === r.id ? ' is-hover' : ''}${isLinked ? ' is-linked' : ''}`}
                     style={{ top: (from + k) * WF.rowH }}
@@ -716,8 +797,11 @@ export function Waterfall() {
                     <div
                       className="wf-name"
                       role="cell"
-                      title={where ? `${r.name}  ${where}` : r.name}
-                      style={{ paddingLeft: r.depth * 16 }}
+                      title={nameTitle}
+                      style={{
+                        paddingLeft: indent,
+                        ['--wf-guides' as string]: guideLevels(r.depth),
+                      }}
                     >
                       {r.hasChildren ? (
                         <span
@@ -742,10 +826,32 @@ export function Waterfall() {
                         aria-hidden="true"
                         style={{ background: originColor(r.origin, false) }}
                       />
+                      {focusAs ? (
+                        <button
+                          type="button"
+                          className="wf-depth is-action"
+                          aria-label={`Focus here: ${r.name}`}
+                          title={`Level ${r.depth + 1}. Focus here: make this call the root of the waterfall (f)`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            dispatch({ type: 'add-transform', transform: focusAs });
+                          }}
+                        >
+                          {hoverRow === r.id || isSel ? 'Focus' : depthBadge}
+                        </button>
+                      ) : badged ? (
+                        <span
+                          className="wf-depth"
+                          aria-hidden="true"
+                          title={`Level ${r.depth + 1}`}
+                        >
+                          {depthBadge}
+                        </span>
+                      ) : null}
                       <span
                         className={`wf-label${isUser ? ' is-user' : ''}${r.kind === 'wait' || r.kind === 'fold' ? ' is-wait' : ''}`}
                       >
-                        {r.name}
+                        {label}
                       </span>
                       {r.resumed ? (
                         <span className="wf-resumed" title={RESUMED_TIP}>
@@ -756,6 +862,27 @@ export function Waterfall() {
                       <span className="wf-loc">{where}</span>
                     </div>
                     <div className="wf-bar-cell" role="cell" aria-hidden="true" />
+                    {barBox ? (
+                      <div
+                        className="wf-bar-hit"
+                        aria-hidden="true"
+                        style={{ left: barBox.x, width: barBox.w, top: WF.barTop, height: WF.barH }}
+                        onPointerEnter={(e) => {
+                          const el = e.currentTarget;
+                          hideTip();
+                          tipTimer.current = globalThis.setTimeout(() => {
+                            const b = el.getBoundingClientRect();
+                            setTip({
+                              text: details,
+                              x: b.left + b.width / 2,
+                              y: b.bottom,
+                              top: b.top,
+                            });
+                          }, TIP_DELAY_MS);
+                        }}
+                        onPointerLeave={hideTip}
+                      />
+                    ) : null}
                     <div className="wf-time" role="cell">
                       {durLabel(r, threshold)}
                     </div>
@@ -770,6 +897,18 @@ export function Waterfall() {
         </div>
       </div>
 
+      {tip
+        ? createPortal(
+            <div
+              role="tooltip"
+              className="tooltip"
+              style={tipStyle(tip, globalThis.innerWidth, globalThis.innerHeight)}
+            >
+              <span className="tooltip-title">{tip.text}</span>
+            </div>,
+            document.body,
+          )
+        : null}
       <div className="view-footer">
         <Legend label="Origin colors" />
         <span className="wf-legend-item">
@@ -790,6 +929,13 @@ export function Waterfall() {
           </span>
           Resumed after an await: attached to the call that started it (inferred; run with --async
           for exact)
+        </span>
+        <span className="wf-legend-item">
+          <span className="wf-depth" aria-hidden="true">
+            ⋯ N
+          </span>
+          Depth of a deep call. Past level 12 it is a button: Focus here (or f) makes the call the
+          root
         </span>
         <span className="view-footer-end">
           Arrows walk rows · Enter opens source · f focus · Backspace back

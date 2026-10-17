@@ -907,3 +907,55 @@
   gap: var(--sp-16);
   min-width: 0;
 }
+
+/* The bars are drawn on a canvas; it sits above the row highlights so hovering a row never covers
+   them. The hit area over each bar takes the pointer for its tooltip. */
+.wf-canvas {
+  z-index: 1;
+}
+
+.wf-bar-hit {
+  position: absolute;
+  z-index: 2;
+}
+
+/* Deep chains: faint guides for the first levels, a depth badge, and an inline "Focus here". */
+.wf-name {
+  position: relative;
+  background-image: repeating-linear-gradient(to right, var(--c-line) 0 1px, transparent 1px 16px);
+  background-repeat: no-repeat;
+  background-position: 7px 0;
+  background-size: calc(var(--wf-guides, 0) * 16px) 100%;
+}
+
+.wf-depth {
+  flex: none;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-chip);
+  background: var(--c-bg);
+  color: var(--c-muted);
+  font-size: var(--fs-11);
+  line-height: var(--lh-16);
+  font-weight: var(--fw-semi);
+  font-variant-numeric: tabular-nums;
+}
+
+button.wf-depth {
+  min-width: 44px;
+  border: 0;
+  font-family: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+button.wf-depth:hover,
+button.wf-depth:focus-visible {
+  background: var(--c-accent-tint);
+  color: var(--c-ink);
+}
+
+/* One horizontal scrollbar: .wf-scroll owns it. The row body scrolls vertically only (an
+   overflow-y of auto would otherwise make its x auto too). */
+.wf-body {
+  overflow-x: hidden;
+}

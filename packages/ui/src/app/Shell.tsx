@@ -3,6 +3,7 @@ import type { HostAdapter } from '../host/adapter';
 import type { QueryClient } from '../data/protocol';
 import type { ModelSummary, Scope, SelectionInfo } from '../data/queries';
 import { Header } from '../components/Header';
+import { focusTransform } from '../state/focus';
 import { clicksOff, onScrollbar } from './click-off';
 import type { PointerStart } from './click-off';
 import { dockCollapsed as dockIsCollapsed } from '../state/prefs';
@@ -253,15 +254,14 @@ export function Shell({
           swallow();
           searchRef.current?.focus();
           break;
-        case 'focus-subtree':
-          if (sel.path !== null) {
+        case 'focus-subtree': {
+          const transform = focusTransform(sel.path, sel.fn, summaryRef.current.functionCount);
+          if (transform) {
             swallow();
-            dispatch({ type: 'add-transform', transform: { k: 'focus-node', path: sel.path } });
-          } else if (sel.fn !== null) {
-            swallow();
-            dispatch({ type: 'add-transform', transform: { k: 'focus-fn', fn: sel.fn } });
+            dispatch({ type: 'add-transform', transform });
           }
           break;
+        }
         case 'merge':
           if (sel.fn !== null) {
             swallow();
