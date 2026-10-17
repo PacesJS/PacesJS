@@ -62,6 +62,16 @@ const DEFAULT_MAX_LINES = 60;
 /** Lines a tree view spends besides rows: title, header, footer, "next:" and up to three commands. */
 const TREE_FIXED_LINES = 8;
 
+/** Rows a view may print: `--max-lines` minus the lines it spends on title, header and footer. */
+function lineBudget(flags: Flags, reserved: number, floor = 3): number {
+  return Math.max(floor, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - reserved);
+}
+
+/** `--limit` (or the view's default), held to what fits in the line budget. */
+function cappedLimit(flags: Flags, fallback: number, reserved: number, floor = 3): number {
+  return Math.min(flags.report.limit ?? fallback, lineBudget(flags, reserved, floor));
+}
+
 const originName = (o: number): string => ORIGIN_NAMES[o] ?? 'user';
 const round = (n: number): number => Math.round(n * 10) / 10;
 
@@ -327,7 +337,7 @@ function footerFor(res: TreeResult): string[] {
 
 function treeOptions(flags: Flags, selector?: TreeSelector) {
   const r = flags.report;
-  const budget = Math.max(3, (r.maxLines ?? DEFAULT_MAX_LINES) - TREE_FIXED_LINES);
+  const budget = lineBudget(flags, TREE_FIXED_LINES);
   const origins = originsOf(flags);
   return {
     ...(selector ? { from: selector } : {}),
@@ -427,7 +437,7 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
       json: envelope('callers', head, { rows: [] }),
     };
   }
-  const budget = Math.max(3, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 7);
+  const budget = lineBudget(flags, 7);
   const shown = flat.slice(0, budget);
   const layout = shown.map(({ node, depth: d }): Layout => {
     const l = locate(model, node.fn);
@@ -494,10 +504,7 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
     ).join(', ');
     throw new ReportError(`No package "${pkg}" on this track. Biggest packages: ${names}.`);
   }
-  const limit = Math.min(
-    flags.report.limit ?? 15,
-    Math.max(3, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 7),
-  );
+  const limit = cappedLimit(flags, 15, 7);
   const shown = rows.slice(0, limit);
   const title = pkg ? `package ${pkg}: functions by ${sort} time` : `top functions by ${sort} time`;
   const head = headerOf(ctx, ti, flags, title);
@@ -565,10 +572,7 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
   const out = [...head.lines, ...(note ? [note] : [])];
   const src = ctx.resolver?.resolve(info.file);
   const text = src?.exists ? src.text.split(/\r?\n/) : undefined;
-  const cap = Math.min(
-    flags.report.limit ?? 40,
-    Math.max(6, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 8),
-  );
+  const cap = cappedLimit(flags, 40, 8, 6);
   const jsonLines: Array<Record<string, unknown>> = [];
 
   if (info.lines.length > 0) {
@@ -675,10 +679,7 @@ function tasksView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
   const head = headerOf(ctx, ti, flags, 'tasks (use --task <n> with --tree to drill into one)');
   const all = describeTasks(ctx.model, ti);
   const real = all.filter((t) => !t.trivial);
-  const limit = Math.min(
-    flags.report.limit ?? 20,
-    Math.max(3, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 7),
-  );
+  const limit = cappedLimit(flags, 20, 7);
   const shown = real.slice(0, limit);
   const lines = [...head.lines];
   for (const t of shown) {
