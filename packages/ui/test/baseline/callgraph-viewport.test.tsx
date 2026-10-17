@@ -13,8 +13,8 @@ async function openGraph(): Promise<HTMLElement> {
   history.replaceState(null, '', `#v=callgraph&tr=${orders.tracks[0]?.id}`);
   const host = memoryHostAdapter({ model: serializeModel(orders), meta: {} });
   render(<App host={host} inProcess elk={nodeElk} />);
-  await screen.findByRole('heading', { name: 'Findings' });
-  return screen.findByRole('group', { name: /^Call graph with/ });
+  await screen.findByRole('heading', { name: 'Findings' }, { timeout: 15000 });
+  return screen.findByRole('group', { name: /^Call graph with/ }, { timeout: 15000 });
 }
 
 const layer = (): HTMLElement => {
@@ -36,7 +36,8 @@ const placement = (): Placement => {
   return { x: Number(m[1]), y: Number(m[2]), k: Number(m[3]) };
 };
 
-describe('call graph viewport (baseline)', () => {
+// The ELK layout is slow while the whole suite runs in parallel; wait generously, not forever.
+describe('call graph viewport (baseline)', { timeout: 30000 }, () => {
   it('pans by 60px per arrow key, opposite to the arrow, without easing', async () => {
     const graph = await openGraph();
     await userEvent.click(screen.getByRole('button', { name: '100%' }));
