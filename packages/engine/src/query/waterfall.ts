@@ -97,16 +97,26 @@ function resolveAlias(alias: Map<number, number>, id: number): number {
   return cur;
 }
 
+/** The time range the rows cover and the task they belong to (-1 for none). */
+interface RowRange {
+  start: number;
+  end: number;
+  task: number;
+}
+
+/** Where the rows go: their first id, the depth of their roots, and the row their roots hang under. */
+interface RowPlace {
+  rowBase: number;
+  depthBase: number;
+  parentOfRoots: number;
+}
+
 function buildRows(
   model: ExecutionModel,
   view: TransformedView,
   origin: Uint8Array,
-  start: number,
-  end: number,
-  task: number,
-  rowBase: number,
-  depthBase: number,
-  parentOfRoots: number,
+  { start, end, task }: RowRange,
+  { rowBase, depthBase, parentOfRoots }: RowPlace,
 ): Built {
   const samples = sliceSamples(view, start, end);
   const spans = reconstructSpans({
@@ -283,7 +293,13 @@ function assemble(
   options: WaterfallOptions,
 ): Waterfall {
   const origin = extendedOrigin(model, view);
-  const main = buildRows(model, view, origin, start, end, task, 0, 0, -1);
+  const main = buildRows(
+    model,
+    view,
+    origin,
+    { start, end, task },
+    { rowBase: 0, depthBase: 0, parentOfRoots: -1 },
+  );
   const rows = main.rows;
   let outEnd = end;
   let hasAsyncFlow = false;
@@ -316,7 +332,13 @@ function assemble(
           label: `idle wait ${formatDuration(waitUs)}`,
         }),
       );
-      const sub = buildRows(model, view, origin, ts, te, target, rows.length, 2, waitId);
+      const sub = buildRows(
+        model,
+        view,
+        origin,
+        { start: ts, end: te, task: target },
+        { rowBase: rows.length, depthBase: 2, parentOfRoots: waitId },
+      );
       // The critical path is the chain of the task itself, not of the tasks it scheduled.
       for (const r of sub.rows) rows.push({ ...r, critical: false });
       outEnd = Math.max(outEnd, te);
@@ -576,7 +598,13 @@ export function waterfallForRun(
   const start = all.time[0] ?? 0;
   const lastAt = all.length - 1;
   const end = (all.time[lastAt] ?? 0) + (all.dur[lastAt] ?? 0);
-  const main = buildRows(model, view, origin, start, Math.max(end, start + 1), -1, 0, 0, -1);
+  const main = buildRows(
+    model,
+    view,
+    origin,
+    { start, end: Math.max(end, start + 1), task: -1 },
+    { rowBase: 0, depthBase: 0, parentOfRoots: -1 },
+  );
   let rows = main.rows;
 
   // One root row for the whole run: awaiting and small tasks leave gaps, not separate roots.
