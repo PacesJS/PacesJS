@@ -6,6 +6,7 @@
 import { isRuntimeFn } from '../frames.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
 import { taskOfSpan } from '../util/search.js';
+import { createTreeBuilder } from './tree-builder.js';
 
 export interface StitchPlan {
   /** Creation-order tree: parent index per node (node 0 is the `(root)`). */
@@ -27,20 +28,7 @@ export function stitchPlan(
   const { spans, tasks, continuations } = track;
   const program = (fn: number): boolean => !isRuntimeFn(model.functions, fn);
 
-  const parent: number[] = [-1];
-  const fn: number[] = [tree.fn[0] ?? 0];
-  const index = new Map<number, number>();
-  const child = (p: number, fnId: number): number => {
-    const key = p * K + fnId;
-    let id = index.get(key);
-    if (id === undefined) {
-      id = parent.length;
-      parent.push(p);
-      fn.push(fnId);
-      index.set(key, id);
-    }
-    return id;
-  };
+  const { parent, fn, child } = createTreeBuilder(tree.fn[0] ?? 0, K);
   const entry = child(0, track.rootFn);
 
   // Identity placement (everything under the entry root) and the shallowest program frame of each node.

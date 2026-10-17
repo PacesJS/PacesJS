@@ -6,6 +6,7 @@ import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
 import { depthsOf, subtreeEnds, totalsOf } from '../util/tree-columns.js';
 import { stitchPlan } from './stitch.js';
+import { createTreeBuilder } from './tree-builder.js';
 import type { FunctionInfo, Transform, TransformedView, ViewFnId } from './types.js';
 import { trackAt } from './track-at.js';
 
@@ -100,10 +101,8 @@ function rebuild(model: ExecutionModel, work: Working, plan: Plan): Working {
   const n = tree.length;
   const nodeMap = new Int32Array(n);
   // Temporary tree in creation order.
-  const parent: number[] = [-1];
-  const fn: number[] = [tree.fn[0] ?? 0];
-  const index = new Map<number, number>();
   const K = model.functions.length + work.synthetic.length + 1;
+  const { parent, fn, child } = createTreeBuilder(tree.fn[0] ?? 0, K);
   const outer = plan.recurse !== undefined ? new Int32Array(n).fill(-1) : undefined;
 
   for (let i = 1; i < n; i++) {
@@ -131,14 +130,7 @@ function rebuild(model: ExecutionModel, work: Working, plan: Plan): Working {
       if (outer) outer[i] = inherited;
       continue;
     }
-    const key = p * K + newFn;
-    let node = index.get(key);
-    if (node === undefined) {
-      node = parent.length;
-      parent.push(p);
-      fn.push(newFn);
-      index.set(key, node);
-    }
+    const node = child(p, newFn);
     nodeMap[i] = node;
     if (outer) outer[i] = newFn === plan.recurse ? node : inherited;
   }
@@ -273,10 +265,8 @@ function syntheticFor(model: ExecutionModel, work: Working, pkg: string): number
 
 function invert(model: ExecutionModel, work: Working): Working {
   const { tree, samples } = work;
-  const parent: number[] = [-1];
-  const fn: number[] = [tree.fn[0] ?? 0];
-  const index = new Map<number, number>();
   const K = model.functions.length + work.synthetic.length + 1;
+  const { parent, fn, child } = createTreeBuilder(tree.fn[0] ?? 0, K);
   const leafOf = new Int32Array(tree.length).fill(-1);
   const used = new Uint8Array(tree.length);
   for (let s = 0; s < samples.length; s++) used[samples.node[s] ?? 0] = 1;
@@ -288,16 +278,7 @@ function invert(model: ExecutionModel, work: Working): Working {
       continue;
     }
     for (let a = n; a > 0; a = tree.parent[a] ?? 0) {
-      const f = tree.fn[a] ?? 0;
-      const key = at * K + f;
-      let child = index.get(key);
-      if (child === undefined) {
-        child = parent.length;
-        parent.push(at);
-        fn.push(f);
-        index.set(key, child);
-      }
-      at = child;
+      at = child(at, tree.fn[a] ?? 0);
     }
     leafOf[n] = at;
   }

@@ -7,6 +7,7 @@ import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel } from '../model.js';
 import { compareText } from '../util/compare.js';
 import { depthsOf, preorder, subtreeEnds, totalsOf } from '../util/tree-columns.js';
+import { createTreeBuilder } from './tree-builder.js';
 import { runsPerNode } from './callgraph.js';
 import { flameLayoutOfTree } from './flame.js';
 import type {
@@ -123,22 +124,8 @@ function buildTree(
     addSelf: (node: number, us: number) => void,
   ) => void,
 ): CallTree {
-  const parent: number[] = [-1];
-  const fn: number[] = [rootFn];
-  const self: number[] = [0];
-  const index = new Map<number, number>();
-  const child = (p: number, f: number): number => {
-    const key = p * K + f;
-    let id = index.get(key);
-    if (id === undefined) {
-      id = parent.length;
-      parent.push(p);
-      fn.push(f);
-      self.push(0);
-      index.set(key, id);
-    }
-    return id;
-  };
+  const { parent, fn, child } = createTreeBuilder(rootFn, K);
+  const self: number[] = [];
   fill(child, (node, us) => {
     self[node] = (self[node] ?? 0) + us;
   });
