@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../app/context';
+import { useHoverFn } from '../app/hover';
 import { useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
 import { showInView } from '../state/show-in';
 import type { ViewId } from '../state/types';
@@ -26,8 +27,8 @@ const SHOW_IN: Array<{ view: ViewId; label: string }> = [
 ];
 
 export function FlameGraph() {
-  const { client, scope, scopeKey, snap, dispatch, selection, hoverFn, select, state, openDock } =
-    useApp();
+  const { client, scope, scopeKey, snap, dispatch, selection, select, state, openDock } = useApp();
+  const hoverFn = useHoverFn();
   const { sort, color, layout, zoom, zoomPath } = snap.options;
   const q = useAsync(
     () => client.flame(scope, { sort, color, zoom, zoomPath }),

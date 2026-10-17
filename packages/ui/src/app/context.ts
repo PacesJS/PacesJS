@@ -19,8 +19,6 @@ export interface AppContextValue {
   scopeKey: string;
   /** What the current selection resolves to (function, track, task). */
   selection: SelectionInfo;
-  /** Function id behind the selection or hover, for cross-view highlighting. */
-  hoverFn: number | null;
   /** The track whose tasks and spans the waterfall shows. */
   primaryTrack: string;
   select(selection: Selection): void;

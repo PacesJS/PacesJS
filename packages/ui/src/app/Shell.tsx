@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { HostAdapter } from '../host/adapter';
 import type { QueryClient } from '../data/protocol';
 import type { ModelSummary, Scope, SelectionInfo } from '../data/queries';
@@ -26,6 +26,7 @@ import { ALL_TRACKS } from '../state/types';
 import type { Selection, Snapshot } from '../state/types';
 import { AppContext } from './context';
 import type { AppContextValue } from './context';
+import { HoverContext, createHoverStore } from './hover';
 import { useAsync } from './hooks';
 import { useClickOff } from './useClickOff';
 import { useGlobalKeys } from './useGlobalKeys';
@@ -65,19 +66,28 @@ export function Shell({
     stateRef.current = state;
   });
 
+  const [hover] = useState(createHoverStore);
+
   // Back and forward go through the browser, so its own buttons and these stay one stack.
-  const dispatch = useCallback((action: AppAction): void => {
-    if (action.type === 'back' || action.type === 'forward') {
-      stepBrowser(
-        action.type === 'back' ? -1 : 1,
-        stateRef.current.history,
-        typeof window === 'undefined' ? undefined : window.history,
-        rawDispatch,
-      );
-      return;
-    }
-    rawDispatch(action);
-  }, []);
+  const dispatch = useCallback(
+    (action: AppAction): void => {
+      if (action.type === 'back' || action.type === 'forward') {
+        stepBrowser(
+          action.type === 'back' ? -1 : 1,
+          stateRef.current.history,
+          typeof window === 'undefined' ? undefined : window.history,
+          rawDispatch,
+        );
+        return;
+      }
+      if (action.type === 'hover') {
+        hover.set(action.selection.kind === 'fn' ? action.selection.fn : null);
+        return;
+      }
+      rawDispatch(action);
+    },
+    [hover],
+  );
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const scope: Scope = useMemo(
@@ -106,7 +116,6 @@ export function Shell({
     }
     return base;
   }, [describeQ.data, describeQ.loading, snap.selection]);
-  const hoverFn = state.hover.kind === 'fn' ? state.hover.fn : null;
   const primaryTrack = snap.track !== ALL_TRACKS ? snap.track : (summary.tracks[0]?.id ?? '');
 
   const hash = snapshotToHash(snap);
@@ -178,10 +187,16 @@ export function Shell({
       dispatch({ type: 'set-dock-override', override: null });
     }
   }, [overrideFor, hasCode, dispatch]);
-  const openDock = (): void =>
-    dispatch({ type: 'set-dock-override', override: { mode: 'open', forCode: hasCode } });
-  const collapseDock = (): void =>
-    dispatch({ type: 'set-dock-override', override: { mode: 'collapsed', forCode: hasCode } });
+  const openDock = useCallback(
+    (): void =>
+      dispatch({ type: 'set-dock-override', override: { mode: 'open', forCode: hasCode } }),
+    [dispatch, hasCode],
+  );
+  const collapseDock = useCallback(
+    (): void =>
+      dispatch({ type: 'set-dock-override', override: { mode: 'collapsed', forCode: hasCode } }),
+    [dispatch, hasCode],
+  );
 
   const value: AppContextValue = {
     host,
@@ -193,7 +208,6 @@ export function Shell({
     scope,
     scopeKey,
     selection,
-    hoverFn,
     primaryTrack,
     select,
     hasCode,
@@ -205,17 +219,19 @@ export function Shell({
 
   return (
     <AppContext.Provider value={value}>
-      <Header searchRef={searchRef} sessionPath={sessionPath} />
-      <main className="app-main">
-        <Overview />
-        <Workspace />
-      </main>
-      <div aria-live="polite" className="sr-only" role="status">
-        {showing ?? (selection.name ? `Selected ${selection.name}` : '')}
-      </div>
-      {state.shortcutsOpen ? (
-        <ShortcutSheet onClose={() => dispatch({ type: 'set-shortcuts', open: false })} />
-      ) : null}
+      <HoverContext.Provider value={hover}>
+        <Header searchRef={searchRef} sessionPath={sessionPath} />
+        <main className="app-main">
+          <Overview />
+          <Workspace />
+        </main>
+        <div aria-live="polite" className="sr-only" role="status">
+          {showing ?? (selection.name ? `Selected ${selection.name}` : '')}
+        </div>
+        {state.shortcutsOpen ? (
+          <ShortcutSheet onClose={() => dispatch({ type: 'set-shortcuts', open: false })} />
+        ) : null}
+      </HoverContext.Provider>
     </AppContext.Provider>
   );
 }
