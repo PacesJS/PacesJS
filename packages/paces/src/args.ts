@@ -1,3 +1,5 @@
+import { ORIGIN_NAMES } from '@pacesjs/engine';
+
 export interface Flags {
   interval?: number;
   async: boolean;
@@ -145,7 +147,6 @@ const BOOL_FLAGS = new Set([
   '--no-color',
 ]);
 const COMMANDS = new Set(['open', 'diff', 'import', 'summary', 'mcp', 'report', 'guide']);
-const ORIGINS = ['user', 'dependency', 'framework', 'node', 'native', 'idle', 'gc'];
 
 function positiveNumber(flag: string, raw: string): number {
   const n = Number(raw);
@@ -190,7 +191,7 @@ function applyReportFlag(r: ReportFlags, name: string, value: string): void {
   else if (name === '--sort') r.sort = oneOf(name, value, ['total', 'self', 'time'] as const);
   else if (name === '--limit') r.limit = integer(name, value, 1);
   else if (name === '--origin') {
-    r.origin = value.split(',').map((o) => oneOf(name, o.trim(), ORIGINS as readonly string[]));
+    r.origin = value.split(',').map((o) => oneOf(name, o.trim(), ORIGIN_NAMES));
   } else if (name === '--expand') r.expand.push(value);
   else if (name === '--task') {
     if (value !== 'whole') integer(name, value, 0);

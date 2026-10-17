@@ -1,5 +1,6 @@
 import {
   ORIGIN_NAMES,
+  Origin,
   applyTransforms,
   buildAgentSummary,
   callTreeQuery,
@@ -118,8 +119,9 @@ const locate = (model: ExecutionModel, fn: FnId) => fnFacts(model, fn, true);
 
 function tag(origin: number, pkg: string, synthetic = false): string {
   if (synthetic) return '(collapsed)';
-  if (origin === 0) return '';
-  if (origin === 1 || origin === 2) return pkg ? `(${pkg})` : `(${originName(origin)})`;
+  if (origin === Origin.User) return '';
+  if (origin === Origin.Dependency || origin === Origin.Framework)
+    return pkg ? `(${pkg})` : `(${originName(origin)})`;
   return `(${originName(origin)})`;
 }
 
@@ -284,7 +286,7 @@ function nextForTree(ctx: ReportContext, rows: TreeRow[], ti: number): string[] 
     .filter(
       (r) =>
         r.depth >= 1 &&
-        r.origin === 0 &&
+        r.origin === Origin.User &&
         !r.name.startsWith('require ▸') &&
         !r.name.startsWith('import ▸'),
     )
@@ -298,15 +300,17 @@ function nextForTree(ctx: ReportContext, rows: TreeRow[], ti: number): string[] 
   // any function with a source file. Never GC, idle or runtime glue.
   const bySelf = (a: TreeRow, b: TreeRow): number => b.selfUs - a.selfUs;
   const hot =
-    [...real].filter((r) => r.origin === 0 && r.selfUs > 0).sort(bySelf)[0] ??
-    [...real].filter((r) => r.file && r.origin !== 5 && r.origin !== 6).sort(bySelf)[0];
+    [...real].filter((r) => r.origin === Origin.User && r.selfUs > 0).sort(bySelf)[0] ??
+    [...real]
+      .filter((r) => r.file && r.origin !== Origin.Idle && r.origin !== Origin.Gc)
+      .sort(bySelf)[0];
   if (hot && hot.selfUs > 0) out.push(nextCmd(ctx, `--lines ${hot.id}`));
   // A collapsed package that only passes control through to the target's code (a retry or
   // scheduling wrapper) is not where the time goes; suggest a package that does work itself.
   const passesThrough = (r: TreeRow): boolean => {
     const at = rows.indexOf(r);
     const next = rows[at + 1];
-    return next !== undefined && next.depth > r.depth && next.origin === 0;
+    return next !== undefined && next.depth > r.depth && next.origin === Origin.User;
   };
   const pkg = rows
     .filter((r) => r.synthetic && !passesThrough(r))
