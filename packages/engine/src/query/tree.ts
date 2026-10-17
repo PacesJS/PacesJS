@@ -6,6 +6,7 @@
 import { Origin } from '../model.js';
 import type { ExecutionModel, FnId, OriginId } from '../model.js';
 import type { FunctionInfo, Transform, TransformedView } from './types.js';
+import { SHOWN_PREFIX, hideAllExcept } from './stacks.js';
 import { applyTransforms, describeFunction, nodePath } from './view.js';
 import { trackAt } from './track-at.js';
 
@@ -76,12 +77,6 @@ export interface SelectorResult {
   matches: Array<{ fn: FnId; path?: FnId[]; totalUs: number }>;
   how: 'exact' | 'path' | 'location' | 'id' | 'substring';
 }
-
-const SHOWN_PREFIX: Transform[] = [
-  { kind: 'stitch-continuations' },
-  { kind: 'merge-plumbing' },
-  { kind: 'drop-idle' },
-];
 
 export const functionId = (fn: number): string => `f${fn}`;
 
@@ -234,9 +229,8 @@ function stackFor(
     }
   }
   if (options.origins) {
-    const keep = new Set<number>(options.origins);
-    const hide = [0, 1, 2, 3, 4, 5, 6].filter((o) => !keep.has(o)) as OriginId[];
-    if (hide.length > 0) stack.push({ kind: 'hide-origins', origins: hide });
+    const hide = hideAllExcept(options.origins);
+    if (hide) stack.push(hide);
   }
   return stack;
 }

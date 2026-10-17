@@ -2,8 +2,7 @@
 // functions of one dependency, and who calls a function. All read the model, not a view, except
 // hot paths which fold plumbing and idle (and optionally other origins) through the transform layer.
 
-import { Origin } from '../model.js';
-import type { ExecutionModel, FnId, OriginId } from '../model.js';
+import type { ExecutionModel, FnId } from '../model.js';
 import type {
   CallerNode,
   FunctionLocation,
@@ -12,18 +11,10 @@ import type {
   PackageFunction,
   Transform,
 } from './types.js';
+import { SHOWN_PREFIX, hideAllExcept } from './stacks.js';
 import { applyTransforms } from './view.js';
 import { trackAt } from './track-at.js';
 
-const ALL_ORIGINS: OriginId[] = [
-  Origin.User,
-  Origin.Dependency,
-  Origin.Framework,
-  Origin.Node,
-  Origin.Native,
-  Origin.Idle,
-  Origin.Gc,
-];
 const MAX_CALLERS_PER_LEVEL = 8;
 
 function locate(model: ExecutionModel, fn: FnId): FunctionLocation {
@@ -46,17 +37,9 @@ export function hotPaths(
   trackAt(model, trackIndex);
   const limit = options.limit ?? 8;
   const minShare = options.minShare ?? 0.02;
-  const stack: Transform[] = [
-    { kind: 'stitch-continuations' },
-    { kind: 'merge-plumbing' },
-    { kind: 'drop-idle' },
-  ];
-  if (options.origin !== undefined) {
-    stack.push({
-      kind: 'hide-origins',
-      origins: ALL_ORIGINS.filter((o) => o !== options.origin),
-    });
-  }
+  const stack: Transform[] = [...SHOWN_PREFIX];
+  const hide = options.origin === undefined ? undefined : hideAllExcept([options.origin]);
+  if (hide) stack.push(hide);
   const view = applyTransforms(model, trackIndex, stack);
   const tree = view.tree;
   const floor = view.totalUs * minShare;
