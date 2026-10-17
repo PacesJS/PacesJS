@@ -44,6 +44,10 @@ export function loadEngine(
         options,
       ),
     serializeModel: (m) => fn<(m: ExecutionModel) => Uint8Array>('serializeModel')(m),
+    ensureCaptureWarnings: (m, meta) =>
+      typeof mod.ensureCaptureWarnings === 'function'
+        ? fn<(m: ExecutionModel, meta: unknown) => ExecutionModel>('ensureCaptureWarnings')(m, meta)
+        : m,
     deserializeModel: (b) => fn<(b: Uint8Array) => ExecutionModel>('deserializeModel')(b),
     buildAgentSummary: (m) => fn<(m: ExecutionModel) => AgentSummary>('buildAgentSummary')(m),
     diffModels: (a, b) => fn<(a: ExecutionModel, b: ExecutionModel) => unknown>('diffModels')(a, b),

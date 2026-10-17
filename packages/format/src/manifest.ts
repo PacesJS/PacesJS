@@ -25,6 +25,8 @@ export interface Manifest {
   projectRoot: string;
   tracks: TrackInfo[];
   sources: SourceEntry[];
+  /** Processes and workers stopped before they could write a profile; absent in older sessions. */
+  lostTracks?: NonNullable<CaptureMeta['lostTracks']>;
   /** Model cache entry, if one was written. */
   model?: string;
 }

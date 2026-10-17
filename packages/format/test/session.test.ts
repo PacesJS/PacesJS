@@ -37,6 +37,27 @@ describe('capture <-> files', () => {
   });
 });
 
+describe('lost tracks', () => {
+  const lost = [
+    { id: 'p2', pid: 2, kind: 'process' as const, label: 'process pid 2' },
+    { id: 'p2-w1', pid: 2, threadId: 1, kind: 'worker' as const },
+  ];
+
+  it('round-trips meta.lostTracks through the manifest', () => {
+    const capture = fixture('hot-regex');
+    capture.meta.lostTracks = lost;
+    const back = readSession(writeSession(capture, { engineVersion: '1.0.0' }));
+    expect(back.capture.meta.lostTracks).toEqual(lost);
+    expect(back.manifest.lostTracks).toEqual(lost);
+  });
+
+  it('reads a session written without the field as having no lost tracks', () => {
+    const back = readSession(writeSession(fixture('hot-regex'), { engineVersion: '1.0.0' }));
+    expect(back.capture.meta.lostTracks).toBeUndefined();
+    expect(back.manifest.lostTracks).toBeUndefined();
+  });
+});
+
 describe('writeSession / readSession', () => {
   it('round-trips argv and cwd of each track', () => {
     const capture = fixture('hot-regex');
@@ -192,5 +213,28 @@ describe('loadModel', () => {
     const result = loadModel(readSession(bytes, { engineVersion: '1.0.0' }), e);
     expect(calls).toEqual(['analyze']);
     expect(result.fromCache).toBe(false);
+  });
+});
+
+describe('loadModel with an old cache', () => {
+  it('re-applies capture warnings to a cached model that predates them', () => {
+    const capture = fixture('hot-regex');
+    capture.meta.lostTracks = [{ id: 'p9', kind: 'process' }];
+    const bytes = writeSession(capture, { engineVersion: '1.0.0', model: new Uint8Array([7]) });
+    const seen: unknown[] = [];
+    const cached = { meta: { warnings: [] as string[] } } as never;
+    const engine: EngineApi = {
+      engineVersion: '1.0.0',
+      analyze: () => cached,
+      serializeModel: () => new Uint8Array([7]),
+      deserializeModel: () => cached,
+      ensureCaptureWarnings: (model, meta) => {
+        seen.push(meta.lostTracks);
+        return model;
+      },
+    };
+    const result = loadModel(readSession(bytes, { engineVersion: '1.0.0' }), engine);
+    expect(result.fromCache).toBe(true);
+    expect(seen).toEqual([[{ id: 'p9', kind: 'process' }]]);
   });
 });

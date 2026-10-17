@@ -26,6 +26,7 @@ import {
 import { waitForWindowClose } from './lifecycle.js';
 import { serveMcp } from './mcp.js';
 import { buildTools } from './mcp-tools.js';
+import { lostTracksLines } from './lost-tracks.js';
 import { NoProcessesError, preloadPath, runProfile } from './profile.js';
 import { startHost } from './server.js';
 import type { HostSession } from './server.js';
@@ -210,6 +211,8 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
   writeSessionFile(out, writeSession(capture, { engineVersion, sources }));
   const tracks = capture.tracks.length;
   io.err(`paces: ${tracks} track${tracks === 1 ? '' : 's'} captured, session saved to ${out}`);
+  const lost = capture.meta.lostTracks ?? [];
+  for (const line of lostTracksLines(lost, tracks + lost.length)) io.err(line);
 
   let model: ExecutionModel | undefined;
   if (engine) {

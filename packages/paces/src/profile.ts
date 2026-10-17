@@ -14,6 +14,8 @@ import { UsageError } from './args.js';
 import { shouldProfile } from './glob.js';
 import { createInterruptHandler } from './interrupt.js';
 import { killTree } from './launch.js';
+import { detectLostTracks } from './lost-tracks.js';
+import type { RegisteredTrack } from './lost-tracks.js';
 import { planSpawn } from './spawn-plan.js';
 
 export class NoProcessesError extends Error {
@@ -71,6 +73,15 @@ function exitCodeOf(code: number | null, signal: NodeJS.Signals | null): number 
   return n ? 128 + n : 1;
 }
 
+/** Tracks that wrote anything: a profile, or at least the info file written next to it. */
+function deliveredTracks(dir: string): Set<string> {
+  const raw = join(dir, 'raw');
+  const out = new Set<string>();
+  if (!existsSync(raw)) return out;
+  for (const name of readdirSync(raw)) out.add(name.slice(0, name.lastIndexOf('.')));
+  return out;
+}
+
 /** Removes raw files of processes that `--include/--exclude` filtered out. */
 function applyProcessFilters(dir: string, include: string[], exclude: string[]): void {
   if (include.length === 0 && exclude.length === 0) return;
@@ -116,6 +127,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
 
   let started = !flags.startOn;
   const conns = new Map<string, TrackConn>();
+  const registrations = new Map<string, RegisteredTrack>();
   let allFlushedResolve: () => void = () => {};
   const allFlushed = new Promise<void>((r) => (allFlushedResolve = r));
   const checkFlushed = (): void => {
@@ -136,9 +148,21 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
         const line = buf.slice(0, i);
         buf = buf.slice(i + 1);
         try {
-          const msg = JSON.parse(line) as { type?: string; track?: string };
+          const msg = JSON.parse(line) as {
+            type?: string;
+            track?: string;
+            pid?: number;
+            threadId?: number;
+            argv?: string[];
+          };
           if (msg.type === 'register' && msg.track) {
             track = msg.track;
+            registrations.set(track, {
+              id: track,
+              pid: msg.pid ?? 0,
+              threadId: msg.threadId ?? 0,
+              argv: msg.argv ?? [],
+            });
             conns.set(track, { socket, flushed: false });
             if (started) socket.write(`${JSON.stringify({ type: 'start' })}\n`);
           } else if (msg.type === 'flushed' && msg.track) {
@@ -278,7 +302,15 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   const finish = (): RawCapture => {
     server.close();
     for (const c of conns.values()) c.socket.destroy();
+    const delivered = deliveredTracks(dir);
     applyProcessFilters(dir, flags.include, flags.exclude);
+    const lost = detectLostTracks({
+      registered: [...registrations.values()],
+      delivered,
+      include: flags.include,
+      exclude: flags.exclude,
+      started,
+    });
     const meta: CaptureMeta = {
       command,
       cwd,
@@ -290,6 +322,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
       endedAt: Date.now(),
       endedBy,
       projectRoot: options.projectRoot ?? cwd,
+      ...(lost.length > 0 ? { lostTracks: lost } : {}),
     };
     const capture = readCaptureDir(dir, meta);
     rmSync(dir, { recursive: true, force: true });

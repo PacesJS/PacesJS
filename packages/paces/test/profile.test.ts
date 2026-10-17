@@ -35,6 +35,33 @@ describe('nodeOptionsWith', () => {
   });
 });
 
+describe('runProfile and killed processes', () => {
+  const killed = resolve(
+    import.meta.dirname,
+    '..',
+    '..',
+    '..',
+    'e2e',
+    'fixtures',
+    'killed-children.cjs',
+  );
+
+  it('records the processes and workers that were killed before they could write a profile', async () => {
+    const r = await runProfile({ ...base, command: ['node', killed], flags: flags() });
+    expect(r.exitCode).toBe(0);
+    expect(r.capture.tracks).toHaveLength(1);
+    const lost = r.capture.meta.lostTracks ?? [];
+    expect(lost).toHaveLength(3);
+    expect(lost.filter((l) => l.kind === 'worker')).toHaveLength(1);
+    expect(lost.every((l) => typeof l.pid === 'number' && l.label)).toBe(true);
+  }, 30_000);
+
+  it('leaves lostTracks unset when every process wrote its profile', async () => {
+    const r = await runProfile({ ...base, command: node(busy), flags: flags() });
+    expect(r.capture.meta.lostTracks).toBeUndefined();
+  });
+});
+
 describe('runProfile', () => {
   it('captures one track from a plain node command and mirrors exit code 0', async () => {
     const r = await runProfile({ ...base, command: node(busy), flags: flags() });

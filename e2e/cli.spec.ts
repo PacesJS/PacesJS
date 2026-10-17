@@ -220,3 +220,54 @@ test.describe('report mode', () => {
     }
   });
 });
+
+test.describe('lost tracks', () => {
+  test.beforeEach(async () => {
+    test.skip(!(await engineReady()), 'the engine does not export the model functions yet');
+  });
+
+  test('killed children and workers are reported once and recorded in the session', async () => {
+    const dir = tempDir();
+    try {
+      const out = join(dir, 'k.paces');
+      const run = await runPaces([
+        '--report',
+        '--out',
+        out,
+        '--',
+        'node',
+        'e2e/fixtures/killed-children.cjs',
+      ]);
+      expect(run.code, run.stderr).toBe(0);
+      const warning = run.stderr.split(/\r?\n/).filter((l) => l.includes('were stopped before'));
+      expect(warning).toHaveLength(1);
+      expect(warning[0]).toContain(
+        '3 of 4 processes were stopped before they could write a profile',
+      );
+      expect(run.stderr).toMatch(/\n {2}(process pid|worker thread)/);
+      const session = readSession(new Uint8Array(readFileSync(out)));
+      expect(session.capture.meta.lostTracks).toHaveLength(3);
+      expect(session.manifest.tracks).toHaveLength(1);
+      expect(run.stdout).toMatch(/caveats:.*(stopped before|lost)/i);
+      const json = await runPaces(['report', out, '--json']);
+      expect(JSON.stringify(JSON.parse(json.stdout))).toMatch(/lost-tracks|stopped before/);
+    } finally {
+      removeDir(dir);
+    }
+  });
+
+  test('a normal run prints no lost-track line and records none', async () => {
+    const dir = tempDir();
+    try {
+      const out = join(dir, 'n.paces');
+      const run = await runPaces(['--report', '--out', out, '--', 'node', 'zoo/apps/sync-io.cjs']);
+      expect(run.code, run.stderr).toBe(0);
+      expect(run.stderr).not.toContain('were stopped before');
+      expect(
+        readSession(new Uint8Array(readFileSync(out))).capture.meta.lostTracks,
+      ).toBeUndefined();
+    } finally {
+      removeDir(dir);
+    }
+  });
+});
