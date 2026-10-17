@@ -17,14 +17,18 @@ import { describeFunction, withoutInversion } from './view.js';
 
 const SPARK_BUCKETS = 60;
 
+interface LineFacts {
+  lines: LineSelf[];
+  hottest: number;
+  selfUs: number;
+  totalUs: number;
+  callees: number;
+}
+
 function describeLines(
   model: ExecutionModel,
   info: ReturnType<typeof describeFunction>,
-  lines: LineSelf[],
-  hottest: number,
-  selfUs: number,
-  totalUs: number,
-  callees: number,
+  { lines, hottest, selfUs, totalUs, callees }: LineFacts,
 ): LineInfo {
   if (lines.length > 0) {
     return {
@@ -125,15 +129,13 @@ export function functionSource(
     .filter((l) => l.selfUs > 0)
     .sort((x, y) => y.selfUs - x.selfUs || x.line - y.line)
     .slice(0, 8);
-  const lineInfo = describeLines(
-    model,
-    info,
+  const lineInfo = describeLines(model, info, {
     lines,
-    hottestLine,
+    hottest: hottestLine,
     selfUs,
     totalUs,
-    calleeTime.length,
-  );
+    callees: calleeTime.length,
+  });
 
   const sparkline = new Float32Array(SPARK_BUCKETS);
   const end = Math.max(1, track ? model.meta.durationUs : 1);
