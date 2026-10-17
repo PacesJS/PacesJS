@@ -38,11 +38,9 @@ interface MapEntry {
 
 type Lookup = MapEntry | 'missing' | 'none';
 
-export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): SourceMapResult {
-  const { capture, ingest } = input;
-  const strings = ctx.strings.strings;
+/** The source map of a script URL: supplied by the host, or embedded as a data URI. Cached per URL. */
+function createLookup(capture: RawCapture, ctx: PassContext): (url: string) => Lookup {
   const root = capture.meta.projectRoot;
-
   const declared = new Map<string, string>();
   for (const track of capture.tracks) {
     for (const s of track.scripts) {
@@ -50,7 +48,7 @@ export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): Sour
     }
   }
   const cache = new Map<string, Lookup>();
-  const lookup = (url: string): Lookup => {
+  return (url) => {
     const cached = cache.get(url);
     if (cached) return cached;
     let result: Lookup = 'none';
@@ -79,7 +77,23 @@ export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): Sour
     cache.set(url, result);
     return result;
   };
+}
 
+/** Per frame, what the tick-line mapping needs. */
+interface FrameInfo {
+  entry: MapEntry | undefined;
+  source: string;
+  fnLine: number;
+}
+
+/** Maps every frame to its original position and interns the functions (equal positions share a row). */
+function mapFrames(
+  ingest: IngestResult,
+  lookup: (url: string) => Lookup,
+  ctx: PassContext,
+  root: string,
+): { functions: MappedFunctions; frameToFn: Uint32Array; frameInfo: FrameInfo[] } {
+  const strings = ctx.strings.strings;
   const frames = ingest.frames;
   const frameToFn = new Uint32Array(frames.length);
   const fnIndex = new Map<string, number>();
@@ -89,8 +103,7 @@ export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): Sour
   const col: number[] = [];
   const mapped: number[] = [];
   const mapMissing: number[] = [];
-  /** Per frame, what the tick-line mapping needs. */
-  const frameInfo: Array<{ entry: MapEntry | undefined; source: string; fnLine: number }> = [];
+  const frameInfo: FrameInfo[] = [];
 
   for (let f = 0; f < frames.length; f++) {
     const url = strings[frames.url[f] ?? 0] ?? '';
@@ -153,7 +166,29 @@ export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): Sour
     frameInfo[f] = { entry: isMapped ? entry : undefined, source: sourcePath, fnLine: origLine };
   }
 
-  const tickLines = ingest.tracks.map((track) => {
+  return {
+    functions: {
+      length: name.length,
+      name: Uint32Array.from(name),
+      file: Uint32Array.from(file),
+      line: Uint32Array.from(line),
+      col: Uint32Array.from(col),
+      mapped: Uint8Array.from(mapped),
+      mapMissing: Uint8Array.from(mapMissing),
+    },
+    frameToFn,
+    frameInfo,
+  };
+}
+
+/** The original line of every line-tick entry, per track. */
+function mapTickLines(
+  ingest: IngestResult,
+  frameInfo: FrameInfo[],
+  strings: string[],
+): Uint32Array[] {
+  const frames = ingest.frames;
+  return ingest.tracks.map((track) => {
     const out = new Uint32Array(track.ticks.line.length);
     for (let n = 0; n < track.tree.length; n++) {
       const frame = track.tree.frame[n] ?? 0;
@@ -180,18 +215,20 @@ export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): Sour
     }
     return out;
   });
+}
 
+export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): SourceMapResult {
+  const { capture, ingest } = input;
+  const lookup = createLookup(capture, ctx);
+  const { functions, frameToFn, frameInfo } = mapFrames(
+    ingest,
+    lookup,
+    ctx,
+    capture.meta.projectRoot,
+  );
   return {
-    functions: {
-      length: name.length,
-      name: Uint32Array.from(name),
-      file: Uint32Array.from(file),
-      line: Uint32Array.from(line),
-      col: Uint32Array.from(col),
-      mapped: Uint8Array.from(mapped),
-      mapMissing: Uint8Array.from(mapMissing),
-    },
+    functions,
     frameToFn,
-    tickLines,
+    tickLines: mapTickLines(ingest, frameInfo, ctx.strings.strings),
   };
 }
