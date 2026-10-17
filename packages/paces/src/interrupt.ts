@@ -14,7 +14,8 @@ export interface InterruptDeps {
   exitGraceMs?: number;
 }
 
-const after = (ms: number): Promise<'timeout'> =>
+/** Resolves after `ms` without keeping the process alive. */
+export const after = (ms: number): Promise<'timeout'> =>
   new Promise((resolve) => {
     const t = setTimeout(() => resolve('timeout'), ms);
     t.unref();

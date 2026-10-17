@@ -12,7 +12,7 @@ import type { CaptureMeta, RawCapture } from '@pacesjs/engine';
 import type { Flags } from './args.js';
 import { UsageError } from './args.js';
 import { shouldProfile } from './glob.js';
-import { createInterruptHandler } from './interrupt.js';
+import { after, createInterruptHandler } from './interrupt.js';
 import { killTree } from './launch.js';
 import { detectLostTracks } from './lost-tracks.js';
 import type { RegisteredTrack } from './lost-tracks.js';
@@ -73,12 +73,15 @@ function exitCodeOf(code: number | null, signal: NodeJS.Signals | null): number 
   return n ? 128 + n : 1;
 }
 
+/** `p123-w1.cpuprofile` and `p123-w1.info` both belong to track `p123-w1`. */
+const trackOfFile = (name: string): string => name.slice(0, name.lastIndexOf('.'));
+
 /** Tracks that wrote anything: a profile, or at least the info file written next to it. */
 function deliveredTracks(dir: string): Set<string> {
   const raw = join(dir, 'raw');
   const out = new Set<string>();
   if (!existsSync(raw)) return out;
-  for (const name of readdirSync(raw)) out.add(name.slice(0, name.lastIndexOf('.')));
+  for (const name of readdirSync(raw)) out.add(trackOfFile(name));
   return out;
 }
 
@@ -92,14 +95,14 @@ function applyProcessFilters(dir: string, include: string[], exclude: string[]):
     if (!name.endsWith('.info')) continue;
     try {
       const info = JSON.parse(readFileSync(join(raw, name), 'utf8')) as { argv?: string[] };
-      argvByTrack.set(name.slice(0, -5), info.argv ?? []);
+      argvByTrack.set(trackOfFile(name), info.argv ?? []);
     } catch {
       // An unreadable info file leaves the track in; filtering is best effort.
     }
   }
   const processOf = (track: string): string => track.replace(/-w\d+$/, '');
   for (const name of readdirSync(raw)) {
-    const track = name.slice(0, name.lastIndexOf('.'));
+    const track = trackOfFile(name);
     const argv = argvByTrack.get(processOf(track));
     if (argv && !shouldProfile(argv, include, exclude)) rmSync(join(raw, name), { force: true });
   }
@@ -342,9 +345,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
     windowEnd = new Promise<'duration'>((resolve) => {
       const t = setTimeout(() => {
         broadcast('stop');
-        Promise.race([allFlushed, new Promise((r) => setTimeout(r, 5000).unref())]).then(() =>
-          resolve('duration'),
-        );
+        Promise.race([allFlushed, after(5000)]).then(() => resolve('duration'));
       }, flags.duration! * 1000);
       t.unref();
       void exited.then(() => clearTimeout(t));
@@ -397,8 +398,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   };
 
   // The root exiting does not mean every flush landed: give straggler acks a moment.
-  if (!stoppedEarly)
-    await Promise.race([allFlushed, new Promise((r) => setTimeout(r, 200).unref())]);
+  if (!stoppedEarly) await Promise.race([allFlushed, after(200)]);
 
   const capture = finish();
   if (capture.tracks.length === 0) throw new NoProcessesError(command, exitCode);
