@@ -6,6 +6,7 @@ export * from './query/types.js';
 export { analyze } from './analyze.js';
 export { ensureCaptureWarnings } from './passes/warnings.js';
 export { buildAgentSummary } from './agent-summary.js';
+export { ms, share } from './util/format.js';
 export type {
   AgentFinding,
   AgentFunction,

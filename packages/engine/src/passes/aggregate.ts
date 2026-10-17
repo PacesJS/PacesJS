@@ -1,7 +1,7 @@
 // Pass 8: aggregation. Self and total time per function, per call edge, per source line, per
 // package and per task kind, from the call tree, the spans and V8's line ticks.
 
-import { Origin } from '../model.js';
+import { Origin, TASK_KIND_NAMES } from '../model.js';
 import type {
   CallTree,
   EdgeTable,
@@ -181,9 +181,9 @@ export function aggregateTrack(input: TrackAggregateInput): TrackAggregateResult
   offset[F] = lineList.length;
 
   // Task kinds.
-  const kindCount = new Uint32Array(7);
-  const kindBusy = new Float64Array(7);
-  const kindPlumbing = new Float64Array(7);
+  const kindCount = new Uint32Array(TASK_KIND_NAMES.length);
+  const kindBusy = new Float64Array(TASK_KIND_NAMES.length);
+  const kindPlumbing = new Float64Array(TASK_KIND_NAMES.length);
   for (let k = 0; k < tasks.length; k++) {
     const kind = tasks.kind[k] ?? 6;
     kindCount[kind] = (kindCount[kind] ?? 0) + 1;
@@ -225,14 +225,14 @@ export function mergePackages(
   const self = new Map<number, number>();
   const total = new Map<number, number>();
   const taskKinds: TaskKindStats = {
-    count: new Uint32Array(7),
-    busy: new Float64Array(7),
-    plumbing: new Float64Array(7),
+    count: new Uint32Array(TASK_KIND_NAMES.length),
+    busy: new Float64Array(TASK_KIND_NAMES.length),
+    plumbing: new Float64Array(TASK_KIND_NAMES.length),
   };
   for (const r of results) {
     for (const [p, v] of r.pkgSelf) self.set(p, (self.get(p) ?? 0) + v);
     for (const [p, v] of r.pkgTotal) total.set(p, (total.get(p) ?? 0) + v);
-    for (let k = 0; k < 7; k++) {
+    for (let k = 0; k < TASK_KIND_NAMES.length; k++) {
       taskKinds.count[k] = (taskKinds.count[k] ?? 0) + (r.kindCount[k] ?? 0);
       taskKinds.busy[k] = (taskKinds.busy[k] ?? 0) + (r.kindBusy[k] ?? 0);
       taskKinds.plumbing[k] = (taskKinds.plumbing[k] ?? 0) + (r.kindPlumbing[k] ?? 0);

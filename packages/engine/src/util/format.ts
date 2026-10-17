@@ -17,3 +17,9 @@ export function formatPercent(share: number): string {
 export function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }
+
+/** Microseconds as milliseconds at 0.1 ms resolution, for JSON digests. */
+export const ms = (us: number): number => Math.round(us / 100) / 10;
+
+/** A 0..1 share rounded to three decimals, for JSON digests. */
+export const share = (x: number): number => Math.round(x * 1000) / 1000;

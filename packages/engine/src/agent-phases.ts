@@ -2,6 +2,7 @@
 
 import { Origin } from './model.js';
 import type { ExecutionModel, FnId } from './model.js';
+import { ms, share } from './util/format.js';
 import { displayPath } from './util/paths.js';
 
 export interface SourceLocation {
@@ -33,9 +34,6 @@ const CAT_LOAD = 1;
 const CAT_CONFIG = 2;
 const CAT_IDLE = 3;
 const CATEGORIES = 4;
-
-const ms = (us: number): number => Math.round(us / 100) / 10;
-const share = (x: number): number => Math.round(x * 1000) / 1000;
 
 interface Run {
   cat: number;

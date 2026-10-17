@@ -4,6 +4,7 @@
 import { Origin, ORIGIN_NAMES, TASK_KIND_NAMES } from './model.js';
 import type { ExecutionModel, FnId, ModelWarning, RunKind, Severity, TrackRole } from './model.js';
 import { phasesOf } from './agent-phases.js';
+import { ms, share } from './util/format.js';
 import type { AgentPhase, SourceLocation } from './agent-phases.js';
 import { hotPaths } from './query/paths.js';
 
@@ -106,9 +107,6 @@ export interface AgentSummary {
   /** `caveats[i].summary`, for readers that want plain strings. */
   warnings: string[];
 }
-
-const ms = (us: number): number => Math.round(us / 100) / 10;
-const share = (x: number): number => Math.round(x * 1000) / 1000;
 
 export function buildAgentSummary(model: ExecutionModel): AgentSummary {
   const where = (fn: FnId): SourceLocation => ({

@@ -3,7 +3,7 @@
 
 import { DEFAULT_SUPPRESS_FOR_CLI } from '../config.js';
 import type { Thresholds } from '../config.js';
-import { Origin, TaskKind } from '../model.js';
+import { Origin, TASK_KIND_NAMES, TaskKind } from '../model.js';
 import type { ExecutionModel, Finding, FindingKind, FnId, Severity, Track } from '../model.js';
 import { hotPaths } from '../query/paths.js';
 import { formatDuration, formatPercent, plural } from '../util/format.js';
@@ -431,7 +431,7 @@ const gcPressure: Rule = (m, th) => {
 
 const asyncOverhead: Rule = (m, th) => {
   let worst: { kind: number; share: number; us: number } | undefined;
-  for (let kind = 0; kind < 7; kind++) {
+  for (let kind = 0; kind < TASK_KIND_NAMES.length; kind++) {
     if (kind === TaskKind.Main) continue;
     const busy = m.taskKinds.busy[kind] ?? 0;
     if (busy / m.meta.precisionUs < th.minSamples) continue;
