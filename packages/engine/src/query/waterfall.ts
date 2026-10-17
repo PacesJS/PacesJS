@@ -14,6 +14,7 @@ import type {
   WaterfallRow,
 } from './types.js';
 import { applyTransforms, withoutInversion } from './view.js';
+import { addCoverage, capAtOne } from '../util/buckets.js';
 import { lowerBound } from '../util/search.js';
 import { trackAt } from './track-at.js';
 
@@ -197,15 +198,9 @@ function minimap(
     const leaf = view.tree.fn[samples.node[i] ?? 0] ?? 0;
     if ((origin[leaf] ?? 0) === Origin.Idle) continue;
     const a = samples.time[i] ?? 0;
-    const b = Math.min(end, a + (samples.dur[i] ?? 0));
-    for (let k = Math.max(0, Math.floor((a - start) / width)); k < buckets; k++) {
-      const lo = start + k * width;
-      if (lo >= b) break;
-      const overlap = Math.min(b, lo + width) - Math.max(a, lo);
-      if (overlap > 0) busy[k] = (busy[k] ?? 0) + overlap / width;
-    }
+    addCoverage(busy, a, Math.min(end, a + (samples.dur[i] ?? 0)), start, width);
   }
-  for (let k = 0; k < buckets; k++) busy[k] = Math.min(1, busy[k] ?? 0);
+  capAtOne(busy);
   return busy;
 }
 

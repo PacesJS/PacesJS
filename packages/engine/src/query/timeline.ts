@@ -2,6 +2,7 @@
 
 import { Origin, TaskKind } from '../model.js';
 import type { ExecutionModel } from '../model.js';
+import { addCoverage, capAtOne } from '../util/buckets.js';
 import type { TimelineLane, TimelineMarker, TimelineOptions, TimelineTaskBlock } from './types.js';
 import { trackAt } from './track-at.js';
 
@@ -28,19 +29,13 @@ export function timelineLane(
     const origin = model.functions.origin[fn] ?? Origin.User;
     if (origin === Origin.Idle) continue;
     const isUser = origin === Origin.User;
-    for (let k = Math.max(0, Math.floor((a - start) / bucketUs)); k < buckets; k++) {
-      const lo = start + k * bucketUs;
-      if (lo >= b) break;
-      const overlap = (Math.min(b, lo + bucketUs, end) - Math.max(a, lo)) / bucketUs;
-      if (overlap <= 0) continue;
-      cpu[k] = (cpu[k] ?? 0) + overlap;
-      if (isUser) user[k] = (user[k] ?? 0) + overlap;
-    }
+    // Clipped to the lane: the last bucket ends at `end`.
+    const clipped = Math.min(b, end);
+    addCoverage(cpu, a, clipped, start, bucketUs);
+    if (isUser) addCoverage(user, a, clipped, start, bucketUs);
   }
-  for (let k = 0; k < buckets; k++) {
-    cpu[k] = Math.min(1, cpu[k] ?? 0);
-    user[k] = Math.min(1, user[k] ?? 0);
-  }
+  capAtOne(cpu);
+  capAtOne(user);
 
   const tasks: TimelineTaskBlock[] = [];
   for (let k = 0; k < track.tasks.length; k++) {

@@ -2,6 +2,7 @@
 
 import type { ExecutionModel } from '../model.js';
 import { Origin } from '../model.js';
+import { addCoverage, capAtOne } from '../util/buckets.js';
 import { formatDuration, plural } from '../util/format.js';
 import type {
   CalleeTime,
@@ -141,15 +142,9 @@ export function functionSource(
   for (let i = 0; i < s.length; i++) {
     if (contains[s.node[i] ?? 0] !== 1) continue;
     const a = s.time[i] ?? 0;
-    const b = a + (s.dur[i] ?? 0);
-    for (let k = Math.max(0, Math.floor(a / width)); k < SPARK_BUCKETS; k++) {
-      const lo = k * width;
-      if (lo >= b) break;
-      const overlap = Math.min(b, lo + width) - Math.max(a, lo);
-      if (overlap > 0) sparkline[k] = (sparkline[k] ?? 0) + overlap / width;
-    }
+    addCoverage(sparkline, a, a + (s.dur[i] ?? 0), 0, width);
   }
-  for (let k = 0; k < SPARK_BUCKETS; k++) sparkline[k] = Math.min(1, sparkline[k] ?? 0);
+  capAtOne(sparkline);
 
   return {
     fn,
