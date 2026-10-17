@@ -3,7 +3,7 @@
 // script. Reads the continuation table the analysis produced; allocates per distinct (task, node),
 // not per sample.
 
-import { Origin } from '../model.js';
+import { isRuntimeFn } from '../frames.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
 import { taskOfSpan } from '../util/search.js';
 
@@ -25,17 +25,7 @@ export function stitchPlan(
   const track = model.tracks[trackIndex];
   if (!track || tree !== track.callTree) return undefined;
   const { spans, tasks, continuations } = track;
-  const f = model.functions;
-  const program = (fn: number): boolean => {
-    const o = f.origin[fn] ?? Origin.User;
-    return (
-      o !== Origin.Native &&
-      o !== Origin.Node &&
-      o !== Origin.Idle &&
-      o !== Origin.Gc &&
-      f.plumbing[fn] !== 1
-    );
-  };
+  const program = (fn: number): boolean => !isRuntimeFn(model.functions, fn);
 
   const parent: number[] = [-1];
   const fn: number[] = [tree.fn[0] ?? 0];

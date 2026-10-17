@@ -10,7 +10,8 @@
 // nothing to resume is attached, when at all, under the shallowest frame of the same package of where
 // the previous task yielded. Otherwise it stays a root.
 
-import { Origin, TaskKind } from '../model.js';
+import { isRuntimeFn } from '../frames.js';
+import { TaskKind } from '../model.js';
 import type { AsyncEdgeTable, ContinuationTable, SpanTable, TaskTable } from '../model.js';
 import { taskOfSpan } from '../util/search.js';
 
@@ -28,24 +29,13 @@ const LOOKBACK = 64;
 
 export function stitchContinuations(input: ContinuationInput): ContinuationTable {
   const { spans, tasks, asyncEdges, functions, precisionUs } = input;
-  const runtime = (fn: number): boolean => {
-    const o = functions.origin[fn] ?? Origin.User;
-    return (
-      o === Origin.Native ||
-      o === Origin.Node ||
-      o === Origin.Idle ||
-      o === Origin.Gc ||
-      functions.plumbing[fn] === 1
-    );
-  };
-
   // A span is an anchor when it is the shallowest program frame on its stack.
   const anchor = new Uint8Array(spans.length);
   const underProgram = new Uint8Array(spans.length);
   for (let s = 0; s < spans.length; s++) {
     const p = spans.parent[s] ?? -1;
     const above = p >= 0 ? (underProgram[p] ?? 0) : 0;
-    const program = !runtime(spans.fn[s] ?? 0);
+    const program = !isRuntimeFn(functions, spans.fn[s] ?? 0);
     anchor[s] = program && above === 0 ? 1 : 0;
     underProgram[s] = above | (program ? 1 : 0);
   }
@@ -118,7 +108,9 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
       if (start > 0) cut = start;
       break;
     }
-    const out = chain.slice(0, cut).filter((s) => !runtime(spans.fn[s] ?? 0) && !isLoader(s));
+    const out = chain
+      .slice(0, cut)
+      .filter((s) => !isRuntimeFn(functions, spans.fn[s] ?? 0) && !isLoader(s));
     yieldMemo.set(p, out);
     return out;
   };
