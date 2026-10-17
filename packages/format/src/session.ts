@@ -70,18 +70,18 @@ function readFiles(bytes: Uint8Array): { manifest: Manifest; files: Record<strin
     throw new SessionFormatError('manifest.json is not valid JSON; the session may be damaged.');
   }
   assertReadable(manifest.formatVersion);
-  return { manifest, files };
+  // Sessions from older writers have no `sources` list.
+  return { manifest: { ...manifest, sources: manifest.sources ?? [] }, files };
 }
 
 export function readManifest(bytes: Uint8Array): Manifest {
-  const { manifest } = readFiles(bytes);
-  return { ...manifest, sources: manifest.sources ?? [] };
+  return readFiles(bytes).manifest;
 }
 
 export function readSession(bytes: Uint8Array, options: ReadOptions = {}): Session {
   const { manifest, files } = readFiles(bytes);
   const sources: Record<string, Uint8Array> = {};
-  for (const s of manifest.sources ?? []) {
+  for (const s of manifest.sources) {
     const data = files[`sources/${s.hash}`];
     if (data) sources[s.hash] = data;
   }
@@ -89,7 +89,7 @@ export function readSession(bytes: Uint8Array, options: ReadOptions = {}): Sessi
     options.engineVersion !== undefined ? `model/${options.engineVersion}.bin` : undefined;
   const model = modelName ? files[modelName] : undefined;
   return {
-    manifest: { ...manifest, sources: manifest.sources ?? [] },
+    manifest,
     capture: filesToCapture(files, manifest),
     ...(model ? { model } : {}),
     sources,
