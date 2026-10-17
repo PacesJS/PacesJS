@@ -68,6 +68,11 @@ function totalBusy(m: ExecutionModel): number {
   return m.tracks.reduce((n, t, ti) => n + (isTargetTrack(m, ti) ? t.busyUs : 0), 0);
 }
 
+/** The `track` field of a finding or its `showMe`, omitted when the track is gone. */
+function trackRef(track: Track | undefined): { track?: string } {
+  return track ? { track: track.id } : {};
+}
+
 function severityBy(value: number, high: number, medium: number): Severity {
   return value >= high ? 'high' : value >= medium ? 'medium' : 'low';
 }
@@ -313,9 +318,7 @@ const hotFunction: Rule = (m, th) => {
 const hotDependency: Rule = (m, th) => {
   // A server's startup is not its steady state; a command has nothing but startup.
   const server = m.meta.runKind === 'server';
-  const base = server
-    ? steadyBusy(m)
-    : m.tracks.reduce((n, t, ti) => n + (isTargetTrack(m, ti) ? t.busyUs : 0), 0);
+  const base = server ? steadyBusy(m) : totalBusy(m);
   if (base / m.meta.precisionUs < th.minSamples) return [];
   // The target is what is being profiled, so its own package is never a finding.
   const targetPkgs = new Set(m.target.packages.map((name) => m.strings.indexOf(name)));
@@ -371,11 +374,11 @@ const hotDependency: Rule = (m, th) => {
         impact: Math.min(1, share),
         showMe: {
           view: 'callgraph',
-          ...(track ? { track: track.id } : {}),
+          ...trackRef(track),
           options: { expandPackage: name },
         },
         evidence: top === undefined ? [] : [top],
-        ...(track ? { track: track.id } : {}),
+        ...trackRef(track),
       };
     });
 };
@@ -476,11 +479,11 @@ const asyncOverhead: Rule = (m, th) => {
       ),
       showMe: {
         view: 'flame',
-        ...(track ? { track: track.id } : {}),
+        ...trackRef(track),
         options: { unmergePlumbing: true },
       },
       evidence: top.map(([fn]) => fn),
-      ...(track ? { track: track.id } : {}),
+      ...trackRef(track),
     },
   ];
 };
@@ -528,11 +531,11 @@ const heavySerialization: Rule = (m, th) => {
       impact: Math.min(1, share),
       showMe: {
         view: 'functions',
-        ...(track ? { track: track.id } : {}),
+        ...trackRef(track),
         options: { search: 'JSON', callersOf: true },
       },
       evidence: [...fns].sort((a, b) => a - b),
-      ...(track ? { track: track.id } : {}),
+      ...trackRef(track),
     },
   ];
 };
@@ -597,12 +600,12 @@ const lateModuleLoading: Rule = (m, th) => {
       impact: Math.min(1, share),
       showMe: {
         view: 'waterfall',
-        ...(track ? { track: track.id } : {}),
+        ...trackRef(track),
         task: hit.task,
         fn: hit.fn,
       },
       evidence: [hit.fn],
-      ...(track ? { track: track.id } : {}),
+      ...trackRef(track),
     },
   ];
 };
