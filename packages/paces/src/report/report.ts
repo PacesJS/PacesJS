@@ -21,6 +21,7 @@ import type {
   TreeSelector,
 } from '@pacesjs/engine';
 import type { Flags } from '../args.js';
+import { fnFacts, originName } from '../fn-facts.js';
 import type { SourceResolver } from '../source-resolver.js';
 import {
   fmtPct,
@@ -76,7 +77,6 @@ function cappedLimit(flags: Flags, fallback: number, reserved: number, floor = 3
   return Math.min(flags.report.limit ?? fallback, lineBudget(flags, reserved, floor));
 }
 
-const originName = (o: number): string => ORIGIN_NAMES[o] ?? 'user';
 const round = (n: number): number => Math.round(n * 10) / 10;
 
 function trackIndexOf(model: ExecutionModel, wanted: string | undefined): number {
@@ -114,18 +114,7 @@ function originsOf(flags: Flags): OriginId[] | undefined {
   return o.map((n) => ORIGIN_NAMES.indexOf(n as (typeof ORIGIN_NAMES)[number]) as OriginId);
 }
 
-function locate(
-  model: ExecutionModel,
-  fn: FnId,
-): { name: string; file: string; line: number; pkg: string; origin: OriginId } {
-  return {
-    name: model.strings[model.functions.name[fn] ?? 0] ?? '',
-    file: (model.strings[model.functions.file[fn] ?? 0] ?? '').replaceAll('\\', '/'),
-    line: model.functions.line[fn] ?? 0,
-    pkg: model.strings[model.functions.pkg[fn] ?? 0] ?? '',
-    origin: (model.functions.origin[fn] ?? 0) as OriginId,
-  };
-}
+const locate = (model: ExecutionModel, fn: FnId) => fnFacts(model, fn, true);
 
 function tag(origin: number, pkg: string, synthetic = false): string {
   if (synthetic) return '(collapsed)';

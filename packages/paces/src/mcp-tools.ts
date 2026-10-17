@@ -1,10 +1,11 @@
 import { ORIGIN_NAMES, callersOf, hotPaths, packageBreakdown } from '@pacesjs/engine';
 import type { CallerNode, ExecutionModel, FnId, Track } from '@pacesjs/engine';
 import type { AgentSummary } from './engine.js';
+import { fnFacts, originName } from './fn-facts.js';
 import type { McpTool } from './mcp.js';
+import { orAnon, round3 as share } from './report/format.js';
 
 const ms = (us: number): number => Math.round(us / 100) / 10;
-const share = (x: number): number => Math.round(x * 1000) / 1000;
 
 class ToolInputError extends Error {}
 
@@ -59,13 +60,16 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
   };
   const str_ = (id: number): string => model.strings[id] ?? '';
 
-  const fnIdentity = (fn: FnId) => ({
-    name: str_(model.functions.name[fn] ?? 0) || '(anonymous)',
-    package: str_(model.functions.pkg[fn] ?? 0),
-    file: str_(model.functions.file[fn] ?? 0),
-    line: model.functions.line[fn] ?? 0,
-    origin: ORIGIN_NAMES[model.functions.origin[fn] ?? 0] ?? 'user',
-  });
+  const fnIdentity = (fn: FnId) => {
+    const f = fnFacts(model, fn, false);
+    return {
+      name: orAnon(f.name),
+      package: f.pkg,
+      file: f.file,
+      line: f.line,
+      origin: originName(f.origin),
+    };
+  };
 
   const ref = (fn: FnId) => {
     const t = model.tracks[primary] as Track;
