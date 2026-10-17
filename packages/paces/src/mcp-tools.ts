@@ -1,12 +1,13 @@
 import { ORIGIN_NAMES, callersOf, hotPaths, packageBreakdown } from '@pacesjs/engine';
 import type { CallerNode, ExecutionModel, FnId, Track } from '@pacesjs/engine';
 import type { AgentSummary } from './engine.js';
+import { fnFacts, originName } from './fn-facts.js';
 import type { McpTool } from './mcp.js';
+import { orAnon, round3 as share } from './report/format.js';
 
 const ms = (us: number): number => Math.round(us / 100) / 10;
-const share = (x: number): number => Math.round(x * 1000) / 1000;
 
-export class ToolInputError extends Error {}
+class ToolInputError extends Error {}
 
 function int(args: Record<string, unknown>, key: string, fallback: number, max: number): number {
   const v = args[key];
@@ -46,11 +47,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
   const targetTracks = model.tracks
     .map((t, i) => ({ t, i }))
     .filter(({ t }) => t.role !== 'support');
-  const busy = (primaryOnly: boolean): number =>
-    (primaryOnly ? [{ t: model.tracks[primary] as Track }] : targetTracks).reduce(
-      (n, { t }) => n + t.busyUs,
-      0,
-    ) || 1;
+  const primaryBusy = (model.tracks[primary] as Track).busyUs || 1;
   const indexOf = new Map<Track, Map<FnId, number>>();
   const slot = (t: Track, fn: FnId): number | undefined => {
     let m = indexOf.get(t);
@@ -63,20 +60,27 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
   };
   const str_ = (id: number): string => model.strings[id] ?? '';
 
-  const ref = (fn: FnId, trackIndex = primary) => {
-    const t = model.tracks[trackIndex] as Track;
+  const fnIdentity = (fn: FnId) => {
+    const f = fnFacts(model, fn, false);
+    return {
+      name: orAnon(f.name),
+      package: f.pkg,
+      file: f.file,
+      line: f.line,
+      origin: originName(f.origin),
+    };
+  };
+
+  const ref = (fn: FnId) => {
+    const t = model.tracks[primary] as Track;
     const i = slot(t, fn);
     const self = i === undefined ? 0 : (t.agg.fnSelf[i] ?? 0);
     const total = i === undefined ? 0 : (t.agg.fnTotal[i] ?? 0);
     return {
-      name: str_(model.functions.name[fn] ?? 0) || '(anonymous)',
-      package: str_(model.functions.pkg[fn] ?? 0),
-      file: str_(model.functions.file[fn] ?? 0),
-      line: model.functions.line[fn] ?? 0,
-      origin: ORIGIN_NAMES[model.functions.origin[fn] ?? 0] ?? 'user',
+      ...fnIdentity(fn),
       selfMs: ms(self),
       totalMs: ms(total),
-      share: share(total / busy(true)),
+      share: share(total / primaryBusy),
     };
   };
 
@@ -184,7 +188,6 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
             total.set(fn, (total.get(fn) ?? 0) + (t.agg.fnTotal[i] ?? 0));
           });
         }
-        const denom = busy(true);
         const rows = [...self.keys()]
           .filter((fn) => {
             const o = ORIGIN_NAMES[model.functions.origin[fn] ?? 0];
@@ -198,14 +201,10 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
           .sort((a, b) => (sort === 'self' ? b.self - a.self : b.total - a.total) || a.fn - b.fn)
           .slice(0, limit);
         return rows.map((r) => ({
-          name: str_(model.functions.name[r.fn] ?? 0) || '(anonymous)',
-          package: str_(model.functions.pkg[r.fn] ?? 0),
-          file: str_(model.functions.file[r.fn] ?? 0),
-          line: model.functions.line[r.fn] ?? 0,
-          origin: ORIGIN_NAMES[model.functions.origin[r.fn] ?? 0] ?? 'user',
+          ...fnIdentity(r.fn),
           selfMs: ms(r.self),
           totalMs: ms(r.total),
-          share: share((sort === 'self' ? r.self : r.total) / denom),
+          share: share((sort === 'self' ? r.self : r.total) / primaryBusy),
         }));
       },
     },
@@ -222,12 +221,11 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
       run: (args) => {
         const pkg = str(args, 'package', true) as string;
         const rows = packageBreakdown(model, primary, pkg).slice(0, 30);
-        const denom = busy(true);
         return rows.map((r) => ({
           ...ref(r.fn),
           selfMs: ms(r.self),
           totalMs: ms(r.total),
-          share: share(r.total / denom),
+          share: share(r.total / primaryBusy),
         }));
       },
     },

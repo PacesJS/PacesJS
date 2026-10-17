@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ExecutionModel } from '@pacesjs/engine';
+import type { ExecutionModel, RawCapture } from '@pacesjs/engine';
 import { loadModel, readSession, writeSession } from '@pacesjs/format';
 import type { Session } from '@pacesjs/format';
 import type { Flags, Parsed } from './args.js';
@@ -75,8 +75,21 @@ function resolvePreload(): string {
   );
 }
 
-function readSessionFile(file: string, engineVersion?: string): Session {
+function requireFile(file: string): void {
   if (!existsSync(file)) throw new UsageError(`No such file: ${file}`);
+}
+
+/** Reads a `.cpuprofile` (or Chrome trace JSON) as a capture, named after the file. */
+function importFile(file: string, cwd: string): RawCapture {
+  return importProfile(readFileSync(file, 'utf8'), {
+    name: basename(file),
+    cwd,
+    mtimeMs: statSync(file).mtimeMs,
+  });
+}
+
+function readSessionFile(file: string, engineVersion?: string): Session {
+  requireFile(file);
   return readSession(
     new Uint8Array(readFileSync(file)),
     engineVersion !== undefined ? { engineVersion } : {},
@@ -100,12 +113,11 @@ export function summarizeWarnings(warnings: unknown): {
   return { total: list.length, byCode };
 }
 
-function toHostSession(
-  file: string,
-  session: Session,
-  model: ExecutionModel,
-  engine: Engine,
-): HostSession {
+/** What the source resolver may serve for a session: embedded copies and every script V8 parsed. */
+function sessionSourceInputs(session: Session): {
+  embedded: Map<string, Uint8Array>;
+  scriptUrls: Set<string>;
+} {
   const embedded = new Map<string, Uint8Array>();
   for (const s of session.manifest.sources) {
     const bytes = session.sources[s.hash];
@@ -113,6 +125,16 @@ function toHostSession(
   }
   const scriptUrls = new Set<string>();
   for (const t of session.capture.tracks) for (const sc of t.scripts) scriptUrls.add(sc.url);
+  return { embedded, scriptUrls };
+}
+
+function toHostSession(
+  file: string,
+  session: Session,
+  model: ExecutionModel,
+  engine: Engine,
+): HostSession {
+  const { embedded, scriptUrls } = sessionSourceInputs(session);
   const m = model as unknown as {
     target?: unknown;
     primaryTrack?: unknown;
@@ -135,18 +157,20 @@ function toHostSession(
 
 /** Starts the server, opens the window and waits until it closes (or Ctrl+C). */
 async function present(session: HostSession, flags: Flags, io: Io): Promise<void> {
+  const ui = uiDir();
   const host = await startHost({
     session,
     configDir: configDir(),
-    ...(uiDir() ? { uiDir: uiDir() as string } : {}),
+    ...(ui ? { uiDir: ui } : {}),
     openInEditor: (file, line) => run(planEditorOpen(file, line)),
   });
   let browser: ChildProcess | undefined;
   let profileDir: string | undefined;
   let browserExited: Promise<void> | undefined;
 
-  const exe = flags.noOpen || isHeadless() ? undefined : findBrowser();
-  if (flags.noOpen || isHeadless()) {
+  const headless = flags.noOpen || isHeadless();
+  const exe = headless ? undefined : findBrowser();
+  if (headless) {
     io.err(`paces: open this URL in your browser: ${host.url}`);
   } else if (exe) {
     profileDir = mkdtempSync(join(tmpdir(), 'paces-browser-'));
@@ -256,13 +280,7 @@ function colorEnabled(flags: Flags): boolean {
 }
 
 function resolverFor(session: Session) {
-  const embedded = new Map<string, Uint8Array>();
-  for (const s of session.manifest.sources) {
-    const bytes = session.sources[s.hash];
-    if (bytes) embedded.set(s.path, bytes);
-  }
-  const scriptUrls = new Set<string>();
-  for (const t of session.capture.tracks) for (const sc of t.scripts) scriptUrls.add(sc.url);
+  const { embedded, scriptUrls } = sessionSourceInputs(session);
   return createSourceResolver({
     projectRoot: session.manifest.projectRoot,
     scriptUrls,
@@ -302,14 +320,10 @@ function printReport(
 }
 
 function cmdReport(file: string, flags: Flags, io: Io): number {
-  if (!existsSync(file)) throw new UsageError(`No such file: ${file}`);
+  requireFile(file);
   const engine = loadEngine();
   if (/\.(cpuprofile|json)$/i.test(file)) {
-    const capture = importProfile(readFileSync(file, 'utf8'), {
-      name: basename(file),
-      cwd: process.cwd(),
-      mtimeMs: statSync(file).mtimeMs,
-    });
+    const capture = importFile(file, process.cwd());
     const model = engine.analyze(capture, analyzeOptions(flags));
     return printReport(model, undefined, file, flags, io) ? 0 : 1;
   }
@@ -349,13 +363,9 @@ async function cmdDiff(a: string, b: string, flags: Flags, io: Io): Promise<numb
 }
 
 async function cmdImport(file: string, flags: Flags, io: Io): Promise<number> {
-  if (!existsSync(file)) throw new UsageError(`No such file: ${file}`);
+  requireFile(file);
   const cwd = process.cwd();
-  const capture = importProfile(readFileSync(file, 'utf8'), {
-    name: basename(file),
-    cwd,
-    mtimeMs: statSync(file).mtimeMs,
-  });
+  const capture = importFile(file, cwd);
   const engine = loadEngine();
   const out = resolve(cwd, flags.out ?? defaultSessionPath(cwd, new Date(), existsSync, '-import'));
   const model = engine.analyze(capture, analyzeOptions(flags));

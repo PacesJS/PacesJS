@@ -1,10 +1,9 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { which } from './which.js';
-import { pathExists } from './which.js';
 
 type Env = Record<string, string | undefined>;
 
@@ -67,7 +66,7 @@ export interface BrowserLookup {
 export function findBrowser(opts: BrowserLookup = {}): string | undefined {
   const env = opts.env ?? process.env;
   const platform = opts.platform ?? process.platform;
-  const exists = opts.exists ?? pathExists;
+  const exists = opts.exists ?? existsSync;
   const candidates: string[] = [];
   if (platform === 'win32') {
     const roots = [env.ProgramFiles, env['ProgramFiles(x86)'], env.LOCALAPPDATA, env.ProgramW6432]

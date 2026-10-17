@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
 
 type Env = Record<string, string | undefined>;
@@ -40,5 +40,3 @@ export function which(
   }
   return undefined;
 }
-
-export const pathExists = existsSync;

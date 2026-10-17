@@ -2,17 +2,17 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
-import type { Socket } from 'node:net';
-import { constants } from 'node:os';
-import { tmpdir } from 'node:os';
+import type { Server, Socket } from 'node:net';
+import { constants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCaptureDir, socketPath } from '@pacesjs/collector-node';
+import type { ToCli, ToTarget } from '@pacesjs/collector-node';
 import type { CaptureMeta, RawCapture } from '@pacesjs/engine';
 import type { Flags } from './args.js';
 import { UsageError } from './args.js';
 import { shouldProfile } from './glob.js';
-import { createInterruptHandler } from './interrupt.js';
+import { after, createInterruptHandler } from './interrupt.js';
 import { killTree } from './launch.js';
 import { detectLostTracks } from './lost-tracks.js';
 import type { RegisteredTrack } from './lost-tracks.js';
@@ -73,12 +73,15 @@ function exitCodeOf(code: number | null, signal: NodeJS.Signals | null): number 
   return n ? 128 + n : 1;
 }
 
+/** `p123-w1.cpuprofile` and `p123-w1.info` both belong to track `p123-w1`. */
+const trackOfFile = (name: string): string => name.slice(0, name.lastIndexOf('.'));
+
 /** Tracks that wrote anything: a profile, or at least the info file written next to it. */
 function deliveredTracks(dir: string): Set<string> {
   const raw = join(dir, 'raw');
   const out = new Set<string>();
   if (!existsSync(raw)) return out;
-  for (const name of readdirSync(raw)) out.add(name.slice(0, name.lastIndexOf('.')));
+  for (const name of readdirSync(raw)) out.add(trackOfFile(name));
   return out;
 }
 
@@ -92,23 +95,161 @@ function applyProcessFilters(dir: string, include: string[], exclude: string[]):
     if (!name.endsWith('.info')) continue;
     try {
       const info = JSON.parse(readFileSync(join(raw, name), 'utf8')) as { argv?: string[] };
-      argvByTrack.set(name.slice(0, -5), info.argv ?? []);
+      argvByTrack.set(trackOfFile(name), info.argv ?? []);
     } catch {
       // An unreadable info file leaves the track in; filtering is best effort.
     }
   }
   const processOf = (track: string): string => track.replace(/-w\d+$/, '');
   for (const name of readdirSync(raw)) {
-    const track = name.slice(0, name.lastIndexOf('.'));
+    const track = trackOfFile(name);
     const argv = argvByTrack.get(processOf(track));
     if (argv && !shouldProfile(argv, include, exclude)) rmSync(join(raw, name), { force: true });
+  }
+}
+
+/** The control socket of one session: tracks register and report flushes, the CLI releases and stops them. */
+interface ControlServer {
+  server: Server;
+  /** Tracks registering from now on are told to start at once; `--start-on` flips it when the signal comes. */
+  started: boolean;
+  conns: Map<string, TrackConn>;
+  registrations: Map<string, RegisteredTrack>;
+  /** Resolves once every connected track has acknowledged its flush (or hung up). */
+  allFlushed: Promise<void>;
+  broadcast(type: ToTarget['type']): void;
+}
+
+async function startControlServer(sock: string, started: boolean): Promise<ControlServer> {
+  const conns = new Map<string, TrackConn>();
+  const registrations = new Map<string, RegisteredTrack>();
+  let allFlushedResolve: () => void = () => {};
+  const allFlushed = new Promise<void>((r) => (allFlushedResolve = r));
+  const checkFlushed = (): void => {
+    if (conns.size === 0) return;
+    for (const c of conns.values()) if (!c.flushed && !c.socket.destroyed) return;
+    allFlushedResolve();
+  };
+
+  const control: ControlServer = {
+    server: createServer((socket) => {
+      let buf = '';
+      let track: string | undefined;
+      socket.setEncoding('utf8');
+      socket.on('error', () => {});
+      socket.on('data', (d: string) => {
+        buf += d;
+        let i: number;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i);
+          buf = buf.slice(i + 1);
+          try {
+            const msg = JSON.parse(line) as Partial<
+              Omit<Extract<ToCli, { type: 'register' }>, 'type'>
+            > & { type?: ToCli['type'] };
+            if (msg.type === 'register' && msg.track) {
+              track = msg.track;
+              registrations.set(track, {
+                id: track,
+                pid: msg.pid ?? 0,
+                threadId: msg.threadId ?? 0,
+                argv: msg.argv ?? [],
+              });
+              conns.set(track, { socket, flushed: false });
+              if (control.started) socket.write(`${JSON.stringify({ type: 'start' })}\n`);
+            } else if (msg.type === 'flushed' && msg.track) {
+              const c = conns.get(msg.track);
+              if (c) c.flushed = true;
+              checkFlushed();
+            }
+          } catch {
+            // Ignore malformed control lines.
+          }
+        }
+      });
+      socket.on('close', checkFlushed);
+    }),
+    started,
+    conns,
+    registrations,
+    allFlushed,
+    broadcast: (type) => {
+      for (const c of conns.values()) {
+        if (!c.socket.destroyed) c.socket.write(`${JSON.stringify({ type })}\n`);
+      }
+    },
+  };
+  await new Promise<void>((ok, fail) => {
+    control.server.once('error', fail);
+    control.server.listen(sock, ok);
+  });
+  return control;
+}
+
+interface SessionEnv {
+  dir: string;
+  id: string;
+  sock: string;
+  intervalUs: number;
+  flags: Flags;
+  preload: string;
+}
+
+/** The environment of the profiled command: this session's PACES_* variables and the preload on NODE_OPTIONS. */
+function pacesEnv(base: NodeJS.ProcessEnv, session: SessionEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base };
+  env.PACES_DIR = session.dir;
+  env.PACES_SESSION = session.id;
+  env.PACES_SOCKET = session.sock;
+  env.PACES_INTERVAL = String(session.intervalUs);
+  delete env.PACES_PARENT;
+  if (session.flags.startOn) env.PACES_DEFER = '1';
+  else delete env.PACES_DEFER;
+  if (session.flags.async) env.PACES_ASYNC = '1';
+  else delete env.PACES_ASYNC;
+  env.NODE_OPTIONS = nodeOptionsWith(env.NODE_OPTIONS, session.preload);
+  return env;
+}
+
+interface MetaInput {
+  command: string[];
+  cwd: string;
+  flags: Flags;
+  intervalUs: number;
+  startedAt: number;
+  endedBy: CaptureMeta['endedBy'];
+  projectRoot: string;
+  lost: ReturnType<typeof detectLostTracks>;
+}
+
+function captureMeta(m: MetaInput): CaptureMeta {
+  return {
+    command: m.command,
+    cwd: m.cwd,
+    nodeVersion: process.version,
+    platform: process.platform,
+    mode: m.flags.async ? 'async' : m.intervalUs < 1000 ? 'fine' : 'default',
+    intervalUs: m.intervalUs,
+    startedAt: m.startedAt,
+    endedAt: Date.now(),
+    endedBy: m.endedBy,
+    projectRoot: m.projectRoot,
+    ...(m.lost.length > 0 ? { lostTracks: m.lost } : {}),
+  };
+}
+
+/** A parent that never flushed or was filtered out would leave a dangling link: promote to root. */
+function promoteOrphanTracks(capture: RawCapture): void {
+  const ids = new Set(capture.tracks.map((t) => t.info.id));
+  for (const t of capture.tracks) {
+    if (t.info.parent !== undefined && !ids.has(t.info.parent)) delete t.info.parent;
   }
 }
 
 export async function runProfile(options: ProfileOptions): Promise<ProfileResult> {
   const { command, flags, cwd } = options;
   const log = options.log ?? (() => {});
-  const env: NodeJS.ProcessEnv = { ...(options.env ?? process.env) };
+  const baseEnv: NodeJS.ProcessEnv = { ...(options.env ?? process.env) };
 
   if (flags.startOn && process.platform === 'win32' && !options.onSignal) {
     throw new UsageError(
@@ -125,80 +266,11 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   const sock = socketPath(id);
   const intervalUs = flags.interval ?? 1000;
 
-  let started = !flags.startOn;
-  const conns = new Map<string, TrackConn>();
-  const registrations = new Map<string, RegisteredTrack>();
-  let allFlushedResolve: () => void = () => {};
-  const allFlushed = new Promise<void>((r) => (allFlushedResolve = r));
-  const checkFlushed = (): void => {
-    if (conns.size === 0) return;
-    for (const c of conns.values()) if (!c.flushed && !c.socket.destroyed) return;
-    allFlushedResolve();
-  };
-
-  const server = createServer((socket) => {
-    let buf = '';
-    let track: string | undefined;
-    socket.setEncoding('utf8');
-    socket.on('error', () => {});
-    socket.on('data', (d: string) => {
-      buf += d;
-      let i: number;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i);
-        buf = buf.slice(i + 1);
-        try {
-          const msg = JSON.parse(line) as {
-            type?: string;
-            track?: string;
-            pid?: number;
-            threadId?: number;
-            argv?: string[];
-          };
-          if (msg.type === 'register' && msg.track) {
-            track = msg.track;
-            registrations.set(track, {
-              id: track,
-              pid: msg.pid ?? 0,
-              threadId: msg.threadId ?? 0,
-              argv: msg.argv ?? [],
-            });
-            conns.set(track, { socket, flushed: false });
-            if (started) socket.write(`${JSON.stringify({ type: 'start' })}\n`);
-          } else if (msg.type === 'flushed' && msg.track) {
-            const c = conns.get(msg.track);
-            if (c) c.flushed = true;
-            checkFlushed();
-          }
-        } catch {
-          // Ignore malformed control lines.
-        }
-      }
-    });
-    socket.on('close', checkFlushed);
-  });
-  await new Promise<void>((ok, fail) => {
-    server.once('error', fail);
-    server.listen(sock, ok);
-  });
-
-  const broadcast = (type: 'start' | 'stop' | 'sigint'): void => {
-    for (const c of conns.values()) {
-      if (!c.socket.destroyed) c.socket.write(`${JSON.stringify({ type })}\n`);
-    }
-  };
+  const control = await startControlServer(sock, !flags.startOn);
+  const { conns, registrations, allFlushed, broadcast } = control;
 
   const startedAt = Date.now();
-  env.PACES_DIR = dir;
-  env.PACES_SESSION = id;
-  env.PACES_SOCKET = sock;
-  env.PACES_INTERVAL = String(intervalUs);
-  delete env.PACES_PARENT;
-  if (flags.startOn) env.PACES_DEFER = '1';
-  else delete env.PACES_DEFER;
-  if (flags.async) env.PACES_ASYNC = '1';
-  else delete env.PACES_ASYNC;
-  env.NODE_OPTIONS = nodeOptionsWith(env.NODE_OPTIONS, options.preload);
+  const env = pacesEnv(baseEnv, { dir, id, sock, intervalUs, flags, preload: options.preload });
 
   const plan = planSpawn(command, env);
   const child = spawn(plan.file, plan.args, {
@@ -261,7 +333,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
       });
     cleanups.push(
       onSignal(flags.startOn, () => {
-        started = true;
+        control.started = true;
         broadcast('start');
         log(`paces: profiling started on ${flags.startOn}`);
       }),
@@ -273,9 +345,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
     windowEnd = new Promise<'duration'>((resolve) => {
       const t = setTimeout(() => {
         broadcast('stop');
-        Promise.race([allFlushed, new Promise((r) => setTimeout(r, 5000).unref())]).then(() =>
-          resolve('duration'),
-        );
+        Promise.race([allFlushed, after(5000)]).then(() => resolve('duration'));
       }, flags.duration! * 1000);
       t.unref();
       void exited.then(() => clearTimeout(t));
@@ -300,7 +370,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   }
 
   const finish = (): RawCapture => {
-    server.close();
+    control.server.close();
     for (const c of conns.values()) c.socket.destroy();
     const delivered = deliveredTracks(dir);
     applyProcessFilters(dir, flags.include, flags.exclude);
@@ -309,34 +379,26 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
       delivered,
       include: flags.include,
       exclude: flags.exclude,
-      started,
+      started: control.started,
     });
-    const meta: CaptureMeta = {
+    const meta = captureMeta({
       command,
       cwd,
-      nodeVersion: process.version,
-      platform: process.platform,
-      mode: flags.async ? 'async' : intervalUs < 1000 ? 'fine' : 'default',
+      flags,
       intervalUs,
       startedAt,
-      endedAt: Date.now(),
       endedBy,
       projectRoot: options.projectRoot ?? cwd,
-      ...(lost.length > 0 ? { lostTracks: lost } : {}),
-    };
+      lost,
+    });
     const capture = readCaptureDir(dir, meta);
     rmSync(dir, { recursive: true, force: true });
-    // A parent that never flushed or was filtered out would leave a dangling link: promote to root.
-    const ids = new Set(capture.tracks.map((t) => t.info.id));
-    for (const t of capture.tracks) {
-      if (t.info.parent !== undefined && !ids.has(t.info.parent)) delete t.info.parent;
-    }
+    promoteOrphanTracks(capture);
     return capture;
   };
 
   // The root exiting does not mean every flush landed: give straggler acks a moment.
-  if (!stoppedEarly)
-    await Promise.race([allFlushed, new Promise((r) => setTimeout(r, 200).unref())]);
+  if (!stoppedEarly) await Promise.race([allFlushed, after(200)]);
 
   const capture = finish();
   if (capture.tracks.length === 0) throw new NoProcessesError(command, exitCode);

@@ -1,5 +1,5 @@
 /** Five minutes: beyond browsers' intensive timer throttling (once a minute) with margin. */
-export const DEFAULT_STALE_HEARTBEAT_MS = 5 * 60_000;
+const DEFAULT_STALE_HEARTBEAT_MS = 5 * 60_000;
 
 export interface Activity {
   lastRequestAt(): number;

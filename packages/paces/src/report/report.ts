@@ -1,5 +1,6 @@
 import {
   ORIGIN_NAMES,
+  Origin,
   applyTransforms,
   buildAgentSummary,
   callTreeQuery,
@@ -21,21 +22,26 @@ import type {
   TreeSelector,
 } from '@pacesjs/engine';
 import type { Flags } from '../args.js';
+import { fnFacts, originName } from '../fn-facts.js';
 import type { SourceResolver } from '../source-resolver.js';
 import {
   fmtPct,
   fmtUs,
+  orAnon,
   padEnd,
   padStart,
   painter,
+  pctCol,
   place,
+  round3,
   shellArg,
   shortPath,
+  timeCol,
   truncate,
 } from './format.js';
 import type { Painter } from './format.js';
 
-export const REPORT_SCHEMA_VERSION = 1;
+const REPORT_SCHEMA_VERSION = 1;
 
 export class ReportError extends Error {
   constructor(message: string) {
@@ -62,7 +68,16 @@ const DEFAULT_MAX_LINES = 60;
 /** Lines a tree view spends besides rows: title, header, footer, "next:" and up to three commands. */
 const TREE_FIXED_LINES = 8;
 
-const originName = (o: number): string => ORIGIN_NAMES[o] ?? 'user';
+/** Rows a view may print: `--max-lines` minus the lines it spends on title, header and footer. */
+function lineBudget(flags: Flags, reserved: number, floor = 3): number {
+  return Math.max(floor, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - reserved);
+}
+
+/** `--limit` (or the view's default), held to what fits in the line budget. */
+function cappedLimit(flags: Flags, fallback: number, reserved: number, floor = 3): number {
+  return Math.min(flags.report.limit ?? fallback, lineBudget(flags, reserved, floor));
+}
+
 const round = (n: number): number => Math.round(n * 10) / 10;
 
 function trackIndexOf(model: ExecutionModel, wanted: string | undefined): number {
@@ -100,37 +115,24 @@ function originsOf(flags: Flags): OriginId[] | undefined {
   return o.map((n) => ORIGIN_NAMES.indexOf(n as (typeof ORIGIN_NAMES)[number]) as OriginId);
 }
 
-function locate(
-  model: ExecutionModel,
-  fn: FnId,
-): { name: string; file: string; line: number; pkg: string; origin: OriginId } {
-  return {
-    name: model.strings[model.functions.name[fn] ?? 0] ?? '',
-    file: (model.strings[model.functions.file[fn] ?? 0] ?? '').replaceAll('\\', '/'),
-    line: model.functions.line[fn] ?? 0,
-    pkg: model.strings[model.functions.pkg[fn] ?? 0] ?? '',
-    origin: (model.functions.origin[fn] ?? 0) as OriginId,
-  };
-}
+const locate = (model: ExecutionModel, fn: FnId) => fnFacts(model, fn, true);
 
 function tag(origin: number, pkg: string, synthetic = false): string {
   if (synthetic) return '(collapsed)';
-  if (origin === 0) return '';
-  if (origin === 1 || origin === 2) return pkg ? `(${pkg})` : `(${originName(origin)})`;
+  if (origin === Origin.User) return '';
+  if (origin === Origin.Dependency || origin === Origin.Framework)
+    return pkg ? `(${pkg})` : `(${originName(origin)})`;
   return `(${originName(origin)})`;
 }
 
-function describeHow(how: SelectorResult['how']): string {
-  return how === 'substring'
-    ? 'by substring'
-    : how === 'path'
-      ? 'by name path'
-      : how === 'location'
-        ? 'by file:line'
-        : how === 'id'
-          ? 'by id'
-          : 'exactly';
-}
+const HOW_PHRASE: Partial<Record<SelectorResult['how'], string>> = {
+  substring: 'by substring',
+  path: 'by name path',
+  location: 'by file:line',
+  id: 'by id',
+};
+
+const describeHow = (how: SelectorResult['how']): string => HOW_PHRASE[how] ?? 'exactly';
 
 /** One function out of a selector, or a clear error listing the candidates. */
 function pick(
@@ -149,7 +151,7 @@ function pick(
   if (r.matches.length > 1 && r.how !== 'id') {
     const lines = r.matches.slice(0, 8).map((m) => {
       const l = locate(model, m.fn);
-      return `  f${m.fn}  ${l.name || '(anonymous)'}  ${place(l.file, l.line)}  total ${fmtUs(m.totalUs)}`;
+      return `  f${m.fn}  ${orAnon(l.name)}  ${place(l.file, l.line)}  total ${fmtUs(m.totalUs)}`;
     });
     const more = r.matches.length > 8 ? `\n  … and ${r.matches.length - 8} more` : '';
     throw new ReportError(
@@ -166,6 +168,29 @@ function pick(
 interface Header {
   lines: string[];
   json: Record<string, unknown>;
+}
+
+/** The JSON every view shares: schema version, view name and header, then the view's own fields. */
+function envelope(
+  view: string,
+  head: Header,
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  return { schemaVersion: REPORT_SCHEMA_VERSION, view, ...head.json, ...body };
+}
+
+/** Closes a view: the `next:` commands end the text and the JSON. */
+function finishView(
+  view: string,
+  head: Header,
+  lines: string[],
+  next: string[],
+  body: Record<string, unknown>,
+): ReportOutput {
+  return {
+    text: [...lines, 'next:', ...next].join('\n'),
+    json: { ...envelope(view, head, body), next: next.map((n) => n.trim()) },
+  };
 }
 
 function headerOf(ctx: ReportContext, ti: number, flags: Flags, title: string): Header {
@@ -211,12 +236,12 @@ function renderRows(rows: Layout[], paint: Painter): string[] {
 
 function treeLayout(row: TreeRow): Layout {
   const indent = '  '.repeat(row.depth);
-  const name = row.synthetic ? `▸ ${row.name}` : `${row.name || '(anonymous)'}`;
+  const name = row.synthetic ? `▸ ${row.name}` : `${orAnon(row.name)}`;
   const id = row.synthetic ? '' : ` [${row.id}]`;
   const t = tag(row.origin, row.pkg, row.synthetic);
   return {
     left: `${indent}${truncate(name, NAME_WIDTH)}${id}${t ? ` ${t}` : ''}`,
-    nums: `${padStart(fmtUs(row.totalUs), 9)} ${padStart(fmtPct(row.share), 5)}  self ${padStart(fmtUs(row.selfUs), 9)}`,
+    nums: `${timeCol(row.totalUs)} ${pctCol(row.share)}  self ${timeCol(row.selfUs)}`,
     where: place(row.file, row.line),
   };
 }
@@ -261,7 +286,7 @@ function nextForTree(ctx: ReportContext, rows: TreeRow[], ti: number): string[] 
     .filter(
       (r) =>
         r.depth >= 1 &&
-        r.origin === 0 &&
+        r.origin === Origin.User &&
         !r.name.startsWith('require ▸') &&
         !r.name.startsWith('import ▸'),
     )
@@ -275,15 +300,17 @@ function nextForTree(ctx: ReportContext, rows: TreeRow[], ti: number): string[] 
   // any function with a source file. Never GC, idle or runtime glue.
   const bySelf = (a: TreeRow, b: TreeRow): number => b.selfUs - a.selfUs;
   const hot =
-    [...real].filter((r) => r.origin === 0 && r.selfUs > 0).sort(bySelf)[0] ??
-    [...real].filter((r) => r.file && r.origin !== 5 && r.origin !== 6).sort(bySelf)[0];
+    [...real].filter((r) => r.origin === Origin.User && r.selfUs > 0).sort(bySelf)[0] ??
+    [...real]
+      .filter((r) => r.file && r.origin !== Origin.Idle && r.origin !== Origin.Gc)
+      .sort(bySelf)[0];
   if (hot && hot.selfUs > 0) out.push(nextCmd(ctx, `--lines ${hot.id}`));
   // A collapsed package that only passes control through to the target's code (a retry or
   // scheduling wrapper) is not where the time goes; suggest a package that does work itself.
   const passesThrough = (r: TreeRow): boolean => {
     const at = rows.indexOf(r);
     const next = rows[at + 1];
-    return next !== undefined && next.depth > r.depth && next.origin === 0;
+    return next !== undefined && next.depth > r.depth && next.origin === Origin.User;
   };
   const pkg = rows
     .filter((r) => r.synthetic && !passesThrough(r))
@@ -304,7 +331,7 @@ function footerFor(res: TreeResult): string[] {
 
 function treeOptions(flags: Flags, selector?: TreeSelector) {
   const r = flags.report;
-  const budget = Math.max(3, (r.maxLines ?? DEFAULT_MAX_LINES) - TREE_FIXED_LINES);
+  const budget = lineBudget(flags, TREE_FIXED_LINES);
   const origins = originsOf(flags);
   return {
     ...(selector ? { from: selector } : {}),
@@ -331,7 +358,7 @@ function jsonRow(row: TreeRow): Record<string, unknown> {
     line: row.line,
     totalMs: round(row.totalUs / 1000),
     selfMs: round(row.selfUs / 1000),
-    share: Math.round(row.share * 1000) / 1000,
+    share: round3(row.share),
     collapsed: row.synthetic,
     ...(row.folded ? { folded: row.folded } : {}),
   };
@@ -358,20 +385,11 @@ function treeView(
     ...renderRows(rows.map(treeLayout), paint),
   ];
   lines.push(...footerFor(res));
-  const next = nextForTree(ctx, rows, ti);
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'tree',
-      ...head.json,
-      rootMs: round(res.rootUs / 1000),
-      hiddenRows: res.hidden,
-      rows: rows.map(jsonRow),
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView('tree', head, lines, nextForTree(ctx, rows, ti), {
+    rootMs: round(res.rootUs / 1000),
+    hiddenRows: res.hidden,
+    rows: rows.map(jsonRow),
+  });
 }
 
 function flattenCallers(
@@ -402,7 +420,7 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
     ctx,
     ti,
     flags,
-    `callers of ${target.name || '(anonymous)'} [f${fn}] · total ${fmtUs(total)} · ~${calls} calls · ${place(target.file, target.line)}`,
+    `callers of ${orAnon(target.name)} [f${fn}] · total ${fmtUs(total)} · ~${calls} calls · ${place(target.file, target.line)}`,
   );
   if (flat.length === 0) {
     return {
@@ -410,17 +428,17 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
         ...head.lines,
         'No callers recorded (it is a top-level entry, or called only from runtime frames).',
       ].join('\n'),
-      json: { schemaVersion: REPORT_SCHEMA_VERSION, view: 'callers', ...head.json, rows: [] },
+      json: envelope('callers', head, { rows: [] }),
     };
   }
-  const budget = Math.max(3, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 7);
+  const budget = lineBudget(flags, 7);
   const shown = flat.slice(0, budget);
   const layout = shown.map(({ node, depth: d }): Layout => {
     const l = locate(model, node.fn);
     const t = tag(l.origin, l.pkg);
     return {
-      left: `${'  '.repeat(d)}${truncate(node.name || '(anonymous)', NAME_WIDTH)} [f${node.fn}]${t ? ` ${t}` : ''}`,
-      nums: `via ${padStart(fmtUs(node.weightUs), 9)} ${padStart(d === 0 ? fmtPct(total > 0 ? node.weightUs / total : 0) : '', 5)}  ~${node.calls} calls`,
+      left: `${'  '.repeat(d)}${truncate(orAnon(node.name), NAME_WIDTH)} [f${node.fn}]${t ? ` ${t}` : ''}`,
+      nums: `via ${timeCol(node.weightUs)} ${padStart(d === 0 ? fmtPct(total > 0 ? node.weightUs / total : 0) : '', 5)}  ~${node.calls} calls`,
       where: place(node.file, node.line),
     };
   });
@@ -440,33 +458,25 @@ function callersView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
       : []),
     nextCmd(ctx, `--lines f${fn}`),
   ].slice(0, 3);
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'callers',
-      ...head.json,
-      function: {
-        id: `f${fn}`,
-        name: target.name,
-        file: target.file,
-        line: target.line,
-        totalMs: round(total / 1000),
-        calls,
-      },
-      rows: flat.map(({ node, depth: d }) => ({
-        depth: d,
-        id: `f${node.fn}`,
-        name: node.name,
-        file: node.file,
-        line: node.line,
-        viaMs: round(node.weightUs / 1000),
-        calls: node.calls,
-      })),
-      next: next.map((n) => n.trim()),
+  return finishView('callers', head, lines, next, {
+    function: {
+      id: `f${fn}`,
+      name: target.name,
+      file: target.file,
+      line: target.line,
+      totalMs: round(total / 1000),
+      calls,
     },
-  };
+    rows: flat.map(({ node, depth: d }) => ({
+      depth: d,
+      id: `f${node.fn}`,
+      name: node.name,
+      file: node.file,
+      line: node.line,
+      viaMs: round(node.weightUs / 1000),
+      calls: node.calls,
+    })),
+  });
 }
 
 function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): ReportOutput {
@@ -488,10 +498,7 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
     ).join(', ');
     throw new ReportError(`No package "${pkg}" on this track. Biggest packages: ${names}.`);
   }
-  const limit = Math.min(
-    flags.report.limit ?? 15,
-    Math.max(3, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 7),
-  );
+  const limit = cappedLimit(flags, 15, 7);
   const shown = rows.slice(0, limit);
   const title = pkg ? `package ${pkg}: functions by ${sort} time` : `top functions by ${sort} time`;
   const head = headerOf(ctx, ti, flags, title);
@@ -504,8 +511,8 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
   const layout = shown.map((r): Layout => {
     const t = tag(r.origin, r.pkg);
     return {
-      left: `${truncate(r.name || '(anonymous)', NAME_WIDTH)} [f${r.fn}]${t && !pkg ? ` ${t}` : ''}`,
-      nums: `self ${padStart(fmtUs(r.self), 9)} ${padStart(fmtPct(r.selfShare), 5)}  total ${padStart(fmtUs(r.total), 9)}  ~${r.calls} calls`,
+      left: `${truncate(orAnon(r.name), NAME_WIDTH)} [f${r.fn}]${t && !pkg ? ` ${t}` : ''}`,
+      nums: `self ${timeCol(r.self)} ${pctCol(r.selfShare)}  total ${timeCol(r.total)}  ~${r.calls} calls`,
       where: place(r.file, r.line),
     };
   });
@@ -525,31 +532,23 @@ function topView(ctx: ReportContext, flags: Flags, ti: number, pkg?: string): Re
           : [nextCmd(ctx, `--top ${sort === 'self' ? 'total' : 'self'}`)]),
       ].slice(0, 3)
     : [];
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: pkg ? 'package' : 'top',
-      ...head.json,
-      sort,
-      ...(pkg ? { package: pkg } : {}),
-      totalFunctions: rows.length,
-      rows: shown.map((r) => ({
-        id: `f${r.fn}`,
-        name: r.name,
-        package: r.pkg,
-        origin: originName(r.origin),
-        file: r.file,
-        line: r.line,
-        selfMs: round(r.self / 1000),
-        totalMs: round(r.total / 1000),
-        selfShare: Math.round(r.selfShare * 1000) / 1000,
-        calls: r.calls,
-      })),
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView(pkg ? 'package' : 'top', head, lines, next, {
+    sort,
+    ...(pkg ? { package: pkg } : {}),
+    totalFunctions: rows.length,
+    rows: shown.map((r) => ({
+      id: `f${r.fn}`,
+      name: r.name,
+      package: r.pkg,
+      origin: originName(r.origin),
+      file: r.file,
+      line: r.line,
+      selfMs: round(r.self / 1000),
+      totalMs: round(r.total / 1000),
+      selfShare: round3(r.selfShare),
+      calls: r.calls,
+    })),
+  });
 }
 
 function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
@@ -562,15 +561,12 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     ctx,
     ti,
     flags,
-    `lines of ${info.name || '(anonymous)'} [f${fn}] · self ${fmtUs(info.selfUs)}, total ${fmtUs(info.totalUs)} · ${where}`,
+    `lines of ${orAnon(info.name)} [f${fn}] · self ${fmtUs(info.selfUs)}, total ${fmtUs(info.totalUs)} · ${where}`,
   );
   const out = [...head.lines, ...(note ? [note] : [])];
   const src = ctx.resolver?.resolve(info.file);
   const text = src?.exists ? src.text.split(/\r?\n/) : undefined;
-  const cap = Math.min(
-    flags.report.limit ?? 40,
-    Math.max(6, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 8),
-  );
+  const cap = cappedLimit(flags, 40, 8, 6);
   const jsonLines: Array<Record<string, unknown>> = [];
 
   if (info.lines.length > 0) {
@@ -596,14 +592,14 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
       const t = timed.get(n);
       const mark = hotSet.has(n) ? paint.red('▶') : ' ';
       const time = t
-        ? `${padStart(fmtUs(t.selfUs), 9)} ${padStart(fmtPct(t.selfUs / selfSum), 5)}`
+        ? `${timeCol(t.selfUs)} ${pctCol(t.selfUs / selfSum)}`
         : `${' '.repeat(9)} ${' '.repeat(5)}`;
       const code = text ? truncate((text[n - 1] ?? '').replace(/\t/g, '  ').trimEnd(), 110) : '';
       rows.push(`${mark} ${padStart(String(n), 5)} ${time} │ ${code}`);
       jsonLines.push({
         line: n,
         selfMs: t ? round(t.selfUs / 1000) : 0,
-        share: t ? Math.round((t.selfUs / selfSum) * 1000) / 1000 : 0,
+        share: t ? round3(t.selfUs / selfSum) : 0,
         hot: hotSet.has(n),
         ...(text ? { code: text[n - 1] ?? '' } : {}),
       });
@@ -625,7 +621,7 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     out.push('callee time under this function:');
     for (const c of info.calleeTime.slice(0, 6)) {
       out.push(
-        `  ${padStart(fmtUs(c.totalUs), 9)}  ${c.name || '(anonymous)'} [f${c.fn}]${c.pkg ? ` (${c.pkg})` : ''}`,
+        `  ${timeCol(c.totalUs)}  ${orAnon(c.name)} [f${c.fn}]${c.pkg ? ` (${c.pkg})` : ''}`,
       );
     }
   }
@@ -635,33 +631,25 @@ function linesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     nextCmd(ctx, `--tree --from f${fn}`),
     ...(top && top.totalUs > info.selfUs ? [nextCmd(ctx, `--lines f${top.fn}`)] : []),
   ].slice(0, 3);
-  out.push('next:', ...next);
-  return {
-    text: out.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'lines',
-      ...head.json,
-      function: {
-        id: `f${fn}`,
-        name: info.name,
-        file: info.file,
-        line: info.line,
-        selfMs: round(info.selfUs / 1000),
-        totalMs: round(info.totalUs / 1000),
-      },
-      sourceAvailable: Boolean(text),
-      lines: jsonLines,
-      calleeTime: info.calleeTime.slice(0, 6).map((c) => ({
-        id: `f${c.fn}`,
-        name: c.name,
-        package: c.pkg,
-        totalMs: round(c.totalUs / 1000),
-      })),
-      reason: info.lines.length === 0 ? info.lineInfo.reason : '',
-      next: next.map((n) => n.trim()),
+  return finishView('lines', head, out, next, {
+    function: {
+      id: `f${fn}`,
+      name: info.name,
+      file: info.file,
+      line: info.line,
+      selfMs: round(info.selfUs / 1000),
+      totalMs: round(info.totalUs / 1000),
     },
-  };
+    sourceAvailable: Boolean(text),
+    lines: jsonLines,
+    calleeTime: info.calleeTime.slice(0, 6).map((c) => ({
+      id: `f${c.fn}`,
+      name: c.name,
+      package: c.pkg,
+      totalMs: round(c.totalUs / 1000),
+    })),
+    reason: info.lines.length === 0 ? info.lineInfo.reason : '',
+  });
 }
 
 function phasesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
@@ -673,37 +661,25 @@ function phasesView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput 
       `${p.name}: starts ${fmtUs(p.startMs * 1000)}, lasts ${fmtUs(p.durationMs * 1000)}, busy ${fmtUs(p.busyMs * 1000)} (${fmtPct(p.share)} of busy)`,
     );
     for (const h of p.hottest.slice(0, 3)) {
-      lines.push(`    ${padStart(fmtUs(h.selfMs * 1000), 9)}  ${h.name} ${place(h.file, h.line)}`);
+      lines.push(`    ${timeCol(h.selfMs * 1000)}  ${h.name} ${place(h.file, h.line)}`);
     }
   }
-  const next = [nextCmd(ctx, '--tree'), nextCmd(ctx, '--tasks')];
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'phases',
-      ...head.json,
-      phases,
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView('phases', head, lines, [nextCmd(ctx, '--tree'), nextCmd(ctx, '--tasks')], {
+    phases,
+  });
 }
 
 function tasksView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
   const head = headerOf(ctx, ti, flags, 'tasks (use --task <n> with --tree to drill into one)');
   const all = describeTasks(ctx.model, ti);
   const real = all.filter((t) => !t.trivial);
-  const limit = Math.min(
-    flags.report.limit ?? 20,
-    Math.max(3, (flags.report.maxLines ?? DEFAULT_MAX_LINES) - 7),
-  );
+  const limit = cappedLimit(flags, 20, 7);
   const shown = real.slice(0, limit);
   const lines = [...head.lines];
   for (const t of shown) {
     const id = t.index < 0 ? 'whole' : String(t.index);
     lines.push(
-      `[task ${padEnd(id, 5)}] ${padEnd(t.group, 9)} ${truncate(t.label, 56)}  start ${padStart(fmtUs(t.startUs), 9)}  lasts ${padStart(fmtUs(t.durationUs), 9)}  busy ${padStart(fmtUs(t.busyUs), 9)}${t.longest ? '  (longest)' : ''}`,
+      `[task ${padEnd(id, 5)}] ${padEnd(t.group, 9)} ${truncate(t.label, 56)}  start ${timeCol(t.startUs)}  lasts ${timeCol(t.durationUs)}  busy ${timeCol(t.busyUs)}${t.longest ? '  (longest)' : ''}`,
     );
   }
   const skipped = real.length - shown.length;
@@ -718,25 +694,17 @@ function tasksView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
     longest && longest.index >= 0
       ? [nextCmd(ctx, `--tree --task ${longest.index}`)]
       : [nextCmd(ctx, '--tree')];
-  lines.push('next:', ...next);
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'tasks',
-      ...head.json,
-      tasks: shown.map((t) => ({
-        task: t.index < 0 ? 'whole' : t.index,
-        group: t.group,
-        label: t.label,
-        startMs: round(t.startUs / 1000),
-        durationMs: round(t.durationUs / 1000),
-        busyMs: round(t.busyUs / 1000),
-        longest: t.longest,
-      })),
-      next: next.map((n) => n.trim()),
-    },
-  };
+  return finishView('tasks', head, lines, next, {
+    tasks: shown.map((t) => ({
+      task: t.index < 0 ? 'whole' : t.index,
+      group: t.group,
+      label: t.label,
+      startMs: round(t.startUs / 1000),
+      durationMs: round(t.durationUs / 1000),
+      busyMs: round(t.busyUs / 1000),
+      longest: t.longest,
+    })),
+  });
 }
 
 function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput {
@@ -771,8 +739,8 @@ function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
   lines.push(
     ...renderRows(
       self.map((f): Layout => ({
-        left: `${truncate(f.name || '(anonymous)', NAME_WIDTH)}${f.pkg && f.origin !== 'user' ? ` (${f.pkg})` : ''}`,
-        nums: `self ${padStart(fmtUs(f.selfMs * 1000), 9)} ${padStart(fmtPct(f.share), 5)}`,
+        left: `${truncate(orAnon(f.name), NAME_WIDTH)}${f.pkg && f.origin !== 'user' ? ` (${f.pkg})` : ''}`,
+        nums: `self ${timeCol(f.selfMs * 1000)} ${pctCol(f.share)}`,
         where: place(f.file, f.line),
       })),
       paint,
@@ -806,18 +774,10 @@ function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
       next[at >= 0 ? at : Math.min(1, next.length)] = nextCmd(ctx, `--lines f${hotId}`);
     }
   }
-  lines.push('next:', ...next.slice(0, 3));
-  return {
-    text: lines.join('\n'),
-    json: {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      view: 'summary',
-      ...head.json,
-      summary: s,
-      tree: res.rows.map(jsonRow),
-      next: next.slice(0, 3).map((n) => n.trim()),
-    },
-  };
+  return finishView('summary', head, lines, next.slice(0, 3), {
+    summary: s,
+    tree: res.rows.map(jsonRow),
+  });
 }
 
 /** Renders one view of a model, as text for people and agents and as JSON for programs. */
