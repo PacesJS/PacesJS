@@ -3,7 +3,7 @@ import { useApp } from '../app/context';
 import { useAsync, useCanvas, useElementWidth, usePalette } from '../app/hooks';
 import { originInfo } from '../theme/origin';
 import { fmtDuration, fmtRange, fmtShare } from '../util/format';
-import { fillRound } from '../view/draw-bars';
+import { roundedRectPath } from '../view/draw-shapes';
 import { FLAME, flameHeight, flameRects, hitRect } from '../view/flame-geometry';
 import type { FlameRect } from '../view/flame-geometry';
 import { Hint } from './Hint';
@@ -70,14 +70,14 @@ export function FlameGraph() {
           search !== '' && !`${data.names[i]} ${data.locs[i]}`.toLowerCase().includes(search);
         ctx.globalAlpha = dimmed ? 0.25 : 1;
         ctx.fillStyle = fill;
-        fillRound(ctx, r.x, r.y, r.w, r.h, 4);
+        roundedRectPath(ctx, r.x, r.y, r.w, r.h, 4);
         ctx.fill();
         const isSel = selFn !== null && !isRoot && data.fn[i] === selFn;
         const isHover = hoverFn !== null && !isRoot && data.fn[i] === hoverFn;
         if (isSel || isHover) {
           ctx.strokeStyle = pal.outline;
           ctx.lineWidth = isSel ? 2 : 1;
-          fillRound(ctx, r.x + 1, r.y + 1, Math.max(1, r.w - 2), r.h - 2, 3);
+          roundedRectPath(ctx, r.x + 1, r.y + 1, Math.max(1, r.w - 2), r.h - 2, 3);
           ctx.stroke();
         }
         if (r.label) {

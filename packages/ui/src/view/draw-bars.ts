@@ -1,22 +1,5 @@
 import type { Palette } from '../theme/palette';
-
-export function fillRound(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
-}
+import { roundedRectPath } from './draw-shapes';
 
 /** Diagonal stripes inside a rect: "below measurement precision". */
 export function hatch(
@@ -64,13 +47,13 @@ export function drawBar(
     hatch(ctx, x, y, w, h, solid);
   } else {
     ctx.fillStyle = dim;
-    fillRound(ctx, x, y, w, h, 4);
+    roundedRectPath(ctx, x, y, w, h, 4);
     ctx.fill();
   }
   if (style.critical) {
     ctx.strokeStyle = pal.outline;
     ctx.lineWidth = 2;
-    fillRound(ctx, x + 1, y + 1, Math.max(1, w - 2), h - 2, 3);
+    roundedRectPath(ctx, x + 1, y + 1, Math.max(1, w - 2), h - 2, 3);
     ctx.stroke();
   }
 }
