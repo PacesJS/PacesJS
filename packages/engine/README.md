@@ -239,12 +239,21 @@ module load, main, unstitched roots...`. Self and total time and the sample coun
   call graph, functions table, source panel and `hotPaths` all read the stitched tree. `hotPaths` leaves the
   root out of its chains.
 
+**Pairing rule.** Calls of one function that start in a burst (Promise.all over files) resume in call order, so a
+continuation resumes the OLDEST earlier call of its function that was not resumed yet, and attaches as a sibling
+under that call's parent. When there are more continuations than sampled calls, the extras sit next to the latest
+call: siblings, never a chain. A stitched segment can itself be resumed again (a second await) and passes its
+parent on. With async hooks the same discipline applies inside the scheduling task.
+
 Limits, honestly. This is inference. (1) A function that was called but never sampled before its first
 `await` (a short synchronous prelude under one sampling interval) leaves no earlier span, so its
-continuation stays an unstitched root under the entry. (2) A function called from several places that resumes
-as a fresh callback can be attached to the wrong earlier call (the latest one wins). (3) A callback that is
-the task's entry on every run (a timer function) has no caller to attach to and stays a root. (4) Awaits
-shorter than one sampling interval do not split a call, so no segment exists for them.
+continuation stays an unstitched root under the entry, unless the adjacency rule below applies. (2) Sibling
+invocations of one function under one parent are ONE node in any call tree: lint 40 files in parallel and
+`readAndVerifyFile` is one node whose total is all 40 lints (a real aggregate, never more than the run), while the
+waterfall shows each invocation as its own row. (3) Pairing by call order is a guess when calls do not resume in
+the order they started; the parents are still those of the same function. (4) A callback that is the task's entry
+on every run (a timer function) has no caller to attach to and stays a root. (5) Awaits shorter than one sampling
+interval do not split a call, so no segment exists for them.
 
 ### Bridged runtime samples
 
@@ -268,10 +277,14 @@ sample, so there is no span), it is attached where the previous task yielded, be
 - The parent task is the exact async edge into the task with the smallest wait (ties: the latest scheduler), at any
   gap; without async data, the nearest earlier task that has program frames, if it ended within two sampling
   intervals of this task's start. A longer gap stays unattached: nothing says the two are related.
-- Its attachment point is the parent task's last sampled stack: the last run of module-loading frames (unless
-  it starts the stack, which is the entry module wrapping the program) and everything below it is dropped, then
-  runtime and plumbing frames; the deepest remaining target (origin `user`) frame wins, else the deepest remaining
-  frame. If nothing is left, the task stays a root.
+- Its attachment point is the parent task's last sampled stack, taken as a logical path (a stitched task's stack hangs
+  under its own parent): the last run of module-loading frames (unless it starts the stack, which is the entry
+  module wrapping the program) and everything below it is dropped, then runtime and plumbing frames. The task
+  attaches under the SHALLOWEST remaining frame of the same package as the resumed function (`execute` under
+  `main`), never under a callback deep in the previous stack (a file's driver under a rule frame) and never under
+  another package's frame. If nothing qualifies, the task stays a root: roots are honest, deep wrong nesting is not.
+  Because each hop takes the shallowest frame, a chain of adjacent tasks stays flat instead of one task inside
+  the previous one.
 - The parent is always an earlier span, so the attachment can never form a cycle or point at a descendant.
   `ContinuationTable.resumeOf` is -1 and `waitUs` is the gap after the parent task ended.
 

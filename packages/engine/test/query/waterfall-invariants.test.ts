@@ -104,3 +104,25 @@ describe('runtime blips and summary rows', () => {
     },
   );
 });
+
+describe('the critical path follows the work', () => {
+  it.each([...FIXTURES])(
+    '%s: each critical row carries the most work among its siblings',
+    (name) => {
+      const m = loadModel(name);
+      const w = waterfallForRun(m, m.primaryTrack);
+      const work = new Float64Array(w.rows.length);
+      for (let i = w.rows.length - 1; i >= 0; i--) {
+        const r = w.rows[i];
+        if (!r || r.kind !== 'call') continue;
+        work[i] = (work[i] ?? 0) + r.selfUs;
+        if (r.parent >= 0) work[r.parent] = (work[r.parent] ?? 0) + (work[i] ?? 0);
+      }
+      for (const id of w.criticalPath) {
+        const row = w.rows[id];
+        const siblings = w.rows.filter((r) => r.kind === 'call' && r.parent === row?.parent);
+        expect(siblings.every((r) => (work[r.id] ?? 0) <= (work[id] ?? 0) + 1e-6)).toBe(true);
+      }
+    },
+  );
+});

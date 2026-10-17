@@ -4,6 +4,11 @@
 // call it made earlier, so its logical parent is that earlier call's parent. Real async hook edges
 // take precedence. The result is data only (task columns and a continuation table); the
 // `stitch-continuations` transform grafts the stacks.
+//
+// Principle: never guess an implausible parent. A continuation resumes the OLDEST earlier call of its
+// function that was not resumed yet (calls started in a burst resume in call order), and a task with
+// nothing to resume is attached, when at all, under the shallowest frame of the same package of where
+// the previous task yielded. Otherwise it stays a root.
 
 import { Origin, TaskKind } from '../model.js';
 import type { AsyncEdgeTable, ContinuationTable, SpanTable, TaskTable } from '../model.js';
@@ -13,7 +18,7 @@ export interface ContinuationInput {
   /** Patched in place: parentSpan, resumeOf, waitUs, stitch, resumedFn, runtimeOnly. */
   tasks: TaskTable;
   asyncEdges: AsyncEdgeTable;
-  functions: { origin: Uint8Array; plumbing: Uint8Array; loader: Uint8Array };
+  functions: { origin: Uint8Array; plumbing: Uint8Array; loader: Uint8Array; pkg: Uint32Array };
   precisionUs: number;
 }
 
@@ -45,6 +50,8 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
   }
 
   const byFn = new Map<number, number[]>();
+  const consumed = new Set<number>();
+  const headOf = new Map<number, number>();
   const segmentOfSpan = new Map<number, number>();
   const cTask: number[] = [];
   const cFn: number[] = [];
@@ -66,11 +73,40 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
     edgeWait.set(to, waits);
   }
 
-  // Where task P was when it ended: its last stack, without module loading and runtime frames.
-  const yieldMemo = new Map<number, number>();
-  const yieldSpanOf = (p: number): number => {
+  const taskOfSpan = (span: number): number => {
+    let lo = 0;
+    let hi = tasks.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((tasks.spanStart[mid] ?? 0) <= span) lo = mid + 1;
+      else hi = mid;
+    }
+    const k = lo - 1;
+    return k >= 0 && span < (tasks.spanEnd[k] ?? 0) ? k : -1;
+  };
+  const segmentOfTaskFn = new Map<number, number>();
+  const FN_RANGE = functions.origin.length + 1;
+  const isLoader = (s: number): boolean => functions.loader[spans.fn[s] ?? 0] === 1;
+
+  /** Spans from the root of the logical call path down to `span`: stitched segments hang under their parent. */
+  const logicalChain = (span: number): number[] => {
+    const own: number[] = [];
+    for (let x = span; x >= 0; x = spans.parent[x] ?? -1) own.push(x);
+    own.reverse();
+    const at = own.findIndex((x) => anchor[x] === 1);
+    if (at < 0) return own;
+    const head = own[at] ?? 0;
+    const seg = segmentOfTaskFn.get(taskOfSpan(head) * FN_RANGE + (spans.fn[head] ?? 0));
+    if (seg === undefined || (cStitch[seg] ?? 0) === 0) return own;
+    const parent = cParent[seg] ?? -1;
+    return [...(parent >= 0 ? logicalChain(parent) : []), ...own.slice(at)];
+  };
+
+  // Where task P was when it ended: its last stack, as a logical call path.
+  const yieldMemo = new Map<number, number[]>();
+  const yieldChainOf = (p: number): number[] => {
     const known = yieldMemo.get(p);
-    if (known !== undefined) return known;
+    if (known) return known;
     const endAt = (tasks.end[p] ?? 0) - 1;
     let deepest = -1;
     for (let s = tasks.spanStart[p] ?? 0; s < (tasks.spanEnd[p] ?? 0); s++) {
@@ -81,10 +117,7 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
         deepest = s;
       }
     }
-    const chain: number[] = [];
-    for (let s = deepest; s >= 0; s = spans.parent[s] ?? -1) chain.push(s);
-    chain.reverse();
-    const isLoader = (s: number): boolean => functions.loader[spans.fn[s] ?? 0] === 1;
+    const chain = deepest < 0 ? [] : logicalChain(deepest);
     // The last run of loader frames is module loading; it and everything below it is not what yielded.
     // A run that starts the stack is the entry module wrapping the program, not loading.
     let cut = chain.length;
@@ -95,18 +128,37 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
       if (start > 0) cut = start;
       break;
     }
-    let pick = -1;
-    let pickUser = -1;
-    for (let i = 0; i < cut; i++) {
-      const s = chain[i] ?? 0;
-      const fn = spans.fn[s] ?? 0;
-      if (runtime(fn) || isLoader(s)) continue;
-      pick = s;
-      if (functions.origin[fn] === Origin.User) pickUser = s;
-    }
-    const out = pickUser >= 0 ? pickUser : pick;
+    const out = chain.slice(0, cut).filter((s) => !runtime(spans.fn[s] ?? 0) && !isLoader(s));
     yieldMemo.set(p, out);
     return out;
+  };
+  // The last task that resumes each function: only a function that resumes later can have awaited.
+  const lastResumed = new Map<number, number>();
+  for (let k = 0; k < tasks.length; k++) {
+    for (let x = tasks.spanStart[k] ?? 0; x < (tasks.spanEnd[k] ?? 0); x++) {
+      if (anchor[x] === 1) lastResumed.set(spans.fn[x] ?? 0, k);
+    }
+  }
+  /**
+   * Where a task that resumes `fn` hangs when task `p` yielded: among the frames of the same package of `p`'s last
+   * stack that `fn`'s own task does not call itself, the deepest one whose function resumes later (an async
+   * function, the only kind that can have awaited), else the shallowest. -1 when there is none.
+   */
+  const yieldSpanOf = (p: number, fn: number, task: number): number => {
+    const pkg = functions.pkg[fn] ?? 0;
+    const own = new Set<number>();
+    for (let x = tasks.spanStart[task] ?? 0; x < (tasks.spanEnd[task] ?? 0); x++) {
+      own.add(spans.fn[x] ?? 0);
+    }
+    let shallowest = -1;
+    let asyncDeepest = -1;
+    for (const x of yieldChainOf(p)) {
+      const f = spans.fn[x] ?? 0;
+      if ((functions.pkg[f] ?? 0) !== pkg || own.has(f)) continue;
+      if (shallowest < 0) shallowest = x;
+      if ((lastResumed.get(f) ?? -1) > p) asyncDeepest = x;
+    }
+    return asyncDeepest >= 0 ? asyncDeepest : shallowest;
   };
   const yieldCandidate = (k: number, fn: number): { span: number; task: number } | undefined => {
     const kind = tasks.kind[k];
@@ -122,7 +174,7 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
         (a, b) => (waits.get(a) ?? 0) - (waits.get(b) ?? 0) || b - a,
       );
       for (const f of from) {
-        const span = yieldSpanOf(f);
+        const span = yieldSpanOf(f, fn, k);
         if (span >= 0) return { span, task: f };
       }
     }
@@ -130,7 +182,7 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
     for (let j = k - 1; j >= 0; j--) {
       if (tasks.runtimeOnly[j] === 1) continue;
       if ((tasks.start[k] ?? 0) - (tasks.end[j] ?? 0) > 2 * precisionUs) return undefined;
-      const span = yieldSpanOf(j);
+      const span = yieldSpanOf(j, fn, k);
       return span >= 0 ? { span, task: j } : undefined;
     }
     return undefined;
@@ -154,30 +206,51 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
       const startedAt = spans.start[a] ?? 0;
       let source = -1;
       let kind = 0;
+      // A span can be resumed once: a stitched segment is usable at any depth, a plain call needs a caller.
+      const usable = (x: number): boolean => {
+        if ((spans.end[x] ?? 0) > startedAt) return false;
+        if ((spans.depth[x] ?? 0) >= 1) return true;
+        const sg = segmentOfSpan.get(x);
+        return sg !== undefined && (cStitch[sg] ?? 0) > 0;
+      };
+      const oldest = (list: number[], from0: number): number => {
+        for (let i = from0; i < list.length; i++) {
+          const x = list[i] ?? 0;
+          if ((spans.end[x] ?? 0) > startedAt) break;
+          if (!consumed.has(x) && usable(x)) return x;
+        }
+        return -1;
+      };
       for (const scheduler of edgesTo.get(k) ?? []) {
-        for (let s = tasks.spanStart[scheduler] ?? 0; s < (tasks.spanEnd[scheduler] ?? 0); s++) {
-          if (
-            spans.fn[s] === fn &&
-            (spans.depth[s] ?? 0) >= 1 &&
-            (spans.end[s] ?? 0) <= startedAt &&
-            better(s, source)
-          ) {
-            source = s;
-            kind = 2;
-          }
+        const inTask: number[] = [];
+        for (let x = tasks.spanStart[scheduler] ?? 0; x < (tasks.spanEnd[scheduler] ?? 0); x++) {
+          if (spans.fn[x] === fn) inTask.push(x);
+        }
+        let pick = oldest(inTask, 0);
+        if (pick < 0) {
+          for (const x of inTask) if (usable(x) && better(x, pick)) pick = x;
+        }
+        if (pick >= 0 && (source < 0 || better(pick, source))) {
+          source = pick;
+          kind = 2;
         }
       }
       if (source < 0) {
         const list = byFn.get(fn) ?? [];
-        for (let i = list.length - 1, seen = 0; i >= 0 && seen < LOOKBACK; i--, seen++) {
-          const s = list[i] ?? 0;
-          if ((spans.depth[s] ?? 0) < 1 || (spans.end[s] ?? 0) > startedAt) continue;
-          if (better(s, source)) {
-            source = s;
-            kind = 1;
+        let head = headOf.get(fn) ?? 0;
+        while (head < list.length && consumed.has(list[head] ?? 0)) head++;
+        headOf.set(fn, head);
+        source = oldest(list, head);
+        // Nothing unresumed left (more continuations than sampled calls): sit next to the latest call.
+        if (source < 0) {
+          for (let i = list.length - 1, seen = 0; i >= 0 && seen < LOOKBACK; i--, seen++) {
+            const x = list[i] ?? 0;
+            if (usable(x) && better(x, source)) source = x;
           }
         }
+        if (source >= 0) kind = 1;
       }
+      if (source >= 0) consumed.add(source);
       // No earlier call to resume: attach where the previous task yielded (inferred from adjacency).
       let yielded: { span: number; task: number } | undefined;
       if (source < 0) yielded = yieldCandidate(k, fn);
@@ -207,6 +280,7 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
       );
       cStitch.push(yielded ? 3 : source < 0 ? 0 : kind);
       segmentOfSpan.set(a, index);
+      segmentOfTaskFn.set(k * FN_RANGE + fn, index);
       if (firstSegment < 0) firstSegment = index;
     }
     if (firstSegment >= 0) {
@@ -217,6 +291,9 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
       tasks.stitch[k] = cStitch[firstSegment] ?? 0;
     }
     for (let s = from; s < to; s++) {
+      // Only calls that can ever be resumed are kept, so the queue head never sticks on a dead span.
+      const sg = segmentOfSpan.get(s);
+      if ((spans.depth[s] ?? 0) < 1 && !(sg !== undefined && (cStitch[sg] ?? 0) > 0)) continue;
       const fn = spans.fn[s] ?? 0;
       const list = byFn.get(fn);
       if (list) list.push(s);

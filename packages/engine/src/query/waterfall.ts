@@ -366,7 +366,10 @@ export function trivialTasks(
   return out;
 }
 
-/** Marks the widest child at each level, from the call roots down. */
+/**
+ * Marks the heaviest child at each level, from the call roots down. Heaviest is the work in the subtree (self
+ * time), not the wall extent: a call that merely waited across an await is wide but not on the critical path.
+ */
 function markCritical(rows: WaterfallRow[]): number[] {
   const kids = new Map<number, number[]>();
   for (const r of rows) {
@@ -375,10 +378,17 @@ function markCritical(rows: WaterfallRow[]): number[] {
     if (list) list.push(r.id);
     else kids.set(r.parent, [r.id]);
   }
+  const work = new Float64Array(rows.length);
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (!r || r.kind !== 'call') continue;
+    work[i] = (work[i] ?? 0) + r.selfUs;
+    if (r.parent >= 0) work[r.parent] = (work[r.parent] ?? 0) + (work[i] ?? 0);
+  }
   const widest = (ids: number[] | undefined): number => {
     let best = -1;
     for (const id of ids ?? []) {
-      if (best < 0 || (rows[id]?.durUs ?? 0) > (rows[best]?.durUs ?? 0)) best = id;
+      if (best < 0 || (work[id] ?? 0) > (work[best] ?? 0)) best = id;
     }
     return best;
   };

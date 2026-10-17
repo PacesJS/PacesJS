@@ -27,7 +27,7 @@ const outline = (m: ExecutionModel): string[] => {
 };
 
 describe('attaching a continuation where the previous task yielded', () => {
-  it('attaches under the deepest target frame of the previous task, marked as kind 3', () => {
+  it('attaches under the shallowest frame of the same package of the previous task, marked as kind 3', () => {
     const m = analyze(
       synthCapture(
         [
@@ -40,11 +40,11 @@ describe('attaching a continuation where the previous task yielded', () => {
     );
     const t = m.tracks[0];
     expect(t?.tasks.stitch[1]).toBe(3);
-    expect(spanName(m, t?.tasks.parentSpan[1] ?? 0)).toBe('mid');
+    expect(spanName(m, t?.tasks.parentSpan[1] ?? 0)).toBe('main');
     expect(t?.tasks.resumeOf[1]).toBe(-1);
     expect(t?.tasks.waitUs[1]).toBeGreaterThan(0);
     expect(Array.from(t?.continuations.stitch ?? [])).toEqual([3]);
-    expect(outline(m)).toEqual(['main', '  mid', '    execute']);
+    expect(outline(m)).toEqual(['main', '  mid', '  execute']);
   });
 
   it('drops trailing module loading: the load is not what yielded', () => {
@@ -79,10 +79,10 @@ describe('attaching a continuation where the previous task yielded', () => {
         { argv },
       ),
     );
-    expect(spanName(m, m.tracks[0]?.tasks.parentSpan[1] ?? 0)).toBe('cb');
+    expect(spanName(m, m.tracks[0]?.tasks.parentSpan[1] ?? 0)).toBe('main');
   });
 
-  it('falls back to the deepest remaining frame when none is the target', () => {
+  it('stays a root when the only frames to attach under belong to another package', () => {
     const dep = (name: string) => ({ name, url: 'file:///project/node_modules/lib/index.js' });
     const m = analyze(
       synthCapture(
@@ -94,7 +94,7 @@ describe('attaching a continuation where the previous task yielded', () => {
         { argv: ['node', '/project/src/app.js'] },
       ),
     );
-    expect(spanName(m, m.tracks[0]?.tasks.parentSpan[1] ?? 0)).toBe('inner');
+    expect(m.tracks[0]?.tasks.stitch[1]).toBe(0);
   });
 
   it('stays a root when the previous task left nothing to attach to', () => {
@@ -178,7 +178,7 @@ describe('attaching a continuation where the previous task yielded', () => {
         }),
       );
       expect(m.tracks[0]?.tasks.stitch[1]).toBe(3);
-      expect(spanName(m, m.tracks[0]?.tasks.parentSpan[1] ?? 0)).toBe('mid');
+      expect(spanName(m, m.tracks[0]?.tasks.parentSpan[1] ?? 0)).toBe('main');
     });
   });
 
@@ -195,10 +195,10 @@ describe('attaching a continuation where the previous task yielded', () => {
     );
     const w = waterfallForRun(m, 0);
     const execute = w.rows.find((r) => r.fn >= 0 && describeFunction(m, r.fn).name === 'execute');
-    expect(execute?.depth).toBe(3);
+    expect(execute?.depth).toBe(2);
     expect(execute?.resumed).toBe(false);
     const parent = w.rows[execute?.parent ?? 0];
-    expect(parent && describeFunction(m, parent.fn).name).toBe('mid');
+    expect(parent && describeFunction(m, parent.fn).name).toBe('main');
     expect(w.rows.some((r) => r.kind === 'wait' && /^awaiting/.test(r.label))).toBe(true);
   });
 });
