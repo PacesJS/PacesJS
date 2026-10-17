@@ -9,7 +9,6 @@ import type { AgentSummary } from '@pacesjs/engine';
 
 export interface Engine extends EngineApi {
   buildAgentSummary(model: ExecutionModel): AgentSummary;
-  diffModels(base: ExecutionModel, head: ExecutionModel): unknown;
 }
 
 export class EngineUnavailableError extends Error {
@@ -50,15 +49,5 @@ export function loadEngine(
         : m,
     deserializeModel: (b) => fn<(b: Uint8Array) => ExecutionModel>('deserializeModel')(b),
     buildAgentSummary: (m) => fn<(m: ExecutionModel) => AgentSummary>('buildAgentSummary')(m),
-    diffModels: (a, b) => fn<(a: ExecutionModel, b: ExecutionModel) => unknown>('diffModels')(a, b),
   };
-}
-
-export function engineAvailable(): boolean {
-  try {
-    loadEngine();
-    return true;
-  } catch {
-    return false;
-  }
 }
