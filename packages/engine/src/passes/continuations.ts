@@ -12,6 +12,7 @@
 
 import { Origin, TaskKind } from '../model.js';
 import type { AsyncEdgeTable, ContinuationTable, SpanTable, TaskTable } from '../model.js';
+import { taskOfSpan } from '../util/search.js';
 
 export interface ContinuationInput {
   spans: SpanTable;
@@ -73,17 +74,6 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
     edgeWait.set(to, waits);
   }
 
-  const taskOfSpan = (span: number): number => {
-    let lo = 0;
-    let hi = tasks.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if ((tasks.spanStart[mid] ?? 0) <= span) lo = mid + 1;
-      else hi = mid;
-    }
-    const k = lo - 1;
-    return k >= 0 && span < (tasks.spanEnd[k] ?? 0) ? k : -1;
-  };
   const segmentOfTaskFn = new Map<number, number>();
   const FN_RANGE = functions.origin.length + 1;
   const isLoader = (s: number): boolean => functions.loader[spans.fn[s] ?? 0] === 1;
@@ -96,7 +86,7 @@ export function stitchContinuations(input: ContinuationInput): ContinuationTable
     const at = own.findIndex((x) => anchor[x] === 1);
     if (at < 0) return own;
     const head = own[at] ?? 0;
-    const seg = segmentOfTaskFn.get(taskOfSpan(head) * FN_RANGE + (spans.fn[head] ?? 0));
+    const seg = segmentOfTaskFn.get(taskOfSpan(tasks, head) * FN_RANGE + (spans.fn[head] ?? 0));
     if (seg === undefined || (cStitch[seg] ?? 0) === 0) return own;
     const parent = cParent[seg] ?? -1;
     return [...(parent >= 0 ? logicalChain(parent) : []), ...own.slice(at)];

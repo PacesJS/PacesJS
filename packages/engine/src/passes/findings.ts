@@ -9,6 +9,7 @@ import { hotPaths } from '../query/paths.js';
 import { formatDuration, formatPercent, plural } from '../util/format.js';
 import { displayPath } from '../util/paths.js';
 import type { PassContext } from './types.js';
+import { lowerBound } from '../util/search.js';
 
 type Rule = (model: ExecutionModel, th: Thresholds) => Finding[];
 
@@ -40,17 +41,6 @@ const place = (m: ExecutionModel, fn: FnId): string =>
 const where = (m: ExecutionModel, fn: FnId): string => `${fnName(m, fn)} (${place(m, fn)})`;
 const isTargetTrack = (m: ExecutionModel, ti: number): boolean => m.tracks[ti]?.role === 'target';
 const originOf = (m: ExecutionModel, fn: FnId): number => m.functions.origin[fn] ?? Origin.User;
-
-function lowerBound(a: Float64Array, x: number): number {
-  let lo = 0;
-  let hi = a.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if ((a[mid] ?? 0) < x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
 
 function taskRange(track: Track, k: number): [number, number] {
   return [

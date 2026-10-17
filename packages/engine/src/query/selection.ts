@@ -1,27 +1,11 @@
 // Selection helpers: for a hover or selection, which ids light up in each view.
 
-import type { ExecutionModel, Track } from '../model.js';
+import type { ExecutionModel } from '../model.js';
 import type { RelatedIds, Selection, TransformedView } from './types.js';
 import { findNode } from './view.js';
+import { taskOfSpan } from '../util/search.js';
 
 const TOP_TASK_FNS = 5;
-
-function lowerBound(a: Uint32Array, x: number): number {
-  let lo = 0;
-  let hi = a.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if ((a[mid] ?? 0) < x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-/** Task whose span range contains span `s`, or -1. */
-function taskOfSpan(track: Track, s: number): number {
-  const k = lowerBound(track.tasks.spanStart, s + 1) - 1;
-  return k >= 0 && s < (track.tasks.spanEnd[k] ?? 0) ? k : -1;
-}
 
 function subtree(view: TransformedView, node: number): number[] {
   const out: number[] = [];
@@ -50,7 +34,7 @@ export function relatedIds(
         for (let s = 0; s < track.spans.length; s++) {
           if (track.spans.fn[s] !== selection.fn) continue;
           out.spans.push(s);
-          const k = taskOfSpan(track, s);
+          const k = taskOfSpan(track.tasks, s);
           if (k >= 0) tasks.add(k);
         }
         out.tasks = [...tasks].sort((a, b) => a - b);
@@ -70,7 +54,7 @@ export function relatedIds(
       const s = selection.span;
       out.fns = [t.spans.fn[s] ?? 0];
       out.spans = [s];
-      const k = taskOfSpan(t, s);
+      const k = taskOfSpan(t.tasks, s);
       if (k >= 0) out.tasks = [k];
       if (selection.trackIndex === view.trackIndex) {
         const path: number[] = [];

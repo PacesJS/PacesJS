@@ -5,6 +5,7 @@
 import { Origin, TaskKind } from '../model.js';
 import type { CallTree, EventTable, Samples, SpanTable, TaskKindId, TaskTable } from '../model.js';
 import type { PassContext } from './types.js';
+import { lowerBound } from '../util/search.js';
 
 export interface TaskFunctions {
   name: Uint32Array;
@@ -69,17 +70,6 @@ const KIND_PREFIX: Record<number, string> = {
   [TaskKind.Other]: 'other',
 };
 const MODULE_PREFIX = /^(require|import) ▸ /;
-
-function lowerBound(a: Float64Array, x: number): number {
-  let lo = 0;
-  let hi = a.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if ((a[mid] ?? 0) < x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
 
 function basename(path: string): string {
   const i = path.lastIndexOf('/');

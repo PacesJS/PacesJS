@@ -3,6 +3,7 @@
 // monotonic clocks are system-wide, so every process and worker shares it.
 
 import type { RawCapture, RawTrack } from '../raw.js';
+import { lowerBound } from '../util/search.js';
 
 export interface ClockAlignment {
   /** Monotonic microsecond reading that corresponds to `meta.startedAt`. */
@@ -23,17 +24,6 @@ interface TrackSignal {
   /** Monotonic sample times and prefix sums of busy (non-idle) duration. */
   sampleMono: Float64Array;
   busyPrefix: Float64Array;
-}
-
-function lowerBound(a: Float64Array, x: number): number {
-  let lo = 0;
-  let hi = a.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if ((a[mid] ?? 0) < x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
 }
 
 function signalOf(track: RawTrack, startedAt: number): TrackSignal | undefined {

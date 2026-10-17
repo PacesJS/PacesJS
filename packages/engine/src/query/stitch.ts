@@ -5,6 +5,7 @@
 
 import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
+import { taskOfSpan } from '../util/search.js';
 
 export interface StitchPlan {
   /** Creation-order tree: parent index per node (node 0 is the `(root)`). */
@@ -68,18 +69,6 @@ export function stitchPlan(
     rowOf.set((continuations.task[r] ?? 0) * K + (continuations.fn[r] ?? 0), r);
   }
 
-  const taskOfSpan = (span: number): number => {
-    let lo = 0;
-    let hi = tasks.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if ((tasks.spanStart[mid] ?? 0) <= span) lo = mid + 1;
-      else hi = mid;
-    }
-    const k = lo - 1;
-    return k >= 0 && span < (tasks.spanEnd[k] ?? 0) ? k : -1;
-  };
-
   const baseMemo = new Map<number, number>();
   const graftMemo = new Map<number, number>();
   const segmentOf = (k: number, node: number): number => {
@@ -109,7 +98,7 @@ export function stitchPlan(
   };
   const nodeOfSpan = (span: number): number => {
     const node = spans.node[span] ?? 0;
-    const r = segmentOf(taskOfSpan(span), node);
+    const r = segmentOf(taskOfSpan(tasks, span), node);
     return r >= 0 ? graft(r, node) : (place[node] ?? 0);
   };
 

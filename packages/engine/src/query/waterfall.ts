@@ -14,20 +14,10 @@ import type {
   WaterfallRow,
 } from './types.js';
 import { applyTransforms, withoutInversion } from './view.js';
+import { lowerBound } from '../util/search.js';
 
 const MAX_ASYNC_EDGES = 20;
 const RUNTIME_BLIPS = new Set(['(program)', '(garbage collector)', '(idle)']);
-
-function lowerBound(a: Float64Array, x: number): number {
-  let lo = 0;
-  let hi = a.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if ((a[mid] ?? 0) < x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
 
 function extendedOrigin(model: ExecutionModel, view: TransformedView): Uint8Array {
   const F = model.functions.length;
