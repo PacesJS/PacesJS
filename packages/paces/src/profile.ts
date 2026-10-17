@@ -7,6 +7,7 @@ import { constants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCaptureDir, socketPath } from '@pacesjs/collector-node';
+import type { ToCli, ToTarget } from '@pacesjs/collector-node';
 import type { CaptureMeta, RawCapture } from '@pacesjs/engine';
 import type { Flags } from './args.js';
 import { UsageError } from './args.js';
@@ -147,13 +148,9 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
         const line = buf.slice(0, i);
         buf = buf.slice(i + 1);
         try {
-          const msg = JSON.parse(line) as {
-            type?: string;
-            track?: string;
-            pid?: number;
-            threadId?: number;
-            argv?: string[];
-          };
+          const msg = JSON.parse(line) as Partial<
+            Omit<Extract<ToCli, { type: 'register' }>, 'type'>
+          > & { type?: ToCli['type'] };
           if (msg.type === 'register' && msg.track) {
             track = msg.track;
             registrations.set(track, {
@@ -181,7 +178,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
     server.listen(sock, ok);
   });
 
-  const broadcast = (type: 'start' | 'stop' | 'sigint'): void => {
+  const broadcast = (type: ToTarget['type']): void => {
     for (const c of conns.values()) {
       if (!c.socket.destroyed) c.socket.write(`${JSON.stringify({ type })}\n`);
     }
