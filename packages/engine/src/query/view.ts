@@ -3,6 +3,7 @@
 // each step is O(nodes + samples), so 60 000 samples transform in a few milliseconds.
 
 import { Origin } from '../model.js';
+import { functionName } from '../frames.js';
 import type { CallTree, ExecutionModel, Samples } from '../model.js';
 import { depthsOf, subtreeEnds, totalsOf } from '../util/tree-columns.js';
 import { stitchPlan } from './stitch.js';
@@ -83,7 +84,7 @@ export function describeFunction(
   const f = model.functions;
   return {
     fn,
-    name: model.strings[f.name[fn] ?? 0] ?? '',
+    name: functionName(model, fn),
     file: model.strings[f.file[fn] ?? 0] ?? '',
     line: f.line[fn] ?? 0,
     col: f.col[fn] ?? 0,

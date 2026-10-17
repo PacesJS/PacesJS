@@ -4,6 +4,7 @@
 import { DEFAULT_SUPPRESS_FOR_CLI } from '../config.js';
 import type { Thresholds } from '../config.js';
 import { Origin, TASK_KIND_NAMES, TaskKind } from '../model.js';
+import { functionName } from '../frames.js';
 import type { ExecutionModel, Finding, FindingKind, FnId, Severity, Track } from '../model.js';
 import { hotPaths } from '../query/paths.js';
 import { compareText } from '../util/compare.js';
@@ -33,8 +34,7 @@ const SYNC_NAME = /Sync$/;
 const JSON_NAME = /^(JSON\.)?(parse|stringify)$/;
 
 const text = (m: ExecutionModel, id: number): string => m.strings[id] ?? '';
-const fnName = (m: ExecutionModel, fn: FnId): string =>
-  text(m, m.functions.name[fn] ?? 0) || '(anonymous)';
+const fnName = (m: ExecutionModel, fn: FnId): string => functionName(m, fn) || '(anonymous)';
 const fnFile = (m: ExecutionModel, fn: FnId): string => text(m, m.functions.file[fn] ?? 0);
 /** `name (file:line)`: enough to open the function. */
 const place = (m: ExecutionModel, fn: FnId): string =>

@@ -2,6 +2,7 @@
 // minified positions: project-relative original path, function name and original line.
 
 import { Origin } from './model.js';
+import { functionName } from './frames.js';
 import type { ExecutionModel } from './model.js';
 import type { DiffFunction, ModelDiff } from './query/types.js';
 import { compareText } from './util/compare.js';
@@ -12,7 +13,7 @@ export const DIFF_EPSILON = 0.005;
 export function functionKey(model: ExecutionModel, fn: number): string {
   const f = model.functions;
   const file = model.strings[f.file[fn] ?? 0] ?? '';
-  const name = model.strings[f.name[fn] ?? 0] ?? '';
+  const name = functionName(model, fn);
   return `${file}|${name}|${f.line[fn] ?? 0}`;
 }
 
@@ -42,7 +43,7 @@ function collect(model: ExecutionModel): {
       if (model.functions.origin[fn] === Origin.Idle) return;
       const key = keyOf[fn] ?? '';
       const entry = byKey.get(key) ?? {
-        name: model.strings[model.functions.name[fn] ?? 0] ?? '',
+        name: functionName(model, fn),
         file: model.strings[model.functions.file[fn] ?? 0] ?? '',
         line: model.functions.line[fn] ?? 0,
         fn,

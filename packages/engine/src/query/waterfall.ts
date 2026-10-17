@@ -2,6 +2,7 @@
 // (merge plumbing, collapse dependencies, drop idle) decides what a row is.
 
 import { Origin, TaskKind } from '../model.js';
+import { functionName } from '../frames.js';
 import type { ExecutionModel, Samples } from '../model.js';
 import { reconstructSpans } from '../passes/spans.js';
 import { formatDuration, plural } from '../util/format.js';
@@ -630,7 +631,7 @@ export function waterfallForRun(
   if (blipLimit > 0) {
     for (const r of rows) {
       if (r.kind !== 'call' || r.depth !== topDepth || r.fn < 0 || r.durUs >= blipLimit) continue;
-      if (!RUNTIME_BLIPS.has(model.strings[model.functions.name[r.fn] ?? 0] ?? '')) continue;
+      if (!RUNTIME_BLIPS.has(functionName(model, r.fn))) continue;
       drop.add(r.id);
       blips.push({ start: r.start, end: r.end, runtime: r.durUs });
     }

@@ -4,6 +4,7 @@
 import { Origin, ORIGIN_NAMES, TASK_KIND_NAMES } from './model.js';
 import type { ExecutionModel, FnId, ModelWarning, RunKind, Severity, TrackRole } from './model.js';
 import { phasesOf } from './agent-phases.js';
+import { functionName } from './frames.js';
 import { ms, share } from './util/format.js';
 import type { AgentPhase, SourceLocation } from './agent-phases.js';
 import { hotPaths } from './query/paths.js';
@@ -110,7 +111,7 @@ export interface AgentSummary {
 
 export function buildAgentSummary(model: ExecutionModel): AgentSummary {
   const where = (fn: FnId): SourceLocation => ({
-    name: model.strings[model.functions.name[fn] ?? 0] || '(anonymous)',
+    name: functionName(model, fn) || '(anonymous)',
     file: model.strings[model.functions.file[fn] ?? 0] ?? '',
     line: model.functions.line[fn] ?? 0,
   });
@@ -149,11 +150,7 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
   });
   const real = (fn: FnId): boolean => {
     const o = model.functions.origin[fn] ?? 0;
-    return (
-      o !== Origin.Idle &&
-      o !== Origin.Gc &&
-      model.strings[model.functions.name[fn] ?? 0] !== '(root)'
-    );
+    return o !== Origin.Idle && o !== Origin.Gc && functionName(model, fn) !== '(root)';
   };
   const describe = (fn: FnId, selfUs: number): AgentFunction => ({
     ...where(fn),

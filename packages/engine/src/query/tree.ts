@@ -4,6 +4,7 @@
 // capture, same engine version), and identical on every invocation against it.
 
 import { Origin } from '../model.js';
+import { functionName } from '../frames.js';
 import type { ExecutionModel, FnId, OriginId } from '../model.js';
 import type { FunctionInfo, Transform, TransformedView } from './types.js';
 import { SHOWN_PREFIX, hideAllExcept } from './stacks.js';
@@ -80,8 +81,6 @@ export interface SelectorResult {
 
 export const functionId = (fn: number): string => `f${fn}`;
 
-const nameOf = (model: ExecutionModel, fn: FnId): string =>
-  model.strings[model.functions.name[fn] ?? 0] ?? '';
 const fileOf = (model: ExecutionModel, fn: FnId): string =>
   (model.strings[model.functions.file[fn] ?? 0] ?? '').replaceAll('\\', '/');
 
@@ -191,10 +190,10 @@ export function resolveSelector(
 
   // Anonymous functions are shown as "(anonymous)" but stored with an empty name.
   const wanted = sel === '(anonymous)' ? '' : sel;
-  const exact = Array.from(track.fnIds).filter((fn) => nameOf(model, fn) === wanted);
+  const exact = Array.from(track.fnIds).filter((fn) => functionName(model, fn) === wanted);
   if (exact.length > 0) return { matches: rank(exact), how: 'exact' };
   const loose = Array.from(track.fnIds).filter(
-    (fn) => sel !== '' && nameOf(model, fn).includes(sel),
+    (fn) => sel !== '' && functionName(model, fn).includes(sel),
   );
   return { matches: rank(loose), how: 'substring' };
 }

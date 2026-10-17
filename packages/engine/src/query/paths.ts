@@ -3,6 +3,7 @@
 // hot paths which fold plumbing and idle (and optionally other origins) through the transform layer.
 
 import type { ExecutionModel, FnId } from '../model.js';
+import { functionName } from '../frames.js';
 import type {
   CallerNode,
   FunctionLocation,
@@ -19,7 +20,7 @@ const MAX_CALLERS_PER_LEVEL = 8;
 
 function locate(model: ExecutionModel, fn: FnId): FunctionLocation {
   return {
-    name: model.strings[model.functions.name[fn] ?? 0] ?? '',
+    name: functionName(model, fn),
     file: model.strings[model.functions.file[fn] ?? 0] ?? '',
     line: model.functions.line[fn] ?? 0,
   };

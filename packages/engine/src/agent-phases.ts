@@ -1,6 +1,7 @@
 // Phases of a run for the agent summary: what the primary track was doing, in time order.
 
 import { Origin } from './model.js';
+import { functionName } from './frames.js';
 import type { ExecutionModel, FnId } from './model.js';
 import { ms, share } from './util/format.js';
 import { displayPath } from './util/paths.js';
@@ -66,7 +67,7 @@ export function phasesOf(model: ExecutionModel, busyTotal: number): AgentPhase[]
   for (let n = 1; n < tree.length; n++) {
     const p = tree.parent[n] ?? 0;
     const fn = tree.fn[n] ?? 0;
-    const text = `${model.strings[f.name[fn] ?? 0] ?? ''} ${model.strings[f.file[fn] ?? 0] ?? ''}`;
+    const text = `${functionName(model, fn)} ${model.strings[f.file[fn] ?? 0] ?? ''}`;
     const plain =
       f.loader[fn] !== 1 && f.origin[fn] !== Origin.Native && f.origin[fn] !== Origin.Node;
     loadAnc[n] = (loadAnc[p] ?? 0) | (f.loader[fn] ?? 0);
@@ -138,7 +139,7 @@ export function phasesOf(model: ExecutionModel, busyTotal: number): AgentPhase[]
       .sort((a, b) => b[1] - a[1] || a[0] - b[0])
       .slice(0, 3)
       .map(([fn, us]) => ({
-        name: model.strings[f.name[fn] ?? 0] || '(anonymous)',
+        name: functionName(model, fn) || '(anonymous)',
         file: displayPath(model.strings[f.file[fn] ?? 0] ?? ''),
         line: f.line[fn] ?? 0,
         selfMs: ms(us),

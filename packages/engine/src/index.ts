@@ -7,6 +7,7 @@ export { analyze } from './analyze.js';
 export { ensureCaptureWarnings } from './passes/warnings.js';
 export { buildAgentSummary } from './agent-summary.js';
 export { ms, share } from './util/format.js';
+export { functionName } from './frames.js';
 export type {
   AgentFinding,
   AgentFunction,
