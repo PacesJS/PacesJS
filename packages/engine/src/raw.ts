@@ -93,6 +93,17 @@ export interface CaptureMeta {
   endedBy: 'exit' | 'sigint' | 'duration' | 'crash';
   /** Absolute project root: source reads are restricted to it. */
   projectRoot: string;
+  /**
+   * Processes and workers that registered with the collector but were stopped before they could write a
+   * profile. Set by the host; absent in older sessions.
+   */
+  lostTracks?: Array<{
+    id: string;
+    pid?: number;
+    threadId?: number;
+    label?: string;
+    kind: 'process' | 'worker';
+  }>;
 }
 
 /** Everything the engine needs. Source maps are pre-read by the host because the engine does no I/O. */

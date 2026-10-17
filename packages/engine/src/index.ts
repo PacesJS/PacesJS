@@ -4,6 +4,7 @@ export * from './config.js';
 export * from './query/types.js';
 
 export { analyze } from './analyze.js';
+export { ensureCaptureWarnings } from './passes/warnings.js';
 export { buildAgentSummary } from './agent-summary.js';
 export type {
   AgentFinding,
@@ -25,6 +26,7 @@ export {
 
 export { applyTransforms, childrenOf, describeFunction, findNode, nodePath } from './query/view.js';
 export {
+  smallTaskLimitUs,
   trivialTasks,
   waterfallForRange,
   waterfallForRun,

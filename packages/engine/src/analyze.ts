@@ -21,7 +21,7 @@ import { segmentTasks } from './passes/tasks.js';
 import { detectTarget, processName, runKindOf } from './passes/target.js';
 import type { TargetDetection } from './passes/target.js';
 import type { IngestResult, PassContext, WarningDraft } from './passes/types.js';
-import { buildWarnings } from './passes/warnings.js';
+import { buildWarnings, lostTrackDrafts } from './passes/warnings.js';
 import type { RawCapture } from './raw.js';
 import { displayPath, packageNameFromPath } from './util/paths.js';
 import { createStringTable } from './util/strings.js';
@@ -276,7 +276,11 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
   };
   // 9: findings read the finished model.
   model.findings = findIssues(model, ctx);
-  model.meta.warnings = buildWarnings([...ctx.warnings, ...dedupeFiles(mapDrafts)]);
+  model.meta.warnings = buildWarnings([
+    ...ctx.warnings,
+    ...lostTrackDrafts(capture.meta.lostTracks),
+    ...dedupeFiles(mapDrafts),
+  ]);
   return model;
 }
 

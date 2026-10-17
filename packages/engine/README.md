@@ -116,6 +116,20 @@ interface TargetInfo {
 }
 ```
 
+### Lost tracks
+
+`CaptureMeta.lostTracks` (set by the host): processes and workers that registered with the collector but were
+stopped before they could write a profile. When it is non-empty, `analyze` adds one `ModelWarning`
+`{ kind: 'lost-tracks', severity: 'warn' }`: "N processes or workers were stopped before they could write a profile;
+their time is not in this session.", `count` N, `details` up to 20 entries like `pid 4321` or `pid 4321 (worker 2)`
+(label or id without a pid). No warning when the field is absent or empty. It reaches `buildAgentSummary` as a
+caveat. It is warning data, not a column, so the model shape fingerprint and `ENGINE_VERSION` are unchanged.
+
+Cache: `meta` is copied from the capture when a model is analyzed, so a model cached together with its capture
+already has the warning. A model cached before the host knew about the lost tracks does not; after loading a cached
+model, call `ensureCaptureWarnings(model, capture.meta)`. It adds the warning (and `meta.lostTracks`) when missing,
+is idempotent, and leaves the model alone when the capture has none.
+
 ### Warnings
 
 `meta.warnings` is `ModelWarning[]` with one entry per `kind`:
@@ -282,7 +296,18 @@ covering the run; nested rows are logical calls in time order. Options: `hideOri
   make no rows. Each run of consecutive small tasks becomes one `kind: 'summary'` row under the root,
   `"N small tasks · ~X ms"`, with `summaryTasks` listing the task indexes; expand a summary by opening those
   tasks with `waterfallForTask`. `collapseTrivialUs: 0` turns collapsing off.
-- New row fields: `resumed: boolean`, `summaryTasks: number[]` (empty except on summary rows); `kind` is
+- **Runtime pauses between tasks.** A root-level `(program)`, `(garbage collector)` or `(idle)` row that sits
+  between tasks cannot be bridged into a call (the stacks around it share nothing) and used to be noise at the top.
+  Those shorter than `max(smallTaskLimitUs, 2 sampling intervals)` (`smallTaskLimitUs`: the larger of 0.5 ms and
+  0.1% of the run, or `collapseTrivialUs`) are folded into the same summary rows as small tasks: adjacent small
+  tasks and pauses form one row per gap. `summaryTasks` lists tasks only; `summaryRuntimeUs` is the time of the
+  folded pauses, so the row's total is the tasks' busy time plus it. A gap with only pauses reads
+  `runtime pauses · ~X ms`. Longer pauses (a 200 ms `(program)`) stay as rows. The root row still covers the
+  whole profile. `collapseTrivialUs: 0` turns all of this off.
+- `smallTaskLimitUs(model, trackIndex, override?)` returns the task limit; `trivialTasks` uses it, so
+  `describeTasks` and the run waterfall agree.
+
+- New row fields: `resumed: boolean`, `summaryTasks: number[]` (empty except on summary rows), `summaryRuntimeUs` (0 except on summary rows); `kind` is
   `'call' | 'wait' | 'summary'`. Ids stay indexes, parents come before children.
 
 `describeTasks` starts with `{ index: -1, group: 'Whole run', label: 'Whole run · <entry>' }` (open it with

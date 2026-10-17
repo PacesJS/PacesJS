@@ -16,6 +16,7 @@ import type {
 import { applyTransforms, withoutInversion } from './view.js';
 
 const MAX_ASYNC_EDGES = 20;
+const RUNTIME_BLIPS = new Set(['(program)', '(garbage collector)', '(idle)']);
 
 function lowerBound(a: Float64Array, x: number): number {
   let lo = 0;
@@ -124,6 +125,7 @@ function buildRows(
       label: '',
       resumed: false,
       summaryTasks: [],
+      summaryRuntimeUs: 0,
     });
   }
   return { rows, criticalPath: path };
@@ -273,6 +275,7 @@ function assemble(
         label: `idle wait ${formatDuration(waitUs)}`,
         resumed: false,
         summaryTasks: [],
+        summaryRuntimeUs: 0,
       });
       const sub = buildRows(model, view, origin, ts, te, target, rows.length, 1, waitId);
       for (const r of sub.rows) rows.push(r);
@@ -326,6 +329,20 @@ export function waterfallForRange(
 
 // ---- Whole-run waterfall ----
 
+/**
+ * Busy time below which a task is small: the larger of 0.5 ms and 0.1% of the run, unless overridden (0 turns
+ * collapsing off). Root-level `(program)`, GC and idle rows between tasks fold at the larger of this and two
+ * sampling intervals.
+ */
+export function smallTaskLimitUs(
+  model: ExecutionModel,
+  trackIndex: number,
+  override?: number,
+): number {
+  const track = model.tracks[trackIndex];
+  return override ?? Math.max(500, 0.001 * (track?.durationUs ?? 0));
+}
+
 /** Tasks that are not worth a row: little busy time, or nothing of the program's in them. */
 export function trivialTasks(
   model: ExecutionModel,
@@ -336,7 +353,7 @@ export function trivialTasks(
   const out = new Set<number>();
   if (!track) return out;
   const tasks = track.tasks;
-  const limit = thresholdUs ?? Math.max(500, 0.001 * track.durationUs);
+  const limit = smallTaskLimitUs(model, trackIndex, thresholdUs);
   if (limit <= 0) return out;
   let entry = -1;
   for (let k = 0; k < tasks.length && entry < 0; k++) {
@@ -375,13 +392,17 @@ function markCritical(rows: WaterfallRow[]): number[] {
 }
 
 /** Sorts rows by (start, depth), merges `alias`ed rows into their target and renumbers ids and parents. */
-function reindex(rows: WaterfallRow[], alias: Map<number, number>): WaterfallRow[] {
+function reindex(
+  rows: WaterfallRow[],
+  alias: Map<number, number>,
+  drop: Set<number> = new Set(),
+): WaterfallRow[] {
   const resolve = (id: number): number => {
     let cur = id;
     while (alias.has(cur)) cur = alias.get(cur) ?? cur;
     return cur;
   };
-  const live = rows.filter((r) => !alias.has(r.id));
+  const live = rows.filter((r) => !alias.has(r.id) && !drop.has(r.id));
   live.sort((a, b) => a.start - b.start || a.depth - b.depth || a.id - b.id);
   const newId = new Map<number, number>();
   live.forEach((r, i) => newId.set(r.id, i));
@@ -426,9 +447,10 @@ export function waterfallForRun(
       dur: Float64Array.from(keep, (i) => all.dur[i] ?? 0),
     },
   };
-  const start = view.samples.time[0] ?? 0;
-  const lastAt = view.samples.length - 1;
-  const end = (view.samples.time[lastAt] ?? 0) + (view.samples.dur[lastAt] ?? 0);
+  // The run is the whole profile, small tasks included.
+  const start = all.time[0] ?? 0;
+  const lastAt = all.length - 1;
+  const end = (all.time[lastAt] ?? 0) + (all.dur[lastAt] ?? 0);
   const main = buildRows(model, view, origin, start, Math.max(end, start + 1), -1, 0, 0, -1);
   let rows = main.rows;
 
@@ -443,9 +465,27 @@ export function waterfallForRun(
       root.end = Math.max(root.end, extra.end);
       root.selfUs += extra.selfUs;
     }
+    root.start = Math.min(root.start, start);
+    root.end = Math.max(root.end, end);
     root.durUs = root.end - root.start;
     root.share = 1;
     root.hatched = false;
+  }
+
+  // Root-level (program), GC and idle rows shorter than the limit sit between tasks (the stacks around them
+  // share nothing, so they cannot be bridged into a call): noise, folded into the summary rows below.
+  const taskLimit = smallTaskLimitUs(model, trackIndex, options.collapseTrivialUs);
+  const blipLimit = taskLimit > 0 ? Math.max(taskLimit, 2 * model.meta.precisionUs) : 0;
+  const topDepth = root ? 1 : 0;
+  const drop = new Set<number>();
+  const blips: Array<{ start: number; end: number; runtime: number }> = [];
+  if (blipLimit > 0) {
+    for (const r of rows) {
+      if (r.kind !== 'call' || r.depth !== topDepth || r.fn < 0 || r.durUs >= blipLimit) continue;
+      if (!RUNTIME_BLIPS.has(model.strings[model.functions.name[r.fn] ?? 0] ?? '')) continue;
+      drop.add(r.id);
+      blips.push({ start: r.start, end: r.end, runtime: r.durUs });
+    }
   }
 
   // Segments after an await. The resumed call is another row, flagged, with an awaiting row before it.
@@ -545,47 +585,84 @@ export function waterfallForRun(
       label: `awaiting ${formatDuration(wait)}`,
       resumed: false,
       summaryTasks: [],
+      summaryRuntimeUs: 0,
     });
   }
   rows = [...rows, ...waits];
 
-  // Small tasks: one summary row for each run of them between two real tasks.
+  // Small tasks and runtime blips: one summary row for each run of them between two real things.
   const rootId = root ? root.id : -1;
-  const summaries: WaterfallRow[] = [];
-  for (let first = 0; first < tasks.length; first++) {
-    if (!trivial.has(first)) continue;
-    let last = first;
-    while (trivial.has(last + 1)) last++;
-    const list: number[] = [];
-    let busy = 0;
-    for (let j = first; j <= last; j++) {
-      list.push(j);
-      busy += tasks.busy[j] ?? 0;
+  const items: Array<{ start: number; end: number; busy: number; runtime: number; task: number }> =
+    [
+      ...[...trivial].map((k) => ({
+        start: tasks.start[k] ?? 0,
+        end: tasks.end[k] ?? 0,
+        busy: tasks.busy[k] ?? 0,
+        runtime: 0,
+        task: k,
+      })),
+      ...blips.map((x) => ({ ...x, busy: 0, task: -1 })),
+    ].sort((x, y) => x.start - y.start || x.end - y.end);
+  const breakers: number[] = [];
+  for (let k = 0; k < tasks.length; k++) if (!trivial.has(k)) breakers.push(tasks.start[k] ?? 0);
+  for (const r of rows) {
+    if (r.kind === 'call' && r.depth === topDepth && !alias.has(r.id) && !drop.has(r.id)) {
+      breakers.push(r.start);
     }
-    const s = tasks.start[first] ?? 0;
-    const e = tasks.end[last] ?? s;
+  }
+  breakers.sort((x, y) => x - y);
+  const breakerBetween = (from: number, to: number): boolean => {
+    let lo = 0;
+    let hi = breakers.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((breakers[mid] ?? 0) <= from) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < breakers.length && (breakers[lo] ?? 0) < to;
+  };
+  const summaries: WaterfallRow[] = [];
+  for (let first = 0; first < items.length; first++) {
+    let last = first;
+    while (
+      last + 1 < items.length &&
+      !breakerBetween(items[last]?.start ?? 0, items[last + 1]?.start ?? 0)
+    ) {
+      last++;
+    }
+    const group = items.slice(first, last + 1);
+    const list = group.filter((x) => x.task >= 0).map((x) => x.task);
+    const busy = group.reduce((n, x) => n + x.busy, 0);
+    const runtime = group.reduce((n, x) => n + x.runtime, 0);
+    const s0 = Math.min(...group.map((x) => x.start));
+    const e0 = Math.max(...group.map((x) => x.end));
+    const total = busy + runtime;
     summaries.push({
       id: rows.length + summaries.length,
       kind: 'summary',
       fn: -1,
       node: -1,
-      start: s,
-      end: e,
-      durUs: e - s,
-      selfUs: busy,
-      depth: root ? 1 : 0,
+      start: s0,
+      end: e0,
+      durUs: e0 - s0,
+      selfUs: total,
+      depth: topDepth,
       parent: rootId,
-      share: busy / Math.max(1, end - start),
+      share: total / Math.max(1, end - start),
       critical: false,
       hatched: false,
       task: -1,
-      label: `${list.length} small ${plural(list.length, 'task', 'tasks')} · ${formatDuration(busy)}`,
+      label:
+        list.length > 0
+          ? `${list.length} small ${plural(list.length, 'task', 'tasks')} · ${formatDuration(total)}`
+          : `runtime pauses · ${formatDuration(total)}`,
       resumed: false,
       summaryTasks: list,
+      summaryRuntimeUs: runtime,
     });
     first = last;
   }
-  rows = reindex([...rows, ...summaries], alias);
+  rows = reindex([...rows, ...summaries], alias, drop);
   for (const r of rows) r.critical = false;
   const path = markCritical(rows);
   const shaped = shapeRows(rows, path, options);

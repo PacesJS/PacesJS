@@ -125,6 +125,11 @@ export interface WaterfallRow {
   resumed: boolean;
   /** Summary rows: the tasks (indexes into `Track.tasks`) rolled into the row; open them with `waterfallForTask`. */
   summaryTasks: number[];
+  /**
+   * Summary rows: time of the root-level `(program)`, GC and idle pauses folded into the row (they are not tasks,
+   * so they are not in `summaryTasks`). The row's total is the tasks' busy time plus this. 0 on other rows.
+   */
+  summaryRuntimeUs: number;
 }
 
 export interface WaterfallMinimap {

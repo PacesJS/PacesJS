@@ -157,7 +157,11 @@ describe('waterfallForRun on real captures', () => {
   it('rolls the small tasks into summary rows instead of one row each', () => {
     const summaries = w.rows.filter((r) => r.kind === 'summary');
     expect(summaries.length).toBeGreaterThanOrEqual(1);
-    expect(summaries.every((r) => r.summaryTasks.length >= 1 && r.depth === 1)).toBe(true);
+    expect(
+      summaries.every(
+        (r) => (r.summaryTasks.length >= 1 || r.summaryRuntimeUs > 0) && r.depth === 1,
+      ),
+    ).toBe(true);
     const track = eslint.tracks[eslint.primaryTrack];
     const runtimeOnly = Array.from(track?.tasks.runtimeOnly ?? [], (v, k) =>
       v === 1 ? k : -1,
