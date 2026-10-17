@@ -1292,7 +1292,7 @@
 
 .source-line {
   display: grid;
-  grid-template-columns: 112px 44px minmax(0, 1fr);
+  grid-template-columns: 128px 44px minmax(0, 1fr);
   align-items: start;
   padding-right: var(--sp-16);
 }
@@ -1367,6 +1367,11 @@
   font-weight: var(--fw-semi);
   color: var(--c-ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* The hottest line is the same label, just heavier. */
+.source-val.is-hottest {
+  font-weight: 700;
 }
 
 .source-bar {

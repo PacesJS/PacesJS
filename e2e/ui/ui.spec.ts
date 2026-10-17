@@ -738,4 +738,38 @@ test.describe('whole run, stitching and the entry root', () => {
       'repeating-linear-gradient',
     );
   });
+
+  test('every bar in the source gutter has its value, and the labels stay inside the gutter', async ({
+    app,
+  }) => {
+    await settled(app);
+    await app.keyboard.press('4');
+    await app
+      .getByRole('row', { name: /^lineTotal/ })
+      .first()
+      .click();
+    const lines = app.locator('.source-line');
+    await expect(lines.first()).toBeVisible();
+    const withBar = app.locator('.source-line', { has: app.locator('.source-bar') });
+    const barCount = await withBar.count();
+    expect(barCount).toBeGreaterThan(1);
+    // The rule is "a bar always has its value": one value per bar, none without a bar.
+    await expect(app.locator('.source-val')).toHaveCount(barCount);
+    const boxes = await withBar.evaluateAll((rows) =>
+      rows.map((r) => {
+        const gutter = r.querySelector('.source-gutter')!.getBoundingClientRect();
+        const val = r.querySelector('.source-val')!.getBoundingClientRect();
+        const code = r.querySelector('.source-code')!.getBoundingClientRect();
+        return {
+          left: val.left - gutter.left,
+          right: gutter.right - val.right,
+          gap: code.left - val.right,
+        };
+      }),
+    );
+    for (const b of boxes) {
+      expect(b.left).toBeGreaterThanOrEqual(-1); // not clipped on the left
+      expect(b.gap).toBeGreaterThan(0); // never over the code
+    }
+  });
 });

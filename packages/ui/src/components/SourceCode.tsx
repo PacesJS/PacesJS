@@ -98,9 +98,10 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                       : acrossAll,
                   )}
                 >
-                  {l.n === hottest && self > 0 ? (
-                    <span className="source-val">
-                      {/* One sample's milliseconds are only the sampling interval: say what it is. */}
+                  {self > 0 ? (
+                    <span className={`source-val${l.n === hottest ? ' is-hottest' : ''}`}>
+                      {/* Every bar has its value. One sample's milliseconds are only the sampling
+                          interval, so a low-confidence line says "1 sample" instead. */}
                       {low ? sampleLabel(self, precisionUs) : fmtDuration(self)}
                     </span>
                   ) : null}
