@@ -9,7 +9,7 @@ import type { WfColumns } from '../state/prefs';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtAxis, fmtDuration, fmtShare } from '../util/format';
 import { drawBar } from '../view/draw-bars';
-import { niceTicks } from '../view/scale';
+import { clamp, niceTicks } from '../view/scale';
 import {
   MIN_BAR_PX,
   fitCallWidth,
@@ -521,7 +521,7 @@ export function Waterfall() {
     const rect = rowsEl?.getBoundingClientRect();
     if (!rect) return;
     const col = barColumn(rect.width, cols);
-    const anchor = Math.min(1, Math.max(0, (e.clientX - rect.left - col.x0) / (col.x1 - col.x0)));
+    const anchor = clamp((e.clientX - rect.left - col.x0) / (col.x1 - col.x0), 0, 1);
     setWin({ key: taskKey, w: zoomWindow(window, total, anchor, e.deltaY > 0 ? 1.25 : 0.8) });
   };
 

@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 import { useApp } from '../app/context';
-import { DOCK_LIMITS, DEFAULT_PREFS, clamp, clampDock } from '../state/prefs';
+import { DOCK_LIMITS, DEFAULT_PREFS, clampDock } from '../state/prefs';
 import type { DockPrefs } from '../state/prefs';
+import { clamp } from '../view/scale';
 import { DetailsDrawer } from './DetailsDrawer';
 import { MainView } from './MainView';
 import { SourceOverlay } from './SourceOverlay';

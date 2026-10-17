@@ -3,6 +3,7 @@ import { useCanvas, usePalette } from '../app/hooks';
 import type { LaneData } from '../data/types';
 import { drawLane, taskAtTime } from '../view/draw-lane';
 import { fmtDuration } from '../util/format';
+import { clamp } from '../view/scale';
 
 interface LanePlotProps {
   lane: LaneData;
@@ -46,7 +47,7 @@ export function LanePlot({
   const usAt = (clientX: number): number => {
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return 0;
-    const f = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const f = clamp((clientX - rect.left) / rect.width, 0, 1);
     return f * lane.durationUs;
   };
   const tolUs = (): number => {

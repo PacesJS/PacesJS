@@ -4,6 +4,7 @@ import { useAsync, useCanvas, usePalette } from '../app/hooks';
 import type { LaneData } from '../data/types';
 import { drawDelay, laneTicks } from '../view/draw-lane';
 import { fmtAxis, fmtDuration, fmtRange } from '../util/format';
+import { clamp } from '../view/scale';
 import { Icon } from './Icon';
 import { LanePlot } from './LanePlot';
 
@@ -42,7 +43,7 @@ export function TrackLanes() {
     const pb = state.pinned.includes(b.id) ? 0 : 1;
     return pa - pb;
   });
-  const frac = (us: number): number => Math.min(1, Math.max(0, us / overview.durationUs));
+  const frac = (us: number): number => clamp(us / overview.durationUs, 0, 1);
   const range = snap.range;
 
   return (
