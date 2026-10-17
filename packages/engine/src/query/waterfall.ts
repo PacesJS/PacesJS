@@ -277,8 +277,9 @@ function assemble(
         summaryTasks: [],
         summaryRuntimeUs: 0,
       });
-      const sub = buildRows(model, view, origin, ts, te, target, rows.length, 1, waitId);
-      for (const r of sub.rows) rows.push(r);
+      const sub = buildRows(model, view, origin, ts, te, target, rows.length, 2, waitId);
+      // The critical path is the chain of the task itself, not of the tasks it scheduled.
+      for (const r of sub.rows) rows.push({ ...r, critical: false });
       outEnd = Math.max(outEnd, te);
       hasAsyncFlow = true;
       used++;
@@ -401,26 +402,109 @@ function markCritical(rows: WaterfallRow[]): number[] {
   return path;
 }
 
-/** Sorts rows by (start, depth), merges `alias`ed rows into their target and renumbers ids and parents. */
-function reindex(
+/**
+ * Merges `alias`ed rows into their target, widens each row to cover its children, and emits the rows depth-first
+ * (children in start order) with ids assigned last: a parent always comes before its children, and a child
+ * is always one level below its parent, whatever the start times of merged rows.
+ */
+export function reindex(
   rows: WaterfallRow[],
   alias: Map<number, number>,
   drop: Set<number> = new Set(),
 ): WaterfallRow[] {
+  const n = rows.length;
   const resolve = (id: number): number => {
     let cur = id;
     while (alias.has(cur)) cur = alias.get(cur) ?? cur;
     return cur;
   };
-  const live = rows.filter((r) => !alias.has(r.id) && !drop.has(r.id));
-  live.sort((a, b) => a.start - b.start || a.depth - b.depth || a.id - b.id);
-  const newId = new Map<number, number>();
-  live.forEach((r, i) => newId.set(r.id, i));
-  return live.map((r, i) => ({
-    ...r,
-    id: i,
-    parent: r.parent < 0 ? -1 : (newId.get(resolve(r.parent)) ?? -1),
-  }));
+  // Ids are the rows' indexes until now.
+  const live = new Uint8Array(n);
+  for (let i = 0; i < n; i++) live[i] = alias.has(i) || drop.has(i) ? 0 : 1;
+  const parent = new Int32Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    const r = rows[i];
+    if (!r || live[i] === 0 || r.parent < 0) continue;
+    const p = resolve(r.parent);
+    if (p !== i && live[p] === 1) parent[i] = p;
+  }
+  const start = Float64Array.from(rows, (r) => r.start);
+  const end = Float64Array.from(rows, (r) => r.end);
+
+  // A row covers its children: widen it, deepest first, when a merged child starts before it.
+  const head = new Int32Array(n).fill(-1);
+  const next = new Int32Array(n).fill(-1);
+  const rootsList: number[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    if (live[i] === 0) continue;
+    const p = parent[i] ?? -1;
+    if (p < 0) rootsList.push(i);
+    else {
+      next[i] = head[p] ?? -1;
+      head[p] = i;
+    }
+  }
+  const topo: number[] = [];
+  const stack = [...rootsList];
+  while (stack.length > 0) {
+    const cur = stack.pop() ?? 0;
+    topo.push(cur);
+    for (let c = head[cur] ?? -1; c >= 0; c = next[c] ?? -1) stack.push(c);
+  }
+  for (let i = topo.length - 1; i >= 0; i--) {
+    const node = topo[i] ?? 0;
+    const p = parent[node] ?? -1;
+    if (p < 0) continue;
+    if ((start[node] ?? 0) < (start[p] ?? 0)) start[p] = start[node] ?? 0;
+    if ((end[node] ?? 0) > (end[p] ?? 0)) end[p] = end[node] ?? 0;
+  }
+
+  // Children in start order: one global sort, then each parent's list is filled in that order.
+  const order = topo
+    .slice()
+    .sort(
+      (x, y) =>
+        (start[x] ?? 0) - (start[y] ?? 0) || (rows[x]?.depth ?? 0) - (rows[y]?.depth ?? 0) || x - y,
+    );
+  const first = new Int32Array(n).fill(-1);
+  const last = new Int32Array(n).fill(-1);
+  const sib = new Int32Array(n).fill(-1);
+  const roots: number[] = [];
+  for (const i of order) {
+    const p = parent[i] ?? -1;
+    if (p < 0) {
+      roots.push(i);
+      continue;
+    }
+    if ((last[p] ?? -1) < 0) first[p] = i;
+    else sib[last[p] ?? 0] = i;
+    last[p] = i;
+  }
+
+  const out: WaterfallRow[] = [];
+  const newId = new Int32Array(n).fill(-1);
+  const todo: Array<[number, number]> = [];
+  for (let k = roots.length - 1; k >= 0; k--) todo.push([roots[k] ?? 0, -1]);
+  while (todo.length > 0) {
+    const [i, outParent] = todo.pop() ?? [0, -1];
+    const r = rows[i] as WaterfallRow;
+    const id = out.length;
+    newId[i] = id;
+    const depth = outParent < 0 ? r.depth : (out[outParent]?.depth ?? 0) + 1;
+    out.push({
+      ...r,
+      id,
+      parent: outParent,
+      depth,
+      start: start[i] ?? r.start,
+      end: end[i] ?? r.end,
+      durUs: (end[i] ?? r.end) - (start[i] ?? r.start),
+    });
+    const kids: number[] = [];
+    for (let c = first[i] ?? -1; c >= 0; c = sib[c] ?? -1) kids.push(c);
+    for (let k = kids.length - 1; k >= 0; k--) todo.push([kids[k] ?? 0, id]);
+  }
+  return out;
 }
 
 export function waterfallForRun(

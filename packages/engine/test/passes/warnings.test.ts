@@ -86,3 +86,70 @@ describe('warnings are aggregated per kind', () => {
     ]);
   });
 });
+
+describe('missing source maps of a target that is a published package', () => {
+  const url = 'file:///project/node_modules/tool/lib/main.js';
+  const steps: Step[] = [{ stack: [{ name: 'run', url }], samples: 5 }];
+
+  it('is info, not warn: the user cannot add a map to a published package', () => {
+    const model = analyze(
+      synthCapture(steps, {
+        argv: ['node', '/project/node_modules/tool/bin/tool.js'],
+        scripts: [declared(url)],
+      }),
+    );
+    expect(model.meta.warnings).toEqual([
+      {
+        kind: 'target-package-source-map-missing',
+        severity: 'info',
+        summary:
+          '1 file of the target package has no source map; names are generated names, which is expected for published packages.',
+        count: 1,
+        details: ['tool/lib/main.js'],
+      },
+    ]);
+  });
+
+  it('stays a warning for the code of the user project', () => {
+    const own = 'file:///project/src/app.js';
+    const model = analyze(
+      synthCapture([{ stack: [{ name: 'a', url: own }], samples: 5 }], {
+        argv: ['node', '/project/src/app.js'],
+        scripts: [declared(own)],
+      }),
+    );
+    expect(model.meta.warnings.map((w) => [w.kind, w.severity])).toEqual([
+      ['source-map-missing', 'warn'],
+    ]);
+  });
+
+  it('keeps both notes when a package target and project code both lack maps', () => {
+    const own = 'file:///project/src/glue.js';
+    const model = analyze(
+      synthCapture(
+        [
+          { stack: [{ name: 'run', url }], samples: 3 },
+          { stack: [{ name: 'glue', url: own }], samples: 3 },
+        ],
+        {
+          argv: ['node', '/project/node_modules/tool/bin/tool.js'],
+          scripts: [declared(url), declared(own)],
+        },
+      ),
+    );
+    expect(model.meta.warnings.map((w) => [w.kind, w.severity])).toEqual([
+      ['source-map-missing', 'warn'],
+      ['target-package-source-map-missing', 'info'],
+    ]);
+  });
+
+  it('is only an info note for the real tsc-like case: a package entry, no warn anywhere', () => {
+    const model = analyze(
+      synthCapture(steps, {
+        argv: ['node', '/project/node_modules/tool/bin/tool.js'],
+        scripts: [declared(url)],
+      }),
+    );
+    expect(model.meta.warnings.some((w) => w.severity === 'warn')).toBe(false);
+  });
+});

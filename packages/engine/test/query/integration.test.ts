@@ -35,7 +35,8 @@ describe('query layer over every recorded track', () => {
       (a, b) => (track?.tasks.busy[b] ?? 0) - (track?.tasks.busy[a] ?? 0) || a - b,
     )[0];
     if (longest !== undefined) {
-      const wf = waterfallForTask(model, view, longest);
+      // Rows of tasks reached over async edges lie beyond the task, so this checks the task alone.
+      const wf = waterfallForTask(model, view, longest, { followAsync: false });
       const start = track?.tasks.start[longest] ?? 0;
       const end = track?.tasks.end[longest] ?? 0;
       expect(wf.rows.every((r) => r.start >= start - 1 && r.end <= end + 1)).toBe(true);

@@ -16,6 +16,7 @@ export const FIXTURES = [
   'eslint-cli',
   'eslint-cli-wrapped',
   'async-chain',
+  'async-chain-hooks',
 ] as const;
 export type FixtureName = (typeof FIXTURES)[number];
 

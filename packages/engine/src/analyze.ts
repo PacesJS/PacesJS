@@ -245,10 +245,16 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
     const o = functions.origin[f] ?? Origin.User;
     const dependency = o === Origin.Dependency || o === Origin.Framework;
     const file = ctx.strings.strings[functions.file[f] ?? 0] ?? '';
+    // The user can add a map to their own project, not to a published package they only run.
+    const published = !dependency && packageNameFromPath(file) !== '';
     mapDrafts.push({
-      kind: dependency ? 'dependency-source-map-missing' : 'source-map-missing',
-      severity: dependency ? 'info' : 'warn',
-      detail: dependency ? displayPath(file) : file,
+      kind: dependency
+        ? 'dependency-source-map-missing'
+        : published
+          ? 'target-package-source-map-missing'
+          : 'source-map-missing',
+      severity: dependency || published ? 'info' : 'warn',
+      detail: dependency || published ? displayPath(file) : file,
     });
   }
 

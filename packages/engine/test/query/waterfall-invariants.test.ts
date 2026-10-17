@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ExecutionModel } from '../../src/model.js';
 import { DEFAULT_TRANSFORMS } from '../../src/query/types.js';
-import type { Waterfall } from '../../src/query/types.js';
+import type { Waterfall, WaterfallRow } from '../../src/query/types.js';
 import { applyTransforms } from '../../src/query/view.js';
 import {
+  reindex,
   smallTaskLimitUs,
   waterfallForRange,
   waterfallForRun,
@@ -125,4 +126,100 @@ describe('the critical path follows the work', () => {
       }
     },
   );
+});
+
+const VARIANTS: Array<[string, Parameters<typeof waterfallForRun>[2]]> = [
+  ['default', {}],
+  ['hideOrigins', { hideOrigins: [3, 4, 5, 6] }],
+  ['minDurationUs', { minDurationUs: 3000 }],
+  ['sort time', { sort: 'time' }],
+  ['sort duration', { sort: 'duration' }],
+  ['sort share', { sort: 'share' }],
+  ['collapseTrivialUs 0', { collapseTrivialUs: 0 }],
+  ['collapseTrivialUs 5 ms', { collapseTrivialUs: 5000 }],
+];
+
+describe('every fixture with every option variant', () => {
+  it.each([...FIXTURES])('%s', (name) => {
+    const m = loadModel(name);
+    for (const [label, options] of VARIANTS) {
+      const sorted = options?.sort === 'duration' || options?.sort === 'share';
+      for (const t of tracksOf(m)) {
+        expect(`${label}: ${broken(waterfallForRun(m, t, options), true, !sorted)}`).toBe(
+          `${label}: `,
+        );
+      }
+    }
+  });
+
+  it('includes a capture made with async hooks, whose continuations are stitched exactly', () => {
+    const m = loadModel('async-chain-hooks');
+    const stitch = Array.from(m.tracks[m.primaryTrack]?.continuations.stitch ?? []);
+    expect(stitch).toContain(2);
+  });
+});
+
+describe('reindex', () => {
+  const row = (
+    id: number,
+    parent: number,
+    depth: number,
+    start: number,
+    end: number,
+  ): WaterfallRow => ({
+    id,
+    kind: 'call',
+    fn: id,
+    node: id,
+    start,
+    end,
+    durUs: end - start,
+    selfUs: 0,
+    depth,
+    parent,
+    share: 0,
+    critical: false,
+    hatched: false,
+    task: -1,
+    label: '',
+    resumed: false,
+    summaryTasks: [],
+    summaryRuntimeUs: 0,
+  });
+
+  it('puts a parent before a child that starts earlier than the parent row, and widens the parent', () => {
+    // A merged child row whose start precedes the first segment of its parent row.
+    const rows = [row(0, -1, 0, 0, 100), row(1, 0, 1, 40, 90), row(2, 1, 2, 30, 80)];
+    const out = reindex(rows, new Map());
+    expect(out.map((r) => r.fn)).toEqual([0, 1, 2]);
+    expect(out.map((r) => r.parent)).toEqual([-1, 0, 1]);
+    expect(out[1]?.start).toBe(30);
+    expect(out[1]?.durUs).toBe(60);
+    expect(out[0]?.start).toBe(0);
+  });
+
+  it('emits rows depth-first, children in time order, whatever the global start times', () => {
+    const rows = [
+      row(0, -1, 0, 0, 100),
+      row(1, 0, 1, 10, 50),
+      row(2, 0, 1, 60, 90),
+      row(3, 1, 2, 5, 20),
+      row(4, 2, 2, 55, 70),
+    ];
+    const out = reindex(rows, new Map());
+    expect(out.map((r) => r.fn)).toEqual([0, 1, 3, 2, 4]);
+    expect(out.every((r, i) => r.id === i && r.parent < r.id)).toBe(true);
+  });
+
+  it('follows aliases and keeps depth one more than the parent', () => {
+    const rows = [
+      row(0, -1, 0, 0, 100),
+      row(1, 0, 1, 10, 40),
+      row(2, 0, 1, 50, 90),
+      row(3, 2, 5, 55, 60),
+    ];
+    const out = reindex(rows, new Map([[2, 1]]));
+    expect(out.map((r) => r.fn)).toEqual([0, 1, 3]);
+    expect(out[2]).toMatchObject({ parent: 1, depth: 2 });
+  });
 });

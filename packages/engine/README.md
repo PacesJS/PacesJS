@@ -134,8 +134,7 @@ is idempotent, and leaves the model alone when the capture has none.
 
 `meta.warnings` is `ModelWarning[]` with one entry per `kind`:
 `{ kind, severity: 'info' | 'warn', summary, count, details: string[] (at most 20) }`. Kinds: `no-profile`,
-`invalid-pattern`, `invalid-focus`, `source-map-invalid`, `source-map-missing` (**warn**: a declared map is
-missing for the target's own code) and `dependency-source-map-missing` (**info**: "N dependency files have no
+`invalid-pattern`, `invalid-focus`, `source-map-invalid`, `source-map-missing` (**warn**: a declared map is missing for code of the user's own project, outside `node_modules`), `target-package-source-map-missing` (**info**: the same for a target that is a published package, which the user cannot fix: names are generated names, expected) and `dependency-source-map-missing` (**info**: "N dependency files have no
 source map; names are generated names, which is expected", details are `pkg/path` samples).
 
 ### Module loading
@@ -322,6 +321,10 @@ covering the run; nested rows are logical calls in time order. Options: `hideOri
 
 - New row fields: `resumed: boolean`, `summaryTasks: number[]` (empty except on summary rows), `summaryRuntimeUs` (0 except on summary rows); `kind` is
   `'call' | 'wait' | 'summary'`. Ids stay indexes, parents come before children.
+  The whole-run rows are emitted depth-first (children in start order) with ids assigned last, so this holds
+  whatever the start times of merged rows; a row that a merged child starts before is widened to cover it, and a
+  child is always one level below its parent. In a task waterfall that follows async edges, the scheduled task's
+  rows are two levels below the task's own roots (one below the wait row) and are never on the critical path.
 
 `describeTasks` starts with `{ index: -1, group: 'Whole run', label: 'Whole run · <entry>' }` (open it with
 `waterfallForRun`), then `Entry`, `Requests`, `Timers`, `I/O`, `Microtasks`, `Other`, and last `Small tasks`.

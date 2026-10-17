@@ -32,6 +32,12 @@ const apps = [
   ...readdirSync(join(zoo, 'apps'))
     .filter((f) => f.endsWith('.cjs') && !f.startsWith('_'))
     .map((f) => ({ name: f.replace(/\.cjs$/, ''), entry: join(zoo, 'apps', f) })),
+  // The same app with async hooks on: exact continuation edges.
+  {
+    name: 'async-chain-hooks',
+    entry: join(zoo, 'apps', 'async-chain.cjs'),
+    env: { PACES_ASYNC: '1' },
+  },
 ];
 
 async function buildOrdersServer() {
@@ -88,6 +94,7 @@ for (const app of apps) {
       NODE_OPTIONS: `--require "${forward(join(collector, 'preload.cjs'))}"`,
       PACES_DIR: dir,
       PACES_SESSION: app.name,
+      ...(app.env ?? {}),
     },
     stdio: 'inherit',
   });

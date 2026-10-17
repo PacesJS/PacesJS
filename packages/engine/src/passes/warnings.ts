@@ -60,6 +60,8 @@ const SUMMARY: Record<string, (n: number) => string> = {
     `${n} source ${plural(n, 'map', 'maps')} could not be parsed; showing generated code.`,
   'source-map-missing': (n) =>
     `${n} ${plural(n, 'file', 'files')} of the target ${plural(n, 'has', 'have')} no source map; showing generated names and lines.`,
+  'target-package-source-map-missing': (n) =>
+    `${n} ${plural(n, 'file', 'files')} of the target package ${plural(n, 'has', 'have')} no source map; names are generated names, which is expected for published packages.`,
   'dependency-source-map-missing': (n) =>
     `${n} dependency ${plural(n, 'file has', 'files have')} no source map; names are generated names, which is expected.`,
 };
