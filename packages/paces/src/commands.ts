@@ -100,12 +100,11 @@ export function summarizeWarnings(warnings: unknown): {
   return { total: list.length, byCode };
 }
 
-function toHostSession(
-  file: string,
-  session: Session,
-  model: ExecutionModel,
-  engine: Engine,
-): HostSession {
+/** What the source resolver may serve for a session: embedded copies and every script V8 parsed. */
+function sessionSourceInputs(session: Session): {
+  embedded: Map<string, Uint8Array>;
+  scriptUrls: Set<string>;
+} {
   const embedded = new Map<string, Uint8Array>();
   for (const s of session.manifest.sources) {
     const bytes = session.sources[s.hash];
@@ -113,6 +112,16 @@ function toHostSession(
   }
   const scriptUrls = new Set<string>();
   for (const t of session.capture.tracks) for (const sc of t.scripts) scriptUrls.add(sc.url);
+  return { embedded, scriptUrls };
+}
+
+function toHostSession(
+  file: string,
+  session: Session,
+  model: ExecutionModel,
+  engine: Engine,
+): HostSession {
+  const { embedded, scriptUrls } = sessionSourceInputs(session);
   const m = model as unknown as {
     target?: unknown;
     primaryTrack?: unknown;
@@ -256,13 +265,7 @@ function colorEnabled(flags: Flags): boolean {
 }
 
 function resolverFor(session: Session) {
-  const embedded = new Map<string, Uint8Array>();
-  for (const s of session.manifest.sources) {
-    const bytes = session.sources[s.hash];
-    if (bytes) embedded.set(s.path, bytes);
-  }
-  const scriptUrls = new Set<string>();
-  for (const t of session.capture.tracks) for (const sc of t.scripts) scriptUrls.add(sc.url);
+  const { embedded, scriptUrls } = sessionSourceInputs(session);
   return createSourceResolver({
     projectRoot: session.manifest.projectRoot,
     scriptUrls,
