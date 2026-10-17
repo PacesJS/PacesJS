@@ -1350,6 +1350,8 @@
 }
 
 .source-gutter {
+  /* The row aligns its cells to the top; stretch this one so its content centres on the line. */
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1358,6 +1360,7 @@
 }
 
 .source-val {
+  white-space: nowrap;
   font-family: var(--font-sans);
   font-size: var(--fs-11);
   line-height: var(--lh-14);
@@ -1751,4 +1754,11 @@
   border-radius: var(--r-card);
   background: var(--c-surface);
   box-shadow: var(--shadow-tip);
+}
+
+/* A line under two sampling intervals is about one sample: hatched, like the waterfall's tiny bars. */
+.source-bar.is-faint {
+  background: repeating-linear-gradient(135deg, var(--c-accent) 0 2px, transparent 2px 5px);
+  outline: 1px solid color-mix(in srgb, var(--c-accent) 55%, transparent);
+  outline-offset: -1px;
 }

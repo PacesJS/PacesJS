@@ -704,4 +704,38 @@ test.describe('whole run, stitching and the entry root', () => {
       await expect(details(app)).toHaveText(firstDetails, { useInnerText: true });
     });
   });
+
+  test('the time bar and its value sit on the vertical centre of their source line', async ({
+    app,
+  }) => {
+    await settled(app);
+    const row = app.locator('.source-line', { has: app.locator('.source-val') }).first();
+    await expect(row).toBeVisible();
+    const rowBox = await row.boundingBox();
+    const barBox = await row.locator('.source-bar').boundingBox();
+    const valBox = await row.locator('.source-val').boundingBox();
+    if (!rowBox || !barBox || !valBox) throw new Error('missing boxes');
+    const centre = (b: { y: number; height: number }) => b.y + b.height / 2;
+    expect(Math.abs(centre(barBox) - centre(rowBox))).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(centre(valBox) - centre(rowBox))).toBeLessThanOrEqual(1.5);
+  });
+
+  test('a line with about one sample is hatched and says so, instead of looking like a real cost', async ({
+    app,
+  }) => {
+    await settled(app);
+    await app.keyboard.press('4');
+    await app
+      .getByRole('row', { name: /^authenticate/ })
+      .first()
+      .click();
+    const faint = app.locator('.source-bar.is-faint').first();
+    await expect(faint).toBeVisible();
+    const gutter = faint.locator('xpath=..');
+    await expect(gutter).toHaveAttribute('title', /sample/);
+    await expect(gutter).toHaveAttribute('title', /approximate/);
+    expect(await faint.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain(
+      'repeating-linear-gradient',
+    );
+  });
 });

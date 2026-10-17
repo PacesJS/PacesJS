@@ -3,7 +3,13 @@ import { useApp } from '../app/context';
 import type { SourceState } from '../app/useSource';
 import { originColor } from '../theme/origin';
 import { fmtDuration } from '../util/format';
-import { gutterWidth, tokenize } from '../view/source-lines';
+import {
+  gutterTitle,
+  gutterWidth,
+  isLowConfidence,
+  sampleLabel,
+  tokenize,
+} from '../view/source-lines';
 
 interface SourceCodeProps {
   source: SourceState;
@@ -15,7 +21,18 @@ interface SourceCodeProps {
 /** The code with a self-time gutter on every line and a chip on lines that call a callee. */
 export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
   const { select, dispatch } = useApp();
-  const { lines, selfByLine, maxSelf, hottest, targetLine, definitionLine, chips, fn } = source;
+  const {
+    lines,
+    selfByLine,
+    rolledFrom,
+    precisionUs,
+    maxSelf,
+    hottest,
+    targetLine,
+    definitionLine,
+    chips,
+    fn,
+  } = source;
   const targetRef = useRef<HTMLLIElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -49,6 +66,8 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
         <ol className="source-lines" aria-label="Source lines with self time">
           {lines.map((l, idx) => {
             const self = selfByLine.get(l.n) ?? 0;
+            const from = rolledFrom.get(l.n) ?? [];
+            const low = self > 0 && isLowConfidence(self, precisionUs);
             const isDefinition = l.n === definitionLine;
             const chip = chips.find((c) => c.lineIndex === idx);
             const inBand = band !== null && l.n >= band.first && l.n <= band.last;
@@ -60,19 +79,22 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                 aria-current={isDefinition ? 'location' : undefined}
                 aria-label={
                   self > 0
-                    ? `Line ${l.n}, self ${fmtDuration(self)}${isDefinition ? ', function definition' : ''}`
+                    ? `Line ${l.n}, self ${fmtDuration(self)}${low ? `, ${sampleLabel(self, precisionUs)}` : ''}${isDefinition ? ', function definition' : ''}`
                     : isDefinition
                       ? `Line ${l.n}, function definition`
                       : undefined
                 }
               >
-                <span className="source-gutter">
+                <span className="source-gutter" title={gutterTitle(self, precisionUs, from)}>
                   {l.n === hottest && self > 0 ? (
-                    <span className="source-val">{fmtDuration(self)}</span>
+                    <span className="source-val">
+                      {/* One sample's milliseconds are only the sampling interval: say what it is. */}
+                      {low ? sampleLabel(self, precisionUs) : fmtDuration(self)}
+                    </span>
                   ) : null}
                   {self > 0 ? (
                     <span
-                      className="source-bar"
+                      className={`source-bar${low ? ' is-faint' : ''}`}
                       aria-hidden="true"
                       style={{ width: gutterWidth(self, maxSelf) }}
                     />

@@ -4,7 +4,7 @@ import { useAsync } from './hooks';
 import type { Details, SourceInfo } from '../data/types';
 import { matchCallSites } from '../view/call-sites';
 import type { CallSiteChip } from '../view/call-sites';
-import { lineWindow } from '../view/source-lines';
+import { lineWindow, rollUpToStatements } from '../view/source-lines';
 import { isHostLost } from '../host/http';
 import { sourceReason } from '../view/source-reason';
 import type { SourceReason } from '../view/source-reason';
@@ -25,6 +25,10 @@ export interface SourceState {
   /** The file changed on disk since the session was recorded. */
   changed: boolean;
   selfByLine: Map<number, number>;
+  /** Lines V8 reported that were folded into the statement's first line, by that first line. */
+  rolledFrom: Map<number, number[]>;
+  /** Measurement precision in microseconds: a line under twice this is about one sample. */
+  precisionUs: number;
   maxSelf: number;
   hottest: number;
   /** The line to select and scroll to: the definition, or the line the user jumped to. */
@@ -45,7 +49,7 @@ interface Options {
 
 /** Everything the source dock and the Source view need for the selected function. */
 export function useSource({ whole }: Options): SourceState {
-  const { client, host, scope, scopeKey, snap, selection } = useApp();
+  const { client, host, scope, scopeKey, snap, selection, summary } = useApp();
   const fn = selection.fn;
   const infoQ = useAsync(
     () => (fn === null ? Promise.resolve(null) : client.source(scope, fn)),
@@ -78,13 +82,26 @@ export function useSource({ whole }: Options): SourceState {
     return (info?.lineSelf ?? []).map((l) => ({ n: l.line, text: '' }));
   }, [info, allLines, whole]);
 
-  const selfByLine = useMemo(
-    () => new Map((info?.lineSelf ?? []).map((l) => [l.line, l.selfUs])),
-    [info],
-  );
-  const maxSelf = Math.max(0, ...(info?.lineSelf ?? []).map((l) => l.selfUs));
-  const hottest = info?.hottestLine ?? 0;
   const definitionLine = info ? info.definitionLine || info.startLine : 0;
+  // Time V8 reports inside a multi-line call lands on an arbitrary one of its lines; show it on the
+  // statement's first line, and remember where V8 put it for the tooltip.
+  const rolled = useMemo(
+    () =>
+      info && allLines.length > 0
+        ? rollUpToStatements(allLines, info.lineSelf, definitionLine || 1)
+        : (info?.lineSelf ?? []).map((l) => ({ line: l.line, selfUs: l.selfUs, from: [] })),
+    [info, allLines, definitionLine],
+  );
+  const selfByLine = useMemo(() => new Map(rolled.map((r) => [r.line, r.selfUs])), [rolled]);
+  const rolledFrom = useMemo(
+    () => new Map(rolled.filter((r) => r.from.length > 0).map((r) => [r.line, r.from])),
+    [rolled],
+  );
+  const maxSelf = Math.max(0, ...rolled.map((r) => r.selfUs));
+  const hottest = rolled.reduce(
+    (best, r) => (r.selfUs > (selfByLine.get(best) ?? 0) ? r.line : best),
+    rolled[0]?.line ?? info?.hottestLine ?? 0,
+  );
   // The highlight is always the definition; hot lines are only gutter bars. A jump moves the scroll.
   const targetLine = snap.options.line > 0 ? snap.options.line : definitionLine;
   const callees = (info?.calleeTime ?? []).map((c) => ({
@@ -133,6 +150,8 @@ export function useSource({ whole }: Options): SourceState {
     fileTexts: allLines,
     changed: file?.exists === true && file.changedSinceProfile,
     selfByLine,
+    rolledFrom,
+    precisionUs: summary.precisionUs,
     maxSelf,
     hottest,
     targetLine,
