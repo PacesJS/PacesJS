@@ -68,7 +68,7 @@ const MIME: Record<string, string> = {
 const MAX_BODY = 1 << 20;
 const CHUNK = 1 << 16;
 
-export const PLACEHOLDER_HTML = `<!doctype html>
+const PLACEHOLDER_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>paces</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>:root{color-scheme:light dark}body{font:16px system-ui,sans-serif;margin:48px auto;max-width:44rem;padding:0 16px}code{font-family:ui-monospace,monospace}</style>

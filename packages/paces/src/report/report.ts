@@ -35,7 +35,7 @@ import {
 } from './format.js';
 import type { Painter } from './format.js';
 
-export const REPORT_SCHEMA_VERSION = 1;
+const REPORT_SCHEMA_VERSION = 1;
 
 export class ReportError extends Error {
   constructor(message: string) {

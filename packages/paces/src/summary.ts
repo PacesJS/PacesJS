@@ -16,7 +16,7 @@ interface FindingLike {
 }
 
 /** Findings out of an agent summary, whatever else the engine puts next to them. */
-export function findingsOf(summary: AgentSummary): FindingLike[] {
+function findingsOf(summary: AgentSummary): FindingLike[] {
   const f = (summary as unknown as Record<string, unknown>).findings;
   return Array.isArray(f) ? (f as FindingLike[]) : [];
 }

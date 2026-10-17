@@ -6,7 +6,7 @@ import type { McpTool } from './mcp.js';
 const ms = (us: number): number => Math.round(us / 100) / 10;
 const share = (x: number): number => Math.round(x * 1000) / 1000;
 
-export class ToolInputError extends Error {}
+class ToolInputError extends Error {}
 
 function int(args: Record<string, unknown>, key: string, fallback: number, max: number): number {
   const v = args[key];

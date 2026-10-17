@@ -190,9 +190,7 @@ function applyReportFlag(r: ReportFlags, name: string, value: string): void {
   else if (name === '--sort') r.sort = oneOf(name, value, ['total', 'self', 'time'] as const);
   else if (name === '--limit') r.limit = integer(name, value, 1);
   else if (name === '--origin') {
-    r.origin = value
-      .split(',')
-      .map((o) => oneOf(name, o.trim(), ORIGINS as readonly string[] as readonly string[]));
+    r.origin = value.split(',').map((o) => oneOf(name, o.trim(), ORIGINS as readonly string[]));
   } else if (name === '--expand') r.expand.push(value);
   else if (name === '--task') {
     if (value !== 'whole') integer(name, value, 0);

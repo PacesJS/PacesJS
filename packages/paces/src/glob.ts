@@ -17,7 +17,7 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 /** A process matches when a glob matches its script path or its whole command line. */
-export function matchesProcess(argv: string[], globs: string[]): boolean {
+function matchesProcess(argv: string[], globs: string[]): boolean {
   const script = (argv[1] ?? argv[0] ?? '').replaceAll('\\', '/');
   const line = argv.join(' ').replaceAll('\\', '/');
   return globs.some((g) => {
