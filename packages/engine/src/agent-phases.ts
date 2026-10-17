@@ -1,9 +1,27 @@
 // Phases of a run for the agent summary: what the primary track was doing, in time order.
 
-import type { AgentPhase } from './agent-summary.js';
 import { Origin } from './model.js';
 import type { ExecutionModel, FnId } from './model.js';
 import { displayPath } from './util/paths.js';
+
+export interface SourceLocation {
+  name: string;
+  /** Project-relative original path, or a node: URL for runtime internals. */
+  file: string;
+  line: number;
+}
+
+export interface AgentPhase {
+  /** `startup · module loading`, `config loading`, `module loading`, `main work` or `waiting`. */
+  name: string;
+  startMs: number;
+  durationMs: number;
+  busyMs: number;
+  /** Share of the primary track's busy time. */
+  share: number;
+  /** Functions with the most self time in the phase. */
+  hottest: Array<SourceLocation & { selfMs: number }>;
+}
 
 const PHASE_BUCKETS = 60;
 /** A stretch shorter than this share of the run is folded into its neighbour. */

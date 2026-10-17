@@ -4,14 +4,10 @@
 import { Origin, ORIGIN_NAMES, TASK_KIND_NAMES } from './model.js';
 import type { ExecutionModel, FnId, ModelWarning, RunKind, Severity, TrackRole } from './model.js';
 import { phasesOf } from './agent-phases.js';
+import type { AgentPhase, SourceLocation } from './agent-phases.js';
 import { hotPaths } from './query/paths.js';
 
-export interface SourceLocation {
-  name: string;
-  /** Project-relative original path, or a node: URL for runtime internals. */
-  file: string;
-  line: number;
-}
+export type { AgentPhase, SourceLocation };
 
 export interface AgentFinding {
   kind: string;
@@ -48,18 +44,6 @@ export interface AgentPackage {
   share: number;
   /** Hottest functions of this package on the target tracks, by self time. */
   topFunctions: AgentFunction[];
-}
-
-export interface AgentPhase {
-  /** `startup · module loading`, `config loading`, `module loading`, `main work` or `waiting`. */
-  name: string;
-  startMs: number;
-  durationMs: number;
-  busyMs: number;
-  /** Share of the primary track's busy time. */
-  share: number;
-  /** Functions with the most self time in the phase. */
-  hottest: Array<SourceLocation & { selfMs: number }>;
 }
 
 export interface AgentFunction extends SourceLocation {
