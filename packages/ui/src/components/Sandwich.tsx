@@ -62,7 +62,7 @@ export function Sandwich({ fn, name, totalUs }: SandwichProps) {
               );
             }
             const focus = r.level === 0;
-            const label = w > 7 ? (focus ? `${r.name}` : r.name) : '';
+            const label = w > 7 ? r.name : '';
             return (
               <button
                 key={`${r.level}-${r.fn}-${r.start}`}

@@ -437,13 +437,7 @@ export function CallGraph() {
               );
             })}
             {graph.edges
-              .filter(
-                (e) =>
-                  near !== null &&
-                  near.has(e.from) &&
-                  near.has(e.to) &&
-                  (e.from === selFn || e.to === selFn || near.has(e.from)),
-              )
+              .filter((e) => near !== null && near.has(e.from) && near.has(e.to))
               .map((e) => {
                 const a = nodeBox(e.from);
                 const b = nodeBox(e.to);
