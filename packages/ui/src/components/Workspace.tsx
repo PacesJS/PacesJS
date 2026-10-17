@@ -99,12 +99,10 @@ function DockHandle({ dock, containerRef, onLive, onCommit }: HandleProps) {
  * resizable and its size is remembered; the Source tab replaces the dock with the full view.
  */
 export function Workspace() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, dockCollapsed: collapsed } = useApp();
   const ref = useRef<HTMLDivElement | null>(null);
   const [live, setLive] = useState<DockPrefs | null>(null);
   const dock = live ?? state.prefs.dock;
-  const { dockCollapsed: dockCollapsedNow } = useApp();
-  const collapsed = dockCollapsedNow;
 
   const style = {
     ['--dock-frac' as string]: dock.widthFraction,

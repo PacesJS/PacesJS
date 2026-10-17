@@ -19,7 +19,8 @@ const ENDED_BY: Record<string, string> = {
 };
 
 export function Header({ searchRef, sessionPath }: HeaderProps) {
-  const { summary, state, snap, dispatch, onSearchEnter } = useHeader();
+  const { summary, state, snap, dispatch } = useApp();
+  const onSearchEnter = () => dispatch({ type: 'go', patch: { view: 'functions' } });
   const command = summary.command.join(' ');
   const perTrack = Math.max(
     0,
@@ -153,15 +154,4 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
       <TransformBar sessionPath={sessionPath} hasBaseline={summary.hasBaseline} />
     </header>
   );
-}
-
-function useHeader() {
-  const app = useApp();
-  return {
-    summary: app.summary,
-    state: app.state,
-    snap: app.snap,
-    dispatch: app.dispatch,
-    onSearchEnter: () => app.dispatch({ type: 'go', patch: { view: 'functions' } }),
-  };
 }
