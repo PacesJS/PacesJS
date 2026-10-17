@@ -159,8 +159,8 @@ export function TrackLanes() {
             role="group"
             aria-label={`Selected range ${fmtRange(range[0], range[1])}`}
             style={{
-              left: `calc(212px + (100% - 212px) * ${frac(range[0])})`,
-              width: `calc((100% - 212px) * ${frac(range[1]) - frac(range[0])})`,
+              left: `calc(var(--lane-head-w) + var(--sp-12) + (100% - var(--lane-head-w) - var(--sp-12)) * ${frac(range[0])})`,
+              width: `calc((100% - var(--lane-head-w) - var(--sp-12)) * ${frac(range[1]) - frac(range[0])})`,
             }}
           >
             <span className="range-label">{fmtRange(range[0], range[1])}</span>
