@@ -44,6 +44,59 @@ interface Built {
   criticalPath: number[];
 }
 
+type RowFields = Pick<
+  WaterfallRow,
+  | 'id'
+  | 'kind'
+  | 'fn'
+  | 'node'
+  | 'start'
+  | 'end'
+  | 'durUs'
+  | 'selfUs'
+  | 'depth'
+  | 'parent'
+  | 'share'
+  | 'task'
+> &
+  Partial<
+    Pick<
+      WaterfallRow,
+      'critical' | 'hatched' | 'label' | 'resumed' | 'summaryTasks' | 'summaryRuntimeUs'
+    >
+  >;
+
+/** A row with the defaults every kind shares; the key order is part of the output. */
+function makeRow(f: RowFields): WaterfallRow {
+  return {
+    id: f.id,
+    kind: f.kind,
+    fn: f.fn,
+    node: f.node,
+    start: f.start,
+    end: f.end,
+    durUs: f.durUs,
+    selfUs: f.selfUs,
+    depth: f.depth,
+    parent: f.parent,
+    share: f.share,
+    critical: f.critical ?? false,
+    hatched: f.hatched ?? false,
+    task: f.task,
+    label: f.label ?? '',
+    resumed: f.resumed ?? false,
+    summaryTasks: f.summaryTasks ?? [],
+    summaryRuntimeUs: f.summaryRuntimeUs ?? 0,
+  };
+}
+
+/** Follows merges to the row that survives. */
+function resolveAlias(alias: Map<number, number>, id: number): number {
+  let cur = id;
+  while (alias.has(cur)) cur = alias.get(cur) ?? cur;
+  return cur;
+}
+
 function buildRows(
   model: ExecutionModel,
   view: TransformedView,
@@ -98,26 +151,24 @@ function buildRows(
   for (let i = 0; i < n; i++) {
     const dur = (spans.end[i] ?? 0) - (spans.start[i] ?? 0);
     const p = spans.parent[i] ?? -1;
-    rows.push({
-      id: rowBase + i,
-      kind: 'call',
-      fn: spans.fn[i] ?? 0,
-      node: spans.node[i] ?? 0,
-      start: spans.start[i] ?? 0,
-      end: spans.end[i] ?? 0,
-      durUs: dur,
-      selfUs: Math.max(0, dur - (covered[i] ?? 0)),
-      depth: depthBase + (spans.depth[i] ?? 0),
-      parent: p < 0 ? parentOfRoots : rowBase + p,
-      share: dur / span,
-      critical: critical[i] === 1,
-      hatched: dur < 2 * model.meta.precisionUs,
-      task,
-      label: '',
-      resumed: false,
-      summaryTasks: [],
-      summaryRuntimeUs: 0,
-    });
+    rows.push(
+      makeRow({
+        id: rowBase + i,
+        kind: 'call',
+        fn: spans.fn[i] ?? 0,
+        node: spans.node[i] ?? 0,
+        start: spans.start[i] ?? 0,
+        end: spans.end[i] ?? 0,
+        durUs: dur,
+        selfUs: Math.max(0, dur - (covered[i] ?? 0)),
+        depth: depthBase + (spans.depth[i] ?? 0),
+        parent: p < 0 ? parentOfRoots : rowBase + p,
+        share: dur / span,
+        critical: critical[i] === 1,
+        hatched: dur < 2 * model.meta.precisionUs,
+        task,
+      }),
+    );
   }
   return { rows, criticalPath: path };
 }
@@ -248,26 +299,23 @@ function assemble(
       const waitStart = end;
       const waitId = rows.length;
       const waitUs = edges.waitUs[e] ?? 0;
-      rows.push({
-        id: waitId,
-        kind: 'wait',
-        fn: -1,
-        node: -1,
-        start: waitStart,
-        end: waitStart + waitUs,
-        durUs: waitUs,
-        selfUs: waitUs,
-        depth: 1,
-        parent: -1,
-        share: waitUs / Math.max(1, end - start),
-        critical: false,
-        hatched: false,
-        task: target,
-        label: `idle wait ${formatDuration(waitUs)}`,
-        resumed: false,
-        summaryTasks: [],
-        summaryRuntimeUs: 0,
-      });
+      rows.push(
+        makeRow({
+          id: waitId,
+          kind: 'wait',
+          fn: -1,
+          node: -1,
+          start: waitStart,
+          end: waitStart + waitUs,
+          durUs: waitUs,
+          selfUs: waitUs,
+          depth: 1,
+          parent: -1,
+          share: waitUs / Math.max(1, end - start),
+          task: target,
+          label: `idle wait ${formatDuration(waitUs)}`,
+        }),
+      );
       const sub = buildRows(model, view, origin, ts, te, target, rows.length, 2, waitId);
       // The critical path is the chain of the task itself, not of the tasks it scheduled.
       for (const r of sub.rows) rows.push({ ...r, critical: false });
@@ -404,11 +452,6 @@ export function reindex(
   drop: Set<number> = new Set(),
 ): WaterfallRow[] {
   const n = rows.length;
-  const resolve = (id: number): number => {
-    let cur = id;
-    while (alias.has(cur)) cur = alias.get(cur) ?? cur;
-    return cur;
-  };
   // Ids are the rows' indexes until now.
   const live = new Uint8Array(n);
   for (let i = 0; i < n; i++) live[i] = alias.has(i) || drop.has(i) ? 0 : 1;
@@ -416,7 +459,7 @@ export function reindex(
   for (let i = 0; i < n; i++) {
     const r = rows[i];
     if (!r || live[i] === 0 || r.parent < 0) continue;
-    const p = resolve(r.parent);
+    const p = resolveAlias(alias, r.parent);
     if (p !== i && live[p] === 1) parent[i] = p;
   }
   const start = Float64Array.from(rows, (r) => r.start);
@@ -616,15 +659,10 @@ export function waterfallForRun(
     pendingWaits.push({ anchor, wait });
   }
   // Merge a continuing caller into the earlier row of the same call under the same parent.
-  const resolveAlias = (id: number): number => {
-    let cur = id;
-    while (alias.has(cur)) cur = alias.get(cur) ?? cur;
-    return cur;
-  };
   const latest = new Map<string, WaterfallRow>();
   for (const r of rows) {
     if (r.kind !== 'call' || r.depth === 0) continue;
-    const key = `${r.node}:${resolveAlias(r.parent)}`;
+    const key = `${r.node}:${resolveAlias(alias, r.parent)}`;
     const prev = latest.get(key);
     // Touching rows (within a sampling interval) are one call cut by a sample of another stack.
     const touching = prev ? r.start - prev.end <= model.meta.precisionUs : false;
@@ -641,34 +679,31 @@ export function waterfallForRun(
   const waits: WaterfallRow[] = [];
   for (const { anchor, wait } of pendingWaits) {
     const began = anchor.start - wait;
-    let holder: WaterfallRow = rows[resolveAlias(anchor.id)] ?? anchor;
+    let holder: WaterfallRow = rows[resolveAlias(alias, anchor.id)] ?? anchor;
     for (
-      let p = rows[resolveAlias(holder.parent)];
+      let p = rows[resolveAlias(alias, holder.parent)];
       p && p.kind === 'call' && p.depth > 0 && p.start > began;
-      p = rows[resolveAlias(holder.parent)]
+      p = rows[resolveAlias(alias, holder.parent)]
     ) {
       holder = p;
     }
-    waits.push({
-      id: rows.length + waits.length,
-      kind: 'wait',
-      fn: -1,
-      node: -1,
-      start: began,
-      end: anchor.start,
-      durUs: wait,
-      selfUs: wait,
-      depth: holder.depth,
-      parent: holder.parent,
-      share: wait / Math.max(1, end - start),
-      critical: false,
-      hatched: false,
-      task: -1,
-      label: `awaiting ${formatDuration(wait)}`,
-      resumed: false,
-      summaryTasks: [],
-      summaryRuntimeUs: 0,
-    });
+    waits.push(
+      makeRow({
+        id: rows.length + waits.length,
+        kind: 'wait',
+        fn: -1,
+        node: -1,
+        start: began,
+        end: anchor.start,
+        durUs: wait,
+        selfUs: wait,
+        depth: holder.depth,
+        parent: holder.parent,
+        share: wait / Math.max(1, end - start),
+        task: -1,
+        label: `awaiting ${formatDuration(wait)}`,
+      }),
+    );
   }
   rows = [...rows, ...waits];
 
@@ -719,29 +754,28 @@ export function waterfallForRun(
     const s0 = Math.min(...group.map((x) => x.start));
     const e0 = Math.max(...group.map((x) => x.end));
     const total = busy + runtime;
-    summaries.push({
-      id: rows.length + summaries.length,
-      kind: 'summary',
-      fn: -1,
-      node: -1,
-      start: s0,
-      end: e0,
-      durUs: e0 - s0,
-      selfUs: total,
-      depth: topDepth,
-      parent: rootId,
-      share: total / Math.max(1, end - start),
-      critical: false,
-      hatched: false,
-      task: -1,
-      label:
-        list.length > 0
-          ? `${list.length} small ${plural(list.length, 'task', 'tasks')} · ${formatDuration(total)}`
-          : `runtime pauses · ${formatDuration(total)}`,
-      resumed: false,
-      summaryTasks: list,
-      summaryRuntimeUs: runtime,
-    });
+    summaries.push(
+      makeRow({
+        id: rows.length + summaries.length,
+        kind: 'summary',
+        fn: -1,
+        node: -1,
+        start: s0,
+        end: e0,
+        durUs: e0 - s0,
+        selfUs: total,
+        depth: topDepth,
+        parent: rootId,
+        share: total / Math.max(1, end - start),
+        task: -1,
+        label:
+          list.length > 0
+            ? `${list.length} small ${plural(list.length, 'task', 'tasks')} · ${formatDuration(total)}`
+            : `runtime pauses · ${formatDuration(total)}`,
+        summaryTasks: list,
+        summaryRuntimeUs: runtime,
+      }),
+    );
     first = last;
   }
   rows = reindex([...rows, ...summaries], alias, drop);
