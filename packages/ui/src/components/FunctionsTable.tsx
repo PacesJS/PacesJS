@@ -3,7 +3,7 @@ import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
 import type { FnRow } from '../data/types';
 import { originColor, originInfo } from '../theme/origin';
-import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
+import { fmtCount, fmtDuration, fmtRange, fmtSeconds, fmtShare } from '../util/format';
 import { Hint } from './Hint';
 import { HotPaths } from './HotPaths';
 import { Legend } from './Legend';
@@ -113,7 +113,7 @@ export function FunctionsTable() {
   const selectedRow = rows.find((r) => r.fn === selection.fn) ?? null;
   const sortLabel = COLUMNS.find((c) => c.key === sort.key)?.label.toLowerCase() ?? 'self';
   const rangeSuffix = snap.range
-    ? ` · range ${fmtRange(snap.range[0], snap.range[1])} (${((snap.range[1] - snap.range[0]) / 1_000_000).toFixed(2)} s on ${snap.track === 'all' ? 'all tracks' : snap.track})`
+    ? ` · range ${fmtRange(snap.range[0], snap.range[1])} (${fmtSeconds(snap.range[1] - snap.range[0], 2)} on ${snap.track === 'all' ? 'all tracks' : snap.track})`
     : '';
 
   const renderRow = (r: FnRow) => {

@@ -153,9 +153,14 @@ export function scopeView(ctx: ModelCtx, trackIndex: number, stack: EngineTransf
   return { ctx, view, trackIndex, track, out, inn, info };
 }
 
+/** `file:line`, or just the file when the line is unknown. */
+export function fileLine(file: string, line: number): string {
+  return line > 0 ? `${file}:${line}` : file;
+}
+
 /** `file:line`, `node_modules/pkg` for a collapsed package, or '' when there is no file. */
 export function locationOf(info: FunctionInfo): string {
   if (info.synthetic) return `node_modules/${info.pkg}`;
   if (!info.file) return '';
-  return info.line > 0 ? `${info.file}:${info.line}` : info.file;
+  return fileLine(info.file, info.line);
 }

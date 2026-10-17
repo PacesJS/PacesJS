@@ -10,7 +10,7 @@ import {
   showMeContext,
   showingText,
 } from '../state/showme';
-import { fmtCount, fmtDuration, fmtRange, fmtShare } from '../util/format';
+import { fmtCount, fmtDuration, fmtRange, fmtSeconds, fmtShare } from '../util/format';
 
 function RelatedList({ title, rows }: { title: string; rows: RelatedRow[] }) {
   const { select } = useApp();
@@ -145,7 +145,7 @@ export function DetailsDrawer() {
           </div>
           <div className="stat">
             <dt>Started at</dt>
-            <dd>{(t.startUs / 1_000_000).toFixed(2)} s</dd>
+            <dd>{fmtSeconds(t.startUs, 2)}</dd>
           </div>
           <div className="stat">
             <dt>Over 50 ms</dt>

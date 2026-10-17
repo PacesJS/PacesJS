@@ -17,9 +17,14 @@ export function fmtDuration(us: number, opts: DurationOptions = {}): string {
   return `${tilde(opts.approx)}${ms.toFixed(decimals)} ms`;
 }
 
+/** Microseconds as seconds with a fixed number of decimals, e.g. "1.25 s". */
+export function fmtSeconds(us: number, decimals: number): string {
+  return `${(us / 1_000_000).toFixed(decimals)} s`;
+}
+
 /** Whole-run duration, e.g. "42.8 s". Exact: it is wall-clock, not sampled. */
 export function fmtRun(us: number): string {
-  if (us >= 1_000_000) return `${(us / 1_000_000).toFixed(us >= 10_000_000 ? 1 : 2)} s`;
+  if (us >= 1_000_000) return fmtSeconds(us, us >= 10_000_000 ? 1 : 2);
   return fmtDuration(us, { approx: false, decimals: 0 });
 }
 
@@ -46,10 +51,6 @@ export function fmtRange(fromUs: number, toUs: number): string {
   const t = toUs / 1_000_000;
   if (t - f < 1) return `${(fromUs / 1000).toFixed(0)}–${(toUs / 1000).toFixed(0)} ms`;
   return `${f.toFixed(1)}–${t.toFixed(1)} s`;
-}
-
-export function fmtSamples(n: number): string {
-  return `~${Math.round(n).toLocaleString('en-US')}`;
 }
 
 /**

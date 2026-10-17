@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { HostAdapter } from '../host/adapter';
 import type { QueryClient } from '../data/protocol';
 import type { ModelSummary, Scope, SelectionInfo } from '../data/queries';
+import { EMPTY_SELECTION } from '../data/types';
 import { Header } from '../components/Header';
 import { focusTransform } from '../state/focus';
 import { clicksOff, onScrollbar } from './click-off';
@@ -32,16 +33,6 @@ import type { Selection, Snapshot } from '../state/types';
 import { AppContext } from './context';
 import type { AppContextValue } from './context';
 import { useAsync } from './hooks';
-
-const EMPTY_SELECTION: SelectionInfo = {
-  fn: null,
-  path: null,
-  name: '',
-  track: null,
-  task: null,
-  loc: '',
-  plumbing: false,
-};
 
 interface ShellProps {
   host: HostAdapter;

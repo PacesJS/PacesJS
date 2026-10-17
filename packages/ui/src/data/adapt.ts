@@ -16,7 +16,7 @@ import {
   waterfallForTask,
 } from '@pacesjs/engine';
 import type { ExecutionModel, FlameLayout, ModelDiff, OriginId, Track } from '@pacesjs/engine';
-import { locationOf, trackOrder } from './scope';
+import { fileLine, locationOf, trackOrder } from './scope';
 import type { Scoped } from './scope';
 import type {
   CallGraphData,
@@ -45,7 +45,7 @@ const SANDWICH_CALLER_LEVELS = 3;
 const SANDWICH_CALLEE_LEVELS = 2;
 const MIN_SANDWICH_WIDTH = 0.004;
 
-const taskLabelOf = (model: ExecutionModel, track: Track, i: number): string =>
+export const taskLabelOf = (model: ExecutionModel, track: Track, i: number): string =>
   model.strings[track.tasks.label[i] ?? 0] || 'task';
 
 /** The task picker's rows: grouped by what started them, the entry point first. */
@@ -660,7 +660,7 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     durationUs: Math.max(1, model.meta.durationUs),
     mapMissing: src.mapMissing,
     mapped: model.functions.mapped[engineFn] === 1,
-    loc: src.file ? (src.line > 0 ? `${src.file}:${src.line}` : src.file) : '',
+    loc: src.file ? fileLine(src.file, src.line) : '',
     lineStatus: src.lineInfo.status,
     lineReason: src.lineInfo.reason,
     calleeTime: calleesOf(model, s, engineFn).map((c) => {
@@ -704,7 +704,7 @@ export function hotPathRows(model: ExecutionModel, s: Scoped, limit: number): Ho
     return {
       fns: p.fns,
       names: p.locations.map((l) => l.name || '(anonymous)'),
-      loc: last ? (last.line > 0 ? `${last.file}:${last.line}` : last.file) : '',
+      loc: last ? fileLine(last.file, last.line) : '',
       selfUs: p.selfUs,
       totalUs: p.totalUs,
       share: p.share,

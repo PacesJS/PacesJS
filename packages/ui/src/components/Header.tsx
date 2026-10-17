@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { useApp } from '../app/context';
 import { canBack, canForward } from '../state/history';
-import { displayEntry, fmtRun, fmtSamples } from '../util/format';
+import { displayEntry, fmtCount, fmtRun } from '../util/format';
 import { Icon } from './Icon';
 import { NotesChip } from './NotesChip';
 import { TransformBar } from './TransformBar';
@@ -72,7 +72,7 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
           <div className="header-stat">
             <dt>Samples</dt>
             <dd>
-              {fmtSamples(perTrack)}
+              {fmtCount(perTrack)}
               {summary.tracks.length > 1 ? ' / track' : ''}
             </dd>
           </div>

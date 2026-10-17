@@ -3,7 +3,7 @@ import { useApp } from '../app/context';
 import { useAsync, useCanvas, usePalette } from '../app/hooks';
 import type { LaneData } from '../data/types';
 import { drawDelay, laneTicks } from '../view/draw-lane';
-import { fmtAxis, fmtDuration, fmtRange } from '../util/format';
+import { fmtAxis, fmtDuration, fmtRange, fmtSeconds } from '../util/format';
 import { clamp } from '../view/scale';
 import { Icon } from './Icon';
 import { LanePlot } from './LanePlot';
@@ -19,7 +19,7 @@ function DelayPlot({ lane }: { lane: LaneData }) {
       <canvas ref={ref} className="lane-canvas" aria-hidden="true" />
       <span className="lane-delay-peak">
         peak {fmtDuration(lane.peakDelayUs, { approx: false })} at{' '}
-        {(lane.peakDelayAtUs / 1_000_000).toFixed(1)} s
+        {fmtSeconds(lane.peakDelayAtUs, 1)}
       </span>
     </div>
   );
@@ -140,7 +140,7 @@ export function TrackLanes() {
                         })
                       }
                     >
-                      {`${lane.taskLabels[i] || 'task'}, ${fmtDuration((lane.taskEnd[i] ?? 0) - (lane.taskStart[i] ?? 0))}, at ${((lane.taskStart[i] ?? 0) / 1_000_000).toFixed(2)} s`}
+                      {`${lane.taskLabels[i] || 'task'}, ${fmtDuration((lane.taskEnd[i] ?? 0) - (lane.taskStart[i] ?? 0))}, at ${fmtSeconds(lane.taskStart[i] ?? 0, 2)}`}
                     </button>
                   </li>
                 ))}
