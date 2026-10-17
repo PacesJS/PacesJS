@@ -301,7 +301,9 @@ describe('runProfile environment', () => {
     onSignal?: (s: string, h: () => void) => () => void,
   ): Promise<string> {
     const out = join(dir, `${name}.json`);
-    const code = `const fs=require('fs');let x=0;const t=Date.now();while(Date.now()-t<80){x+=Math.sqrt(x+1)}fs.writeFileSync(${JSON.stringify(out)},JSON.stringify(process.env))`;
+    // The busy loop runs from a timer so a deferred (--start-on) profile can start before it.
+    const delay = onSignal ? 600 : 0;
+    const code = `const fs=require('fs');setTimeout(()=>{let x=0;const t=Date.now();while(Date.now()-t<80){x+=Math.sqrt(x+1)}fs.writeFileSync(${JSON.stringify(out)},JSON.stringify(process.env))},${delay})`;
     const r = await runProfile({
       command: ['node', '-e', code],
       flags: flags(over),
