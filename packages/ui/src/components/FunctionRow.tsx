@@ -5,6 +5,10 @@ import type { FnRow } from '../data/types';
 import { originColor, originInfo } from '../theme/origin';
 import { fmtCount, fmtDuration, fmtShare } from '../util/format';
 
+const TEXT = {
+  noCalls: '—',
+} as const;
+
 interface FunctionRowProps {
   r: FnRow;
   maxSelf: number;
@@ -76,7 +80,7 @@ export const FunctionRow = memo(function FunctionRow({
         {fmtShare(r.share)}
       </span>
       <span role="cell" className="fn-cell fn-cell-calls">
-        {r.calls > 0 ? fmtCount(r.calls) : '—'}
+        {r.calls > 0 ? fmtCount(r.calls) : TEXT.noCalls}
       </span>
       <span role="cell" className="fn-cell fn-cell-loc" title={r.loc}>
         {r.loc}

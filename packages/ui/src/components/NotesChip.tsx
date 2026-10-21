@@ -6,6 +6,17 @@ import { Popover } from './Popover';
 
 const SMALL_PROFILE_SAMPLES = 200;
 
+const TEXT = {
+  fewSamples: (samples: number) =>
+    `This profile has only ${samples} samples, so the numbers are statistically noisy. Run it longer, or sample faster with --interval 100.`,
+  popover: 'Notes about this profile',
+  notes: (count: number) => `${count} ${count === 1 ? 'note' : 'notes'}`,
+  needAttention: ', some need attention',
+  repeat: (count: number) => ` ×${count}`,
+  showDetails: 'Show details',
+  dismiss: 'Dismiss notes',
+} as const;
+
 /** Notes about the profile: the engine's aggregated warnings plus a low-sample-count note. */
 function profileNotes(
   warnings: readonly ModelWarning[],
@@ -17,7 +28,7 @@ function profileNotes(
     notes.push({
       kind: 'few-samples',
       severity: 'info',
-      summary: `This profile has only ${perTrack} samples, so the numbers are statistically noisy. Run it longer, or sample faster with --interval 100.`,
+      summary: TEXT.fewSamples(perTrack),
       count: perTrack,
       details: [],
     });
@@ -41,17 +52,17 @@ export function NotesChip() {
       open={open}
       onOpenChange={setOpen}
       role="dialog"
-      label="Notes about this profile"
+      label={TEXT.popover}
       className="menu notes-popover"
       trigger={(p) => (
         <button
           type="button"
           className={`notes-chip${warn ? ' is-warn' : ''}`}
-          aria-label={`${notes.length} ${notes.length === 1 ? 'note' : 'notes'}${warn ? ', some need attention' : ''}`}
+          aria-label={`${TEXT.notes(notes.length)}${warn ? TEXT.needAttention : ''}`}
           {...p}
         >
           <Icon name={warn ? 'alert' : 'info'} size={14} />
-          {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+          {TEXT.notes(notes.length)}
         </button>
       )}
     >
@@ -65,12 +76,12 @@ export function NotesChip() {
                   <p className="notes-summary">
                     {n.summary}
                     {n.count > 1 && n.kind !== 'few-samples' ? (
-                      <span className="notes-count"> ×{n.count}</span>
+                      <span className="notes-count">{TEXT.repeat(n.count)}</span>
                     ) : null}
                   </p>
                   {n.details.length > 0 ? (
                     <details className="notes-details">
-                      <summary>Show details</summary>
+                      <summary>{TEXT.showDetails}</summary>
                       <ul>
                         {n.details.map((d) => (
                           <li key={d}>
@@ -90,7 +101,7 @@ export function NotesChip() {
               className="btn btn-sm"
               onClick={() => dispatch({ type: 'dismiss-notes' })}
             >
-              Dismiss notes
+              {TEXT.dismiss}
             </button>
           </div>
         </>

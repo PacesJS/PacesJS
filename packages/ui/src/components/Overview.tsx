@@ -1,20 +1,31 @@
 import { Findings } from './Findings';
 import { TrackLanes } from './TrackLanes';
 
+const TEXT = {
+  overview: 'Overview',
+  tracks: 'Tracks',
+  tracksSub: 'Drag across the lanes to set the range for every view',
+  legend: 'Legend',
+  cpuBusy: 'CPU busy',
+  yourCode: 'Your code',
+  dependency: 'Dependency',
+  nodeInternals: 'Node internals',
+  longTask: 'Long task, over 50 ms',
+  gcPause: 'GC pause',
+} as const;
+
 /** Overview band: findings strip on top, track lanes below. */
 export function Overview() {
   return (
-    <section aria-label="Overview" className="overview card">
+    <section aria-label={TEXT.overview} className="overview card">
       <div className="overview-bar" aria-hidden="true" />
       <div className="overview-body">
         <Findings />
         <div className="tracks">
           <div className="section-head" style={{ alignItems: 'center' }}>
-            <h2 className="section-title">Tracks</h2>
-            <span className="section-sub">
-              Drag across the lanes to set the range for every view
-            </span>
-            <ul className="legend tracks-legend" aria-label="Legend">
+            <h2 className="section-title">{TEXT.tracks}</h2>
+            <span className="section-sub">{TEXT.tracksSub}</span>
+            <ul className="legend tracks-legend" aria-label={TEXT.legend}>
               <li className="legend-item">
                 <span
                   aria-hidden="true"
@@ -27,7 +38,7 @@ export function Overview() {
                     borderTop: '2px solid var(--c-cpu-line)',
                   }}
                 />
-                CPU busy
+                {TEXT.cpuBusy}
               </li>
               <li className="legend-item">
                 <span
@@ -35,7 +46,7 @@ export function Overview() {
                   className="legend-swatch"
                   style={{ background: 'var(--c-origin-you)' }}
                 />
-                Your code
+                {TEXT.yourCode}
               </li>
               <li className="legend-item">
                 <span
@@ -43,7 +54,7 @@ export function Overview() {
                   className="legend-swatch"
                   style={{ background: 'var(--c-origin-dependency)' }}
                 />
-                Dependency
+                {TEXT.dependency}
               </li>
               <li className="legend-item">
                 <span
@@ -51,7 +62,7 @@ export function Overview() {
                   className="legend-swatch"
                   style={{ background: 'var(--c-origin-node)' }}
                 />
-                Node internals
+                {TEXT.nodeInternals}
               </li>
               <li className="legend-item">
                 <span
@@ -65,7 +76,7 @@ export function Overview() {
                     border: '1px solid var(--c-outline)',
                   }}
                 />
-                Long task, over 50 ms
+                {TEXT.longTask}
               </li>
               <li className="legend-item">
                 <span
@@ -73,7 +84,7 @@ export function Overview() {
                   className="legend-swatch"
                   style={{ width: 2, height: 10, borderRadius: 0, background: 'var(--c-gc-tick)' }}
                 />
-                GC pause
+                {TEXT.gcPause}
               </li>
             </ul>
           </div>

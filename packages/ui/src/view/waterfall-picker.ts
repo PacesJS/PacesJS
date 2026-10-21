@@ -1,5 +1,9 @@
 import type { TaskOption } from '../data/types';
 
+const TEXT = {
+  smallTasks: (count: number) => `Small tasks (${count})`,
+} as const;
+
 export const TASK_GROUPS = [
   'Whole run',
   'Entry',
@@ -34,7 +38,7 @@ export function taskPickerGroups(
     if (tasks.length === 0) continue;
     out.push({
       group,
-      label: group === 'Small tasks' ? `Small tasks (${inGroup.length})` : group,
+      label: group === 'Small tasks' ? TEXT.smallTasks(inGroup.length) : group,
       tasks,
     });
   }

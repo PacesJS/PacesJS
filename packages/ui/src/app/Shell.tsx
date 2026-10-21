@@ -33,6 +33,11 @@ import { useGlobalKeys } from './useGlobalKeys';
 import { useSettingsSync } from './useSettingsSync';
 import { useUrlSync } from './useUrlSync';
 
+const TEXT = {
+  title: 'paces',
+  selected: (name: string) => `Selected ${name}`,
+} as const;
+
 interface ShellProps {
   host: HostAdapter;
   client: QueryClient;
@@ -134,7 +139,7 @@ export function Shell({
   }, []);
 
   useEffect(() => {
-    document.title = 'paces';
+    document.title = TEXT.title;
   }, []);
 
   const summaryRef = useRef(summary);
@@ -226,7 +231,7 @@ export function Shell({
           <Workspace />
         </main>
         <div aria-live="polite" className="sr-only" role="status">
-          {showing ?? (selection.name ? `Selected ${selection.name}` : '')}
+          {showing ?? (selection.name ? TEXT.selected(selection.name) : '')}
         </div>
         {state.shortcutsOpen ? (
           <ShortcutSheet onClose={() => dispatch({ type: 'set-shortcuts', open: false })} />

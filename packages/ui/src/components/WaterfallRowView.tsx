@@ -11,6 +11,27 @@ import { RESUMED_TIP, durLabel } from '../view/waterfall-labels';
 import { waterfallRowModel } from '../view/waterfall-row-model';
 import { Icon } from './Icon';
 
+const TEXT = {
+  descriptionSep: ' · ',
+  itself: 'itself',
+  task: 'task',
+  row: (
+    name: string,
+    origin: string,
+    duration: string,
+    share: string,
+    of: string,
+    critical: boolean,
+  ) => `${name}, ${origin}, ${duration}, ${share} of ${of}${critical ? ', critical path' : ''}`,
+  focusLabel: (name: string) => `Focus here: ${name}`,
+  focusTitle: (level: number) =>
+    `Level ${level}. Focus here: make this call the root of the waterfall (f)`,
+  focus: 'Focus',
+  level: (level: number) => `Level ${level}`,
+  resumedGlyph: '↻',
+  resumed: 'resumed after an await, inferred',
+} as const;
+
 interface WaterfallRowViewProps {
   r: WaterfallRow;
   /** Offset from the top of the rows, in px. */
@@ -97,8 +118,17 @@ export const WaterfallRowView = memo(function WaterfallRowView({
       aria-level={r.depth + 1}
       aria-expanded={r.hasChildren ? !collapsed : undefined}
       aria-selected={selected}
-      aria-description={[m.details, m.hiddenNote].filter(Boolean).join(' · ') || undefined}
-      aria-label={`${r.name}, ${m.originLabel}, ${durLabel(r, threshold)}, ${fmtShare(r.share)} of ${r.kind === 'task' ? 'itself' : 'task'}${r.critical ? ', critical path' : ''}`}
+      aria-description={
+        [m.details, m.hiddenNote].filter(Boolean).join(TEXT.descriptionSep) || undefined
+      }
+      aria-label={TEXT.row(
+        r.name,
+        m.originLabel,
+        durLabel(r, threshold),
+        fmtShare(r.share),
+        r.kind === 'task' ? TEXT.itself : TEXT.task,
+        r.critical,
+      )}
       className={`wf-row${selected ? ' is-selected' : ''}${hovered ? ' is-hover' : ''}${linked ? ' is-linked' : ''}`}
       style={{ top }}
       onClick={() => onSelect(r)}
@@ -139,17 +169,17 @@ export const WaterfallRowView = memo(function WaterfallRowView({
           <button
             type="button"
             className="wf-depth is-action"
-            aria-label={`Focus here: ${r.name}`}
-            title={`Level ${r.depth + 1}. Focus here: make this call the root of the waterfall (f)`}
+            aria-label={TEXT.focusLabel(r.name)}
+            title={TEXT.focusTitle(r.depth + 1)}
             onClick={(e) => {
               e.stopPropagation();
               if (m.focusAs) onFocus(m.focusAs);
             }}
           >
-            {hovered || selected ? 'Focus' : m.depthBadge}
+            {hovered || selected ? TEXT.focus : m.depthBadge}
           </button>
         ) : m.badged ? (
-          <span className="wf-depth" aria-hidden="true" title={`Level ${r.depth + 1}`}>
+          <span className="wf-depth" aria-hidden="true" title={TEXT.level(r.depth + 1)}>
             {m.depthBadge}
           </span>
         ) : null}
@@ -160,8 +190,8 @@ export const WaterfallRowView = memo(function WaterfallRowView({
         </span>
         {r.resumed ? (
           <span className="wf-resumed" title={RESUMED_TIP}>
-            <span aria-hidden="true">↻</span>
-            <span className="sr-only">resumed after an await, inferred</span>
+            <span aria-hidden="true">{TEXT.resumedGlyph}</span>
+            <span className="sr-only">{TEXT.resumed}</span>
           </span>
         ) : null}
         <span className="wf-loc">{m.where}</span>

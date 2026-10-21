@@ -6,6 +6,14 @@ import { drawLane, taskAtTime } from '../view/draw-lane';
 import { fmtDuration, fmtSeconds } from '../util/format';
 import { clamp } from '../view/scale';
 
+const TEXT = {
+  task: 'task',
+  title: (label: string, duration: string) => `${label} · ${duration}`,
+  at: (start: string) => `at ${start}`,
+  longTask: ' · long task',
+  selected: ' · selected',
+} as const;
+
 interface LanePlotProps {
   lane: LaneData;
   ticks: number[];
@@ -107,12 +115,12 @@ export function LanePlot({
           style={{ top: 2, left: Math.min(tip.x + 14, 9999) }}
         >
           <span className="tooltip-title">
-            {lane.taskLabels[tipTask] || 'task'} · {fmtDuration(tipDur)}
+            {TEXT.title(lane.taskLabels[tipTask] || TEXT.task, fmtDuration(tipDur))}
           </span>
           <span className="tooltip-sub">
-            at {fmtSeconds(tipStart, 2)}
-            {lane.taskLong[tipTask] === 1 ? ' · long task' : ''}
-            {tipTask === selectedTask ? ' · selected' : ''}
+            {TEXT.at(fmtSeconds(tipStart, 2))}
+            {lane.taskLong[tipTask] === 1 ? TEXT.longTask : ''}
+            {tipTask === selectedTask ? TEXT.selected : ''}
           </span>
         </div>
       ) : null}

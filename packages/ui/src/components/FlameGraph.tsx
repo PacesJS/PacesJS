@@ -12,7 +12,7 @@ import { FLAME, flameHeight, flameRects, hitRect } from '../view/flame-geometry'
 import type { FlameRect } from '../view/flame-geometry';
 import { Hint } from './Hint';
 import { Legend } from './Legend';
-import { PopoverSurface } from './Popover';
+import { PopoverSurface } from './PopoverSurface';
 
 interface MenuState {
   x: number;
@@ -20,10 +20,65 @@ interface MenuState {
   fn: number;
 }
 
+const TEXT = {
+  showInWaterfall: 'Show in waterfall',
+  showCallers: 'Show callers',
+  showInCallGraph: 'Show in call graph',
+  loading: 'Loading flame graph…',
+  allSamples: 'All samples',
+  allSamplesRange: (range: string) => `All samples · ${range}`,
+  seconds: (value: string) => `${value} s`,
+  sort: 'Sort',
+  heavy: 'Left-heavy, by total time',
+  alpha: 'Alphabetical',
+  color: 'Color',
+  byOrigin: 'By origin',
+  bySelf: 'By self time',
+  layout: 'Layout',
+  icicle: 'Icicle',
+  flames: 'Flames',
+  differenceColors: 'Difference colors',
+  faster: 'Faster than baseline',
+  slower: 'Slower than baseline',
+  intensity: 'Intensity = size of the change',
+  hint: 'Identical stacks are merged. Width is how long a frame was on the stack; left to right is not time. For order, use the Waterfall.',
+  zoomPath: 'Zoom path',
+  clickToZoom: 'Click a frame to zoom into it',
+  alphabetical: 'alphabetical',
+  heaviestFirst: 'heaviest first',
+  caption: (order: string) => `width = share of samples · order = ${order}, not time`,
+  flameKind: 'Flame',
+  plot: (kind: string, frames: number, widest: string) =>
+    `${kind} graph of ${frames} frames. ${widest} is the widest top-level frame.`,
+  frames: 'Frames, widest first',
+  frameFaster: ', faster than baseline',
+  frameSlower: ', slower than baseline',
+  frame: (name: string, change: string, origin: string, total: string, share: string) =>
+    `${name}${change}, ${origin}, ${total} total, ${share} of samples`,
+  tipLoc: (loc: string) => ` · ${loc}`,
+  tipTotals: (total: string, share: string, self: string) =>
+    `Total ${total} · ${share} of samples · self ${self}`,
+  tipSame: 'About the same as the baseline',
+  tipFaster: 'Faster than the baseline',
+  tipSlower: 'Slower than the baseline',
+  tipActions: 'Double-click for source · right-click for Show in waterfall',
+  menu: 'Frame actions',
+  select: 'Select',
+  axisStart: '0%',
+  axisQuarter: '25%',
+  axisHalf: (half: string) => `50% of samples (${half})`,
+  axisThreeQuarters: '75%',
+  axisEnd: '100%',
+  dimmed: 'Dependency, Node and native frames are dimmed, never hidden.',
+  plumbingMerged: 'Plumbing frames are merged into their callers. ',
+  plumbingShown: 'Plumbing frames are shown. ',
+  keys: 'Keys: f focus · m merge · c collapse package · i invert.',
+} as const;
+
 const SHOW_IN: Array<{ view: ViewId; label: string }> = [
-  { view: 'waterfall', label: 'Show in waterfall' },
-  { view: 'functions', label: 'Show callers' },
-  { view: 'callgraph', label: 'Show in call graph' },
+  { view: 'waterfall', label: TEXT.showInWaterfall },
+  { view: 'functions', label: TEXT.showCallers },
+  { view: 'callgraph', label: TEXT.showInCallGraph },
 ];
 
 export function FlameGraph() {
@@ -97,15 +152,15 @@ export function FlameGraph() {
   if (!data)
     return (
       <div className="wf-empty" role="status">
-        Loading flame graph…
+        {TEXT.loading}
       </div>
     );
 
   const height = flameHeight(data, width);
   const rangeLabel = snap.range ? fmtRange(snap.range[0], snap.range[1]) : null;
-  const crumbBase = rangeLabel ? `All samples · ${rangeLabel}` : 'All samples';
+  const crumbBase = rangeLabel ? TEXT.allSamplesRange(rangeLabel) : TEXT.allSamples;
   const rootSec = data.rootUs / 1_000_000;
-  const half = rootSec >= 10 ? `${(rootSec / 2).toFixed(1)} s` : `${(rootSec / 2).toFixed(2)} s`;
+  const half = TEXT.seconds((rootSec / 2).toFixed(rootSec >= 10 ? 1 : 2));
 
   const pick = (e: React.PointerEvent<HTMLDivElement>): FlameRect | null => {
     const rect = plotEl?.getBoundingClientRect();
@@ -136,7 +191,7 @@ export function FlameGraph() {
     <>
       <div className="toolbar">
         <div className="field">
-          <label htmlFor="fg-sort">Sort</label>
+          <label htmlFor="fg-sort">{TEXT.sort}</label>
           <select
             id="fg-sort"
             className="select"
@@ -148,12 +203,12 @@ export function FlameGraph() {
               })
             }
           >
-            <option value="heavy">Left-heavy, by total time</option>
-            <option value="alpha">Alphabetical</option>
+            <option value="heavy">{TEXT.heavy}</option>
+            <option value="alpha">{TEXT.alpha}</option>
           </select>
         </div>
         <div className="field">
-          <label htmlFor="fg-color">Color</label>
+          <label htmlFor="fg-color">{TEXT.color}</label>
           <select
             id="fg-color"
             className="select"
@@ -165,35 +220,35 @@ export function FlameGraph() {
               })
             }
           >
-            <option value="origin">By origin</option>
-            <option value="self">By self time</option>
+            <option value="origin">{TEXT.byOrigin}</option>
+            <option value="self">{TEXT.bySelf}</option>
           </select>
         </div>
-        <div className="seg" role="group" aria-label="Layout">
+        <div className="seg" role="group" aria-label={TEXT.layout}>
           <button
             type="button"
             aria-pressed={layout === 'icicle'}
             onClick={() => dispatch({ type: 'options', options: { layout: 'icicle' } })}
           >
-            Icicle
+            {TEXT.icicle}
           </button>
           <button
             type="button"
             aria-pressed={layout === 'flames'}
             onClick={() => dispatch({ type: 'options', options: { layout: 'flames' } })}
           >
-            Flames
+            {TEXT.flames}
           </button>
         </div>
         {data.delta ? (
-          <ul className="legend" aria-label="Difference colors">
+          <ul className="legend" aria-label={TEXT.differenceColors}>
             <li className="legend-item">
               <span
                 className="legend-swatch"
                 style={{ background: 'var(--c-diff-faster)' }}
                 aria-hidden="true"
               />
-              Faster than baseline
+              {TEXT.faster}
             </li>
             <li className="legend-item">
               <span
@@ -201,20 +256,17 @@ export function FlameGraph() {
                 style={{ background: 'var(--c-diff-slower)' }}
                 aria-hidden="true"
               />
-              Slower than baseline
+              {TEXT.slower}
             </li>
-            <li className="legend-item">Intensity = size of the change</li>
+            <li className="legend-item">{TEXT.intensity}</li>
           </ul>
         ) : (
           <Legend />
         )}
       </div>
-      <Hint id="hint-flame">
-        Identical stacks are merged. Width is how long a frame was on the stack; left to right is
-        not time. For order, use the Waterfall.
-      </Hint>
+      <Hint id="hint-flame">{TEXT.hint}</Hint>
       <div className="toolbar-row" style={{ gap: 8 }}>
-        <nav aria-label="Zoom path" className="flame-crumbs">
+        <nav aria-label={TEXT.zoomPath} className="flame-crumbs">
           <button
             type="button"
             className="flame-crumb"
@@ -240,13 +292,10 @@ export function FlameGraph() {
               {c.name}
             </button>
           ))}
-          {data.crumbs.length === 0 ? (
-            <span className="muted">Click a frame to zoom into it</span>
-          ) : null}
+          {data.crumbs.length === 0 ? <span className="muted">{TEXT.clickToZoom}</span> : null}
         </nav>
         <p className="axis-caption">
-          width = share of samples · order = {sort === 'alpha' ? 'alphabetical' : 'heaviest first'},
-          not time
+          {TEXT.caption(sort === 'alpha' ? TEXT.alphabetical : TEXT.heaviestFirst)}
         </p>
       </div>
       <div className="flame-scroll">
@@ -255,7 +304,11 @@ export function FlameGraph() {
             ref={setPlotEl}
             className="flame-plot"
             role="img"
-            aria-label={`${layout === 'icicle' ? 'Icicle' : 'Flame'} graph of ${data.length} frames. ${data.names[1] ?? ''} is the widest top-level frame.`}
+            aria-label={TEXT.plot(
+              layout === 'icicle' ? TEXT.icicle : TEXT.flameKind,
+              data.length,
+              data.names[1] ?? '',
+            )}
             style={{ height, cursor: hover ? 'pointer' : 'default' }}
             onPointerMove={(e) => {
               const r = pick(e);
@@ -296,7 +349,7 @@ export function FlameGraph() {
             }}
           >
             <canvas ref={canvasRef} className="flame-canvas" aria-hidden="true" />
-            <div className="flame-mirror" role="list" aria-label="Frames, widest first">
+            <div className="flame-mirror" role="list" aria-label={TEXT.frames}>
               {mirror.map((r) => {
                 const i = r.index;
                 const dd = data.delta ? (data.delta[i] ?? 0) : null;
@@ -304,9 +357,15 @@ export function FlameGraph() {
                   dd === null || Math.abs(dd) < 0.05
                     ? ''
                     : dd < 0
-                      ? ', faster than baseline'
-                      : ', slower than baseline';
-                const label = `${data.names[i]}${change}, ${originInfo(data.origin[i] ?? 4).label}, ${fmtDuration(data.totalUs[i] ?? 0)} total, ${fmtShare((data.totalUs[i] ?? 0) / (data.rootUs || 1))} of samples`;
+                      ? TEXT.frameFaster
+                      : TEXT.frameSlower;
+                const label = TEXT.frame(
+                  data.names[i] ?? '',
+                  change,
+                  originInfo(data.origin[i] ?? 4).label,
+                  fmtDuration(data.totalUs[i] ?? 0),
+                  fmtShare((data.totalUs[i] ?? 0) / (data.rootUs || 1)),
+                );
                 return (
                   <button
                     key={`${data.node[i]}`}
@@ -336,34 +395,34 @@ export function FlameGraph() {
                   {hoveredName}
                   {data.locs[hovered] ? (
                     <span className="muted" style={{ fontWeight: 400 }}>
-                      {' '}
-                      · {data.locs[hovered]}
+                      {TEXT.tipLoc(data.locs[hovered] ?? '')}
                     </span>
                   ) : null}
                 </span>
                 <span className="num" style={{ fontSize: 12, lineHeight: '16px' }}>
-                  Total {fmtDuration(hoverTotal)} · {fmtShare(hoverTotal / (data.rootUs || 1))} of
-                  samples · self {fmtDuration(hoverSelf)}
+                  {TEXT.tipTotals(
+                    fmtDuration(hoverTotal),
+                    fmtShare(hoverTotal / (data.rootUs || 1)),
+                    fmtDuration(hoverSelf),
+                  )}
                 </span>
                 {data.delta ? (
                   <span className="tooltip-sub">
                     {Math.abs(data.delta[hovered] ?? 0) < 0.05
-                      ? 'About the same as the baseline'
+                      ? TEXT.tipSame
                       : (data.delta[hovered] ?? 0) < 0
-                        ? 'Faster than the baseline'
-                        : 'Slower than the baseline'}
+                        ? TEXT.tipFaster
+                        : TEXT.tipSlower}
                   </span>
                 ) : null}
-                <span className="tooltip-sub">
-                  Double-click for source · right-click for Show in waterfall
-                </span>
+                <span className="tooltip-sub">{TEXT.tipActions}</span>
               </div>
             ) : null}
             {menu ? (
               <PopoverSurface
                 id="flame-context-menu"
                 role="menu"
-                label="Frame actions"
+                label={TEXT.menu}
                 onClose={() => setMenu(null)}
                 style={{ left: menu.x, top: menu.y, minWidth: 200 }}
               >
@@ -390,28 +449,30 @@ export function FlameGraph() {
                     setMenu(null);
                   }}
                 >
-                  Select
+                  {TEXT.select}
                 </button>
               </PopoverSurface>
             ) : null}
           </div>
           <div className="flame-axis" aria-hidden="true">
-            <span style={{ left: 0 }}>0%</span>
-            <span style={{ left: '25%', transform: 'translateX(-50%)' }}>25%</span>
+            <span style={{ left: 0 }}>{TEXT.axisStart}</span>
+            <span style={{ left: '25%', transform: 'translateX(-50%)' }}>{TEXT.axisQuarter}</span>
             <span style={{ left: '50%', transform: 'translateX(-50%)' }}>
-              50% of samples ({half})
+              {TEXT.axisHalf(half)}
             </span>
-            <span style={{ left: '75%', transform: 'translateX(-50%)' }}>75%</span>
-            <span style={{ right: 0 }}>100%</span>
+            <span style={{ left: '75%', transform: 'translateX(-50%)' }}>
+              {TEXT.axisThreeQuarters}
+            </span>
+            <span style={{ right: 0 }}>{TEXT.axisEnd}</span>
           </div>
         </div>
       </div>
       <p className="view-footer" style={{ display: 'block' }}>
-        Dependency, Node and native frames are dimmed, never hidden.{' '}
+        {TEXT.dimmed}{' '}
         {snap.transforms.some((t) => t.k === 'merge-plumbing')
-          ? 'Plumbing frames are merged into their callers. '
-          : 'Plumbing frames are shown. '}
-        Keys: f focus · m merge · c collapse package · i invert.
+          ? TEXT.plumbingMerged
+          : TEXT.plumbingShown}
+        {TEXT.keys}
       </p>
     </>
   );

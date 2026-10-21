@@ -3,6 +3,13 @@ import type { TaskOption, WaterfallData } from '../data/types';
 import { fmtDuration } from '../util/format';
 import { RANGE_OPTION, taskPickerGroups } from '../view/waterfall-picker';
 
+const TEXT = {
+  task: 'Task',
+  entryPoint: (label: string) => `${label} · program entry point`,
+  duration: (dur: string) => ` · ${dur}`,
+  longest: ' · longest',
+} as const;
+
 /** The waterfall's Task select: the whole run, the entry point, then tasks grouped by what started them. */
 export function TaskPicker({
   data,
@@ -16,7 +23,7 @@ export function TaskPicker({
   const { dispatch } = useApp();
   return (
     <div className="field">
-      <label htmlFor="task-pick">Task</label>
+      <label htmlFor="task-pick">{TEXT.task}</label>
       <select
         id="task-pick"
         className="select"
@@ -44,9 +51,9 @@ export function TaskPicker({
           <optgroup key={g.group} label={g.label}>
             {g.tasks.map((t) => (
               <option key={t.index} value={t.index}>
-                {g.group === 'Entry' ? `${t.label} · program entry point` : t.label}
-                {g.group === 'Whole run' ? '' : ` · ${fmtDuration(t.durationUs)}`}
-                {t.longest ? ' · longest' : ''}
+                {g.group === 'Entry' ? TEXT.entryPoint(t.label) : t.label}
+                {g.group === 'Whole run' ? '' : TEXT.duration(fmtDuration(t.durationUs))}
+                {t.longest ? TEXT.longest : ''}
               </option>
             ))}
           </optgroup>

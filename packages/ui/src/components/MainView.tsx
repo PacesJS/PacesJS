@@ -7,6 +7,11 @@ import { FlameGraph } from './FlameGraph';
 import { FunctionsTable } from './FunctionsTable';
 import { Waterfall } from './Waterfall';
 
+const TEXT = {
+  mainView: 'Main view',
+  views: 'Views',
+} as const;
+
 function ActiveView({ view }: { view: ViewId }) {
   switch (view) {
     case 'waterfall':
@@ -24,8 +29,8 @@ function ActiveView({ view }: { view: ViewId }) {
 export function MainView() {
   const { snap, dispatch } = useApp();
   return (
-    <section aria-label="Main view" className="main-view card">
-      <nav aria-label="Views" className="tabs" style={{ alignSelf: 'flex-start' }}>
+    <section aria-label={TEXT.mainView} className="main-view card">
+      <nav aria-label={TEXT.views} className="tabs" style={{ alignSelf: 'flex-start' }}>
         {VIEW_ORDER.map((v, i) => (
           <button
             key={v}

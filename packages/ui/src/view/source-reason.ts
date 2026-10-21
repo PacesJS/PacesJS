@@ -1,5 +1,35 @@
 import { fmtDuration } from '../util/format';
 
+const TEXT = {
+  noFileTitle: 'No source file',
+  noFileHint:
+    'This function is native or runtime code: it has no file to show. Its time is still counted in the views.',
+  hostDownTitle: 'Lost connection to the paces host',
+  hostDownHint:
+    'The paces process that serves this window has stopped (it exits shortly after its window closes). Reopen the session with `paces open <file>`; nothing shown here is out of date until then, but source and settings cannot be read.',
+  notReadTitle: 'The host would not read this file',
+  notReadHint: (error: string) =>
+    `${error}. paces only reads files inside the project root that was recorded with the session; open the session from that project or move the file under it.`,
+  outsideTitle: 'Outside the project root',
+  outsideHint:
+    'paces only reads files inside the project root, so this one (runtime or dependency code) is not shown. Per-line time is still listed.',
+  notOnDiskTitle: 'File not found on disk',
+  notOnDiskHint: (path: string) =>
+    `${path} is not on disk. Open the session from the project that was profiled, or restore the file; per-line time is still listed.`,
+  mapMissingTitle: 'No source map: showing generated code',
+  mapMissingHint:
+    'The bundle has no source map, so names and lines are the generated ones. Build with source maps (for example esbuild --sourcemap) to see the original source.',
+  inCalleesTitle: 'Its time is in its callees',
+  tinyTime: 'Its own time is tiny.',
+  inCalleesHint: (reason: string) => `${reason} Select a callee below to follow it.`,
+  noLineDataTitle: 'No line data for this function',
+  noLinePositions: 'V8 recorded no line positions for it.',
+  ranOnly: (duration: string) =>
+    `This function itself ran only ${duration}; its time is in its callees, listed below. Select one to follow it.`,
+  noLineTicks:
+    'V8 recorded no line ticks for it, so the gutter is empty. It is probably native code, was optimized away, or ran for less than one sampling interval.',
+} as const;
+
 /** Why a function's source cannot be shown, and what to do about it. */
 
 export type SourceReasonKind =
@@ -53,48 +83,48 @@ export function sourceReason(f: SourceFacts): SourceReason | null {
   if (!f.path) {
     return {
       kind: 'no-file',
-      title: 'No source file',
-      hint: 'This function is native or runtime code: it has no file to show. Its time is still counted in the views.',
+      title: TEXT.noFileTitle,
+      hint: TEXT.noFileHint,
       showsText: false,
     };
   }
   if (f.hostDown) {
     return {
       kind: 'host-down',
-      title: 'Lost connection to the paces host',
-      hint: 'The paces process that serves this window has stopped (it exits shortly after its window closes). Reopen the session with `paces open <file>`; nothing shown here is out of date until then, but source and settings cannot be read.',
+      title: TEXT.hostDownTitle,
+      hint: TEXT.hostDownHint,
       showsText: false,
     };
   }
   if (f.error !== null) {
     return {
       kind: 'outside-root',
-      title: 'The host would not read this file',
-      hint: `${f.error}. paces only reads files inside the project root that was recorded with the session; open the session from that project or move the file under it.`,
+      title: TEXT.notReadTitle,
+      hint: TEXT.notReadHint(f.error),
       showsText: false,
     };
   }
   if (isOutsideProject(f.path)) {
     return {
       kind: 'outside-root',
-      title: 'Outside the project root',
-      hint: 'paces only reads files inside the project root, so this one (runtime or dependency code) is not shown. Per-line time is still listed.',
+      title: TEXT.outsideTitle,
+      hint: TEXT.outsideHint,
       showsText: false,
     };
   }
   if (f.exists === false) {
     return {
       kind: 'not-on-disk',
-      title: 'File not found on disk',
-      hint: `${f.path} is not on disk. Open the session from the project that was profiled, or restore the file; per-line time is still listed.`,
+      title: TEXT.notOnDiskTitle,
+      hint: TEXT.notOnDiskHint(f.path),
       showsText: false,
     };
   }
   if (f.exists === true && f.mapMissing) {
     return {
       kind: 'map-missing',
-      title: 'No source map: showing generated code',
-      hint: 'The bundle has no source map, so names and lines are the generated ones. Build with source maps (for example esbuild --sourcemap) to see the original source.',
+      title: TEXT.mapMissingTitle,
+      hint: TEXT.mapMissingHint,
       showsText: true,
     };
   }
@@ -102,31 +132,31 @@ export function sourceReason(f: SourceFacts): SourceReason | null {
     if (f.lineStatus === 'no-self-time') {
       return {
         kind: 'no-self-time',
-        title: 'Its time is in its callees',
-        hint: `${f.lineReason ?? 'Its own time is tiny.'} Select a callee below to follow it.`,
+        title: TEXT.inCalleesTitle,
+        hint: TEXT.inCalleesHint(f.lineReason ?? TEXT.tinyTime),
         showsText: true,
       };
     }
     if (f.lineStatus === 'no-line-data') {
       return {
         kind: 'no-line-data',
-        title: 'No line data for this function',
-        hint: f.lineReason ?? 'V8 recorded no line positions for it.',
+        title: TEXT.noLineDataTitle,
+        hint: f.lineReason ?? TEXT.noLinePositions,
         showsText: true,
       };
     }
     if (f.hasCallees === true) {
       return {
         kind: 'no-self-time',
-        title: 'Its time is in its callees',
-        hint: `This function itself ran only ${fmtDuration(f.selfUs ?? 0)}; its time is in its callees, listed below. Select one to follow it.`,
+        title: TEXT.inCalleesTitle,
+        hint: TEXT.ranOnly(fmtDuration(f.selfUs ?? 0)),
         showsText: true,
       };
     }
     return {
       kind: 'no-line-data',
-      title: 'No line data for this function',
-      hint: 'V8 recorded no line ticks for it, so the gutter is empty. It is probably native code, was optimized away, or ran for less than one sampling interval.',
+      title: TEXT.noLineDataTitle,
+      hint: TEXT.noLineTicks,
       showsText: true,
     };
   }

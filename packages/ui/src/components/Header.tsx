@@ -11,12 +11,34 @@ interface HeaderProps {
   sessionPath?: string;
 }
 
-const ENDED_BY: Record<string, string> = {
-  exit: 'Exit',
-  sigint: 'Ctrl+C',
-  duration: 'Duration limit',
-  crash: 'Crash',
-};
+const TEXT = {
+  endedBy: {
+    exit: 'Exit',
+    sigint: 'Ctrl+C',
+    duration: 'Duration limit',
+    crash: 'Crash',
+  } as Record<string, string>,
+  brand: 'paces',
+  back: 'Back (Alt+Left)',
+  forward: 'Forward (Alt+Right)',
+  commandPrefix: '$ paces --',
+  duration: 'Duration',
+  samples: 'Samples',
+  perTrack: ' / track',
+  endedByLabel: 'Ended by',
+  entry: 'Entry',
+  sampledTitle: 'Sampled profile: timings are estimates',
+  sampled: (interval: string, precision: string) => `Sampled · ${interval} · ±${precision}`,
+  ms: (value: string) => `${value} ms`,
+  tracks: 'Tracks',
+  supporting: 'supporting',
+  supportingTitle: 'npx/npm wrapper process: it launches the target and does little work itself',
+  searchLabel: 'Search functions, files and packages',
+  searchPlaceholder: 'Search functions, files, packages',
+  searchKey: '/',
+  shortcuts: 'Keyboard shortcuts (?)',
+  shortcutsGlyph: '?',
+} as const;
 
 export function Header({ searchRef, sessionPath }: HeaderProps) {
   const { summary, state, snap, dispatch } = useApp();
@@ -30,7 +52,7 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
   const track = summary.tracks.find((t) => t.id === trackId);
   const intervalMs = summary.intervalUs / 1000;
   const precisionMs = summary.precisionUs / 1000;
-  const fmtMsPlain = (n: number): string => `${Number.isInteger(n) ? n : n.toFixed(1)} ms`;
+  const fmtMsPlain = (n: number): string => TEXT.ms(String(Number.isInteger(n) ? n : n.toFixed(1)));
 
   return (
     <header className="header">
@@ -39,13 +61,13 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
           <span className="header-logo" aria-hidden="true">
             <Icon name="logo" size={22} />
           </span>
-          <span className="header-name">paces</span>
+          <span className="header-name">{TEXT.brand}</span>
         </div>
         <div className="header-nav">
           <button
             type="button"
             className="icon-btn"
-            aria-label="Back (Alt+Left)"
+            aria-label={TEXT.back}
             disabled={!canBack(state.history)}
             onClick={() => dispatch({ type: 'back' })}
           >
@@ -54,7 +76,7 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
           <button
             type="button"
             className="icon-btn"
-            aria-label="Forward (Alt+Right)"
+            aria-label={TEXT.forward}
             disabled={!canForward(state.history)}
             onClick={() => dispatch({ type: 'forward' })}
           >
@@ -62,42 +84,42 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
           </button>
         </div>
         <div className="cmd-chip" title={command}>
-          <span className="cmd-chip-prefix">$ paces --</span>
+          <span className="cmd-chip-prefix">{TEXT.commandPrefix}</span>
           <span className="cmd-chip-cmd">{command}</span>
         </div>
         <dl className="header-stats">
           <div className="header-stat">
-            <dt>Duration</dt>
+            <dt>{TEXT.duration}</dt>
             <dd>{fmtRun(summary.durationUs)}</dd>
           </div>
           <div className="header-stat">
-            <dt>Samples</dt>
+            <dt>{TEXT.samples}</dt>
             <dd>
               {fmtCount(perTrack)}
-              {summary.tracks.length > 1 ? ' / track' : ''}
+              {summary.tracks.length > 1 ? TEXT.perTrack : ''}
             </dd>
           </div>
           <div className="header-stat">
-            <dt>Ended by</dt>
-            <dd>{ENDED_BY[summary.endedBy] ?? summary.endedBy}</dd>
+            <dt>{TEXT.endedByLabel}</dt>
+            <dd>{TEXT.endedBy[summary.endedBy] ?? summary.endedBy}</dd>
           </div>
           {summary.target.entry ? (
             <div className="header-stat">
-              <dt>Entry</dt>
+              <dt>{TEXT.entry}</dt>
               <dd className="header-entry" title={summary.target.entry}>
                 {displayEntry(summary.target.entry)}
               </dd>
             </div>
           ) : null}
         </dl>
-        <span className="precision-badge" title="Sampled profile: timings are estimates">
+        <span className="precision-badge" title={TEXT.sampledTitle}>
           <Icon name="clock" size={14} />
-          Sampled · {fmtMsPlain(intervalMs)} · ±{fmtMsPlain(precisionMs)}
+          {TEXT.sampled(fmtMsPlain(intervalMs), fmtMsPlain(precisionMs))}
         </span>
         <NotesChip />
         <div className="header-spacer" />
         <div className="field">
-          <label htmlFor="track-pick">Tracks</label>
+          <label htmlFor="track-pick">{TEXT.tracks}</label>
           <select
             id="track-pick"
             className="select"
@@ -111,18 +133,15 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
             ))}
           </select>
           {track?.role === 'support' ? (
-            <span
-              className="support-note"
-              title="npx/npm wrapper process: it launches the target and does little work itself"
-            >
+            <span className="support-note" title={TEXT.supportingTitle}>
               <Icon name="info" size={14} />
-              supporting
+              {TEXT.supporting}
             </span>
           ) : null}
         </div>
         <div className="search">
           <label htmlFor="search" className="sr-only">
-            Search functions, files and packages
+            {TEXT.searchLabel}
           </label>
           <span className="search-icon">
             <Icon name="search" size={16} />
@@ -132,7 +151,7 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
             ref={searchRef}
             type="search"
             className="search-input"
-            placeholder="Search functions, files, packages"
+            placeholder={TEXT.searchPlaceholder}
             value={state.search}
             onChange={(e) => dispatch({ type: 'search', text: e.target.value })}
             onKeyDown={(e) => {
@@ -140,15 +159,15 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
               if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
             }}
           />
-          <kbd className="kbd search-kbd">/</kbd>
+          <kbd className="kbd search-kbd">{TEXT.searchKey}</kbd>
         </div>
         <button
           type="button"
           className="help-btn"
-          aria-label="Keyboard shortcuts (?)"
+          aria-label={TEXT.shortcuts}
           onClick={() => dispatch({ type: 'set-shortcuts', open: true })}
         >
-          ?
+          {TEXT.shortcutsGlyph}
         </button>
       </div>
       <TransformBar sessionPath={sessionPath} hasBaseline={summary.hasBaseline} />

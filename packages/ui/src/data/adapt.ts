@@ -49,12 +49,23 @@ import type {
 } from './types';
 
 const MIN_FRAME_FRACTION = 0.0002;
+
+const TEXT = {
+  task: 'task',
+  wholeRun: 'Whole run',
+  range: (from: string, to: string) => `Range ${from}–${to} s`,
+  allSamples: 'all samples',
+  root: '(root)',
+  self: 'self',
+  nodeProcess: 'node process',
+  workerThread: 'worker thread',
+} as const;
 const SANDWICH_CALLER_LEVELS = 3;
 const SANDWICH_CALLEE_LEVELS = 2;
 const MIN_SANDWICH_WIDTH = 0.004;
 
 export const taskLabelOf = (model: ExecutionModel, track: Track, i: number): string =>
-  model.strings[track.tasks.label[i] ?? 0] || 'task';
+  model.strings[track.tasks.label[i] ?? 0] || TEXT.task;
 
 /** The task picker's rows: grouped by what started them, the entry point first. */
 export function taskOptions(model: ExecutionModel, trackIndex: number): TaskOption[] {
@@ -145,7 +156,7 @@ export function waterfallData(
       mode,
       taskIndex: -1,
       trackId: track.id,
-      taskLabel: describeTasks(model, s.trackIndex)[0]?.label ?? 'Whole run',
+      taskLabel: describeTasks(model, s.trackIndex)[0]?.label ?? TEXT.wholeRun,
       taskUs: Math.max(1, wf.end - wf.start),
       taskStartUs: t0,
       rows,
@@ -163,7 +174,7 @@ export function waterfallData(
   const spanUs = Math.max(1, wf.end - wf.start);
   const label =
     mode === 'range' && req.range
-      ? `Range ${(req.range[0] / 1e6).toFixed(1)}–${(req.range[1] / 1e6).toFixed(1)} s`
+      ? TEXT.range((req.range[0] / 1e6).toFixed(1), (req.range[1] / 1e6).toFixed(1))
       : (describeTasks(model, s.trackIndex).find((d) => d.index === task)?.label ??
         taskLabelOf(model, track, task));
   const rows: WaterfallRow[] = [
@@ -315,7 +326,7 @@ export function flameData(
     node[i] = isRoot ? -1 : engineNode;
     fn[i] = s.out(layout.fn[i] ?? 0);
     if (isRoot) {
-      names.push('all samples');
+      names.push(TEXT.allSamples);
       locs.push('');
     } else {
       const info = s.info(fn[i] ?? 0);
@@ -479,7 +490,7 @@ export function functionDetails(
   if (seen < 0.995)
     callerRows.push({
       fn: null,
-      name: '(root)',
+      name: TEXT.root,
       origin: Origin.Native,
       frac: 1 - seen,
       kind: 'caller',
@@ -497,7 +508,7 @@ export function functionDetails(
         kind: 'callee',
       };
     });
-  calleeRows.push({ fn: null, name: 'self', origin: -1, frac: row.self / denom, kind: 'self' });
+  calleeRows.push({ fn: null, name: TEXT.self, origin: -1, frac: row.self / denom, kind: 'self' });
   calleeRows.sort((a, b) => b.frac - a.frac);
 
   const base = baseTimeUs(s, range);
@@ -562,7 +573,7 @@ export function sandwichRows(model: ExecutionModel, s: Scoped, fn: number): Sand
   if (selfFrac > 0) {
     rows.push({
       level: 1,
-      name: 'self',
+      name: TEXT.self,
       origin: -1,
       fn: null,
       start: childEnd,
@@ -738,9 +749,9 @@ function laneText(model: ExecutionModel, track: Track): { title: string; meta: s
   if (track.kind === 'process') {
     const script = model.meta.command[1] ?? model.meta.command[0] ?? '';
     const base = script.split(/[/\\]/).pop() ?? script;
-    return { title, meta: [detail, base].filter(Boolean).join(' · ') || 'node process' };
+    return { title, meta: [detail, base].filter(Boolean).join(' · ') || TEXT.nodeProcess };
   }
-  return { title, meta: detail || (track.kind === 'worker' ? 'worker thread' : track.kind) };
+  return { title, meta: detail || (track.kind === 'worker' ? TEXT.workerThread : track.kind) };
 }
 
 /**

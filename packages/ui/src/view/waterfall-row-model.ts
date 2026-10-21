@@ -6,6 +6,13 @@ import { barRect } from './waterfall-geometry';
 import { BADGE_DEPTH, FOCUS_DEPTH, indentFor, middleEllipsis } from './waterfall-indent';
 import { barDetails, rowLocation } from './waterfall-labels';
 
+const TEXT = {
+  depthBadge: (depth: number) => `⋯ ${depth}`,
+  hiddenCallees: (count: number, fold: string) =>
+    `${count} ${count === 1 ? 'callee' : 'callees'} under ${fold} hidden`,
+  level: (level: number) => `level ${level}`,
+} as const;
+
 export interface RowModelContext {
   /** Width of the call column, in px. */
   callWidth: number;
@@ -50,7 +57,7 @@ export function waterfallRowModel(r: WaterfallRow, c: RowModelContext): RowModel
   const where = rowLocation(r);
   const indent = indentFor(r.depth, c.callWidth);
   const badged = r.kind === 'call' && r.depth > BADGE_DEPTH;
-  const depthBadge = `⋯ ${r.depth}`;
+  const depthBadge = TEXT.depthBadge(r.depth);
   const focusAs =
     r.kind === 'call' && r.depth > FOCUS_DEPTH
       ? focusTransform(r.path, r.fn, c.functionCount)
@@ -64,11 +71,13 @@ export function waterfallRowModel(r: WaterfallRow, c: RowModelContext): RowModel
     (r.resumed ? 22 : 0) -
     2;
   const label = middleEllipsis(r.name, Math.max(room, 24), (t) => c.measure(t, nameFont));
-  const hiddenNote =
-    c.hiddenKids > 0
-      ? `${c.hiddenKids} ${c.hiddenKids === 1 ? 'callee' : 'callees'} under ${c.foldLabel} hidden`
-      : '';
-  const nameTitle = [r.name, where, r.depth > BADGE_DEPTH ? `level ${r.depth + 1}` : '', hiddenNote]
+  const hiddenNote = c.hiddenKids > 0 ? TEXT.hiddenCallees(c.hiddenKids, c.foldLabel) : '';
+  const nameTitle = [
+    r.name,
+    where,
+    r.depth > BADGE_DEPTH ? TEXT.level(r.depth + 1) : '',
+    hiddenNote,
+  ]
     .filter(Boolean)
     .join(' · ');
   const details = barDetails(r, c.threshold, c.whole, { cpuUs: c.cpuUs });

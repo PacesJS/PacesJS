@@ -12,14 +12,49 @@ import { Switch } from './Switch';
 
 type SortKey = 'name' | 'origin' | 'self' | 'total' | 'share' | 'calls' | 'loc';
 
+const TEXT = {
+  columns: {
+    name: 'Function',
+    origin: 'Origin',
+    self: 'Self',
+    total: 'Total',
+    share: 'Share',
+    calls: 'Calls est.',
+    loc: 'Location',
+  },
+  loading: 'Loading functions…',
+  allTracks: 'all tracks',
+  rangeSuffix: (range: string, duration: string, track: string) =>
+    ` · range ${range} (${duration} on ${track})`,
+  filterLabel: 'Filter functions by name, file or package',
+  filterPlaceholder: 'Filter by name, file or package',
+  yourCodeFirst: 'Your code first',
+  targetOnly: 'Target only',
+  package: 'Package',
+  allPackages: 'All packages',
+  highToLow: 'high to low',
+  lowToHigh: 'low to high',
+  status: (count: number, sortedBy: string, direction: string) =>
+    `${count} functions · sorted by ${sortedBy} · ${direction}`,
+  hint: 'Each row is one function, with its own time (self) and the time of everything it called (total). Select a row to see its callers and callees below.',
+  table: (sortedBy: string) => `Functions, sorted by ${sortedBy}`,
+  selfSorted: (direction: string) => `Self, ${direction}`,
+  yourCode: (count: number) => `Your code · ${count}`,
+  others: (shown: number, total: number) => `Dependencies, Node and native · ${shown} of ${total}`,
+  packagesCollapsed: ' · packages collapsed',
+  showFewer: 'Show fewer',
+  showAll: (count: number) => `Show all ${count}`,
+  selectSandwich: 'Select a function to open its sandwich: callers above, callees below.',
+} as const;
+
 const COLUMNS: Array<{ key: SortKey; label: string; align?: 'right' }> = [
-  { key: 'name', label: 'Function' },
-  { key: 'origin', label: 'Origin' },
-  { key: 'self', label: 'Self', align: 'right' },
-  { key: 'total', label: 'Total', align: 'right' },
-  { key: 'share', label: 'Share', align: 'right' },
-  { key: 'calls', label: 'Calls est.', align: 'right' },
-  { key: 'loc', label: 'Location' },
+  { key: 'name', label: TEXT.columns.name },
+  { key: 'origin', label: TEXT.columns.origin },
+  { key: 'self', label: TEXT.columns.self, align: 'right' },
+  { key: 'total', label: TEXT.columns.total, align: 'right' },
+  { key: 'share', label: TEXT.columns.share, align: 'right' },
+  { key: 'calls', label: TEXT.columns.calls, align: 'right' },
+  { key: 'loc', label: TEXT.columns.loc },
 ];
 
 function value(r: FnRow, key: SortKey): number | string {
@@ -103,7 +138,7 @@ export function FunctionsTable() {
   if (!data)
     return (
       <div className="wf-empty" role="status">
-        Loading functions…
+        {TEXT.loading}
       </div>
     );
 
@@ -119,9 +154,14 @@ export function FunctionsTable() {
       : capped;
   const maxSelf = Math.max(1, ...rows.map((r) => r.selfUs));
   const selectedRow = rows.find((r) => r.fn === selection.fn) ?? null;
-  const sortLabel = COLUMNS.find((c) => c.key === sort.key)?.label.toLowerCase() ?? 'self';
+  const sortLabel =
+    COLUMNS.find((c) => c.key === sort.key)?.label.toLowerCase() ?? TEXT.columns.self.toLowerCase();
   const rangeSuffix = snap.range
-    ? ` · range ${fmtRange(snap.range[0], snap.range[1])} (${fmtSeconds(snap.range[1] - snap.range[0], 2)} on ${snap.track === 'all' ? 'all tracks' : snap.track})`
+    ? TEXT.rangeSuffix(
+        fmtRange(snap.range[0], snap.range[1]),
+        fmtSeconds(snap.range[1] - snap.range[0], 2),
+        snap.track === 'all' ? TEXT.allTracks : snap.track,
+      )
     : '';
 
   const renderRow = (r: FnRow) => (
@@ -142,7 +182,7 @@ export function FunctionsTable() {
       <div className="toolbar" style={{ gap: '12px 16px' }}>
         <div className="fn-filter">
           <label htmlFor="fn-filter" className="sr-only">
-            Filter functions by name, file or package
+            {TEXT.filterLabel}
           </label>
           <span className="search-icon" aria-hidden="true">
             <svg
@@ -162,29 +202,29 @@ export function FunctionsTable() {
             id="fn-filter"
             type="search"
             className="fn-filter-input"
-            placeholder="Filter by name, file or package"
+            placeholder={TEXT.filterPlaceholder}
             value={state.search}
             onChange={(e) => dispatch({ type: 'search', text: e.target.value })}
           />
         </div>
         <Switch checked={userFirst} onChange={setUserFirst}>
-          Your code first
+          {TEXT.yourCodeFirst}
         </Switch>
         <Switch
           checked={targetOnly}
           onChange={(v) => dispatch({ type: 'options', options: { targetOnly: v } })}
         >
-          Target only
+          {TEXT.targetOnly}
         </Switch>
         <div className="field">
-          <label htmlFor="fn-pkg">Package</label>
+          <label htmlFor="fn-pkg">{TEXT.package}</label>
           <select
             id="fn-pkg"
             className="select"
             value={fnPkg}
             onChange={(e) => dispatch({ type: 'options', options: { fnPkg: e.target.value } })}
           >
-            <option value="">All packages</option>
+            <option value="">{TEXT.allPackages}</option>
             {summary.packages.map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -193,19 +233,19 @@ export function FunctionsTable() {
           </select>
         </div>
         <span className="fn-status" role="status">
-          {data.totalFns} functions · sorted by {sortLabel} ·{' '}
-          {sort.dir === 'desc' ? 'high to low' : 'low to high'}
+          {TEXT.status(
+            data.totalFns,
+            sortLabel,
+            sort.dir === 'desc' ? TEXT.highToLow : TEXT.lowToHigh,
+          )}
           {rangeSuffix}
         </span>
       </div>
       <Legend />
       <HotPaths />
-      <Hint id="hint-functions">
-        Each row is one function, with its own time (self) and the time of everything it called
-        (total). Select a row to see its callers and callees below.
-      </Hint>
+      <Hint id="hint-functions">{TEXT.hint}</Hint>
       <div className="fn-scroll">
-        <div role="table" aria-label={`Functions, sorted by ${sortLabel}`} className="fn-table">
+        <div role="table" aria-label={TEXT.table(sortLabel)} className="fn-table">
           <div role="row" className="fn-row fn-head">
             {COLUMNS.map((c) => (
               <span
@@ -231,7 +271,7 @@ export function FunctionsTable() {
                   }
                 >
                   {sort.key === c.key && c.key === 'self'
-                    ? `Self, ${sort.dir === 'desc' ? 'high to low' : 'low to high'}`
+                    ? TEXT.selfSorted(sort.dir === 'desc' ? TEXT.highToLow : TEXT.lowToHigh)
                     : c.label}
                 </button>
               </span>
@@ -243,17 +283,15 @@ export function FunctionsTable() {
               className="fn-group is-user caps"
               style={{ color: 'var(--c-accent-ink)' }}
             >
-              <span role="rowheader">Your code · {mine.length}</span>
+              <span role="rowheader">{TEXT.yourCode(mine.length)}</span>
             </div>
           ) : null}
           {mine.slice(0, 300).map(renderRow)}
           {userFirst ? (
             <div role="row" className="fn-group caps" style={{ paddingTop: 16 }}>
               <span role="rowheader">
-                Dependencies, Node and native · {shownOthers.length} of {others.length}
-                {snap.transforms.some((t) => t.k === 'collapse-deps')
-                  ? ' · packages collapsed'
-                  : ''}
+                {TEXT.others(shownOthers.length, others.length)}
+                {snap.transforms.some((t) => t.k === 'collapse-deps') ? TEXT.packagesCollapsed : ''}
               </span>
             </div>
           ) : null}
@@ -267,14 +305,14 @@ export function FunctionsTable() {
           style={{ alignSelf: 'flex-start' }}
           onClick={() => setShowAll((v) => !v)}
         >
-          {showAll ? 'Show fewer' : `Show all ${others.length}`}
+          {showAll ? TEXT.showFewer : TEXT.showAll(others.length)}
         </button>
       ) : null}
       {selectedRow ? (
         <Sandwich fn={selectedRow.fn} name={selectedRow.name} totalUs={selectedRow.totalUs} />
       ) : (
         <p className="section-sub" role="status">
-          Select a function to open its sandwich: callers above, callees below.
+          {TEXT.selectSandwich}
         </p>
       )}
     </>

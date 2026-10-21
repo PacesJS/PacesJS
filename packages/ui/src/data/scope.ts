@@ -9,6 +9,10 @@ import type {
 } from '@pacesjs/engine';
 import type { TimeRange, Transform } from '../state/types';
 
+const TEXT = {
+  anonymous: '(anonymous)',
+} as const;
+
 /** Per-model lookups the adapter needs: stable package ids and the dependency package list. */
 export interface ModelCtx {
   model: ExecutionModel;
@@ -155,7 +159,7 @@ export function scopeView(ctx: ModelCtx, trackIndex: number, stack: EngineTransf
 
 /** The function's name, or `(anonymous)` for one without. */
 export function nameOrAnon(name: string): string {
-  return name || '(anonymous)';
+  return name || TEXT.anonymous;
 }
 
 /** `file:line`, or just the file when the line is unknown. */

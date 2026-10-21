@@ -7,6 +7,38 @@ import type { Transform } from '../state/types';
 import { Icon } from './Icon';
 import { Popover } from './Popover';
 
+const TEXT = {
+  fnFallback: (fn: number) => `function ${fn}`,
+  stitch: 'Stitch continuations (inferred)',
+  collapseDeps: 'Collapse dependencies',
+  mergePlumbing: 'Merge plumbing',
+  dropIdle: 'Drop idle',
+  uninvert: 'Uninvert',
+  invert: 'Invert call tree',
+  merge: (name: string) => `Merge ${name}`,
+  focusOn: (name: string) => `Focus on ${name}`,
+  focusSelf: (name: string) => `Focus on ${name} self`,
+  collapseRec: (name: string) => `Collapse recursion in ${name}`,
+  dropSamples: (name: string) => `Drop samples with ${name}`,
+  collapsePkg: (pkg: string) => `Collapse ${pkg}`,
+  transforms: 'Transforms',
+  stack: 'Transform stack, oldest first',
+  separator: '›',
+  rewindTitle: 'Rewind to this point',
+  rewind: (label: string) => `Rewind to ${label}`,
+  remove: (label: string) => `Remove ${label}`,
+  range: (range: string) => `Range ${range}`,
+  removeRange: 'Remove time range',
+  add: 'Add transform',
+  selectFunction: 'Select a function to merge, focus or collapse it.',
+  compareLabel: 'Compare with another session',
+  compare: 'Compare with…',
+  baseline:
+    'A baseline session is loaded: the flame graph shows the difference (blue = faster, orange = slower).',
+  noBaseline:
+    'No baseline in this session. Run paces diff a.paces b.paces to open two sessions in differential mode.',
+} as const;
+
 interface TransformBarProps {
   /** Session file shown at the right, when the host provides it. */
   sessionPath?: string;
@@ -25,7 +57,7 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
   const [compareOpen, setCompareOpen] = useState(false);
   const compareTipId = useId();
   const fnId = selection.fn;
-  const names = (fn: number): string => (fn === fnId ? selection.name : `function ${fn}`);
+  const names = (fn: number): string => (fn === fnId ? selection.name : TEXT.fnFallback(fn));
   const pkgQuery = useAsync(
     () => (fnId === null ? Promise.resolve('') : client.packageOf(fnId)),
     `pkg:${fnId}`,
@@ -34,41 +66,41 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
 
   const entries: MenuEntry[] = [
     {
-      label: 'Stitch continuations (inferred)',
+      label: TEXT.stitch,
       transform: { k: 'stitch' },
       disabled: hasTransform(snap.transforms, 'stitch'),
     },
     {
-      label: 'Collapse dependencies',
+      label: TEXT.collapseDeps,
       transform: { k: 'collapse-deps' },
       disabled: hasTransform(snap.transforms, 'collapse-deps'),
     },
     {
-      label: 'Merge plumbing',
+      label: TEXT.mergePlumbing,
       transform: { k: 'merge-plumbing' },
       disabled: hasTransform(snap.transforms, 'merge-plumbing'),
     },
     {
-      label: 'Drop idle',
+      label: TEXT.dropIdle,
       transform: { k: 'drop-idle' },
       disabled: hasTransform(snap.transforms, 'drop-idle'),
     },
     {
-      label: hasTransform(snap.transforms, 'invert') ? 'Uninvert' : 'Invert call tree',
+      label: hasTransform(snap.transforms, 'invert') ? TEXT.uninvert : TEXT.invert,
       transform: { k: 'invert' },
     },
     ...(fnId !== null
       ? ([
-          { label: `Merge ${selection.name}`, transform: { k: 'merge-fn', fn: fnId } },
-          { label: `Focus on ${selection.name}`, transform: { k: 'focus-fn', fn: fnId } },
-          { label: `Focus on ${selection.name} self`, transform: { k: 'focus-self', fn: fnId } },
+          { label: TEXT.merge(selection.name), transform: { k: 'merge-fn', fn: fnId } },
+          { label: TEXT.focusOn(selection.name), transform: { k: 'focus-fn', fn: fnId } },
+          { label: TEXT.focusSelf(selection.name), transform: { k: 'focus-self', fn: fnId } },
           {
-            label: `Collapse recursion in ${selection.name}`,
+            label: TEXT.collapseRec(selection.name),
             transform: { k: 'collapse-rec', fn: fnId },
           },
-          { label: `Drop samples with ${selection.name}`, transform: { k: 'drop-fn', fn: fnId } },
+          { label: TEXT.dropSamples(selection.name), transform: { k: 'drop-fn', fn: fnId } },
           ...(pkg
-            ? [{ label: `Collapse ${pkg}`, transform: { k: 'collapse-pkg', pkg } } as MenuEntry]
+            ? [{ label: TEXT.collapsePkg(pkg), transform: { k: 'collapse-pkg', pkg } } as MenuEntry]
             : []),
         ] as MenuEntry[])
       : []),
@@ -76,23 +108,23 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
 
   return (
     <div className="transform-row">
-      <span className="caps">Transforms</span>
-      <ol className="chips" aria-label="Transform stack, oldest first">
+      <span className="caps">{TEXT.transforms}</span>
+      <ol className="chips" aria-label={TEXT.stack}>
         {snap.transforms.map((t, i) => {
           const label = transformLabel(t, names);
           return (
             <li key={`${i}-${label}`} className="chip-item">
               {i > 0 ? (
                 <span className="chip-sep" aria-hidden="true">
-                  ›
+                  {TEXT.separator}
                 </span>
               ) : null}
               <span className="chip">
                 <button
                   type="button"
                   className="chip-label"
-                  title="Rewind to this point"
-                  aria-label={`Rewind to ${label}`}
+                  title={TEXT.rewindTitle}
+                  aria-label={TEXT.rewind(label)}
                   onClick={() => dispatch({ type: 'rewind-transform', index: i })}
                 >
                   {label}
@@ -100,7 +132,7 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
                 <button
                   type="button"
                   className="chip-remove"
-                  aria-label={`Remove ${label}`}
+                  aria-label={TEXT.remove(label)}
                   onClick={() => dispatch({ type: 'remove-transform', index: i })}
                 >
                   <Icon name="close" size={14} strokeWidth={2} />
@@ -113,15 +145,17 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
           <li className="chip-item">
             {snap.transforms.length > 0 ? (
               <span className="chip-sep" aria-hidden="true">
-                ›
+                {TEXT.separator}
               </span>
             ) : null}
             <span className="chip chip-range">
-              <span className="chip-label">Range {fmtRange(snap.range[0], snap.range[1])}</span>
+              <span className="chip-label">
+                {TEXT.range(fmtRange(snap.range[0], snap.range[1]))}
+              </span>
               <button
                 type="button"
                 className="chip-remove"
-                aria-label="Remove time range"
+                aria-label={TEXT.removeRange}
                 onClick={() =>
                   dispatch({
                     type: 'go',
@@ -143,12 +177,12 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
         open={menuOpen}
         onOpenChange={setMenuOpen}
         role="menu"
-        label="Add transform"
+        label={TEXT.add}
         style={{ top: 38, left: 0 }}
         trigger={(p) => (
           <button type="button" className="chip-add" {...p}>
             <Icon name="plus" size={14} strokeWidth={2} />
-            Add transform
+            {TEXT.add}
           </button>
         )}
       >
@@ -171,7 +205,7 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
             ))}
             {fnId === null ? (
               <span className="section-sub" style={{ padding: '6px 12px' }}>
-                Select a function to merge, focus or collapse it.
+                {TEXT.selectFunction}
               </span>
             ) : null}
           </>
@@ -185,18 +219,17 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
             open={compareOpen}
             onOpenChange={setCompareOpen}
             role="dialog"
-            label="Compare with another session"
+            label={TEXT.compareLabel}
             style={{ top: 38, right: 0, width: 320 }}
             trigger={(p) => (
               <button type="button" className="btn btn-sm" {...p}>
-                Compare with…
+                {TEXT.compare}
               </button>
             )}
           >
             {() => (
               <p className="section-sub" style={{ padding: 8, lineHeight: '20px' }}>
-                A baseline session is loaded: the flame graph shows the difference (blue = faster,
-                orange = slower).
+                {TEXT.baseline}
               </p>
             )}
           </Popover>
@@ -208,11 +241,10 @@ export function TransformBar({ sessionPath, hasBaseline }: TransformBarProps) {
               aria-disabled="true"
               aria-describedby={compareTipId}
             >
-              Compare with…
+              {TEXT.compare}
             </button>
             <span role="tooltip" id={compareTipId} className="compare-tip">
-              No baseline in this session. Run paces diff a.paces b.paces to open two sessions in
-              differential mode.
+              {TEXT.noBaseline}
             </span>
           </>
         )}

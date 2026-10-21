@@ -3,6 +3,10 @@ import type { AppAction } from './reducer';
 import { addTransform, removeTransform } from './transforms';
 import type { Selection, Snapshot, TimeRange, ViewId } from './types';
 
+const TEXT = {
+  showing: (title: string, target: string) => `Showing: ${title}${target ? ` · ${target}` : ''}`,
+} as const;
+
 /**
  * One contract for every "Show me":
  *  1. switch to the view that proves the finding;
@@ -173,7 +177,7 @@ export function clearShowMeAction(finding: Finding, snap: Snapshot): AppAction {
 
 /** The "Showing: ..." line for the status region. `target` is the selected thing's name, if any. */
 export function showingText(finding: Finding, target: string): string {
-  return `Showing: ${finding.title}${target ? ` · ${target}` : ''}`;
+  return TEXT.showing(finding.title, target);
 }
 
 /** Escape and the "Clear selection" chip: no selection, no range, nothing revealed. */

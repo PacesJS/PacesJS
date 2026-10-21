@@ -1,6 +1,12 @@
 import { Origin } from '@pacesjs/engine';
 import type { WaterfallRow } from '../data/types';
 
+const TEXT = {
+  bootstrap: 'node bootstrap',
+  smallRows: (count: number, threshold: string) =>
+    `${count} ${count === 1 ? 'row' : 'rows'} under ${threshold} hidden`,
+} as const;
+
 // Presentation folds over the engine's waterfall rows: sub-precision rows and Node's own
 // bootstrap become one collapsed row each, and the first screen opens along the critical path.
 // Folds are synthetic parent rows (negative ids) that start collapsed; opening one reveals the
@@ -134,7 +140,7 @@ export function foldRows(rows: readonly WaterfallRow[], o: FoldOptions): Folded 
         const id = nextFold--;
         folds.push(id);
         out.push(
-          foldRow(id, 'bootstrap', 'node bootstrap', members, count, {
+          foldRow(id, 'bootstrap', TEXT.bootstrap, members, count, {
             ...(members[0] as WaterfallRow),
             depth: (members[0] as WaterfallRow).depth + shift,
             parent: parentId,
@@ -158,14 +164,11 @@ export function foldRows(rows: readonly WaterfallRow[], o: FoldOptions): Folded 
           folds.push(foldId);
           hiddenSmall += count;
           out.push(
-            foldRow(
-              foldId,
-              'small',
-              `${count} ${count === 1 ? 'row' : 'rows'} under ${o.threshold} hidden`,
-              noise,
-              count,
-              { ...r, depth: r.depth + shift, parent: parentId },
-            ),
+            foldRow(foldId, 'small', TEXT.smallRows(count, o.threshold), noise, count, {
+              ...r,
+              depth: r.depth + shift,
+              parent: parentId,
+            }),
           );
           for (const m of noise) emit(m, shift + 1, foldId);
         }

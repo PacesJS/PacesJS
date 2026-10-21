@@ -23,6 +23,57 @@ const ORIGIN_VAR = [
   '--c-origin-gc',
 ] as const;
 
+const TEXT = {
+  laying: 'Laying out the call graph…',
+  package: 'package',
+  node: (name: string, kind: string, self: string, total: string) =>
+    `${name}, ${kind}, self ${self}, total ${total}`,
+  ego: 'Ego mode',
+  egoName: (name: string) => `: ${name}`,
+  pruned: 'Pruned to 80% of time ·',
+  shownOf: (shown: number, total: number) => `${shown} of ${total}`,
+  functions: 'functions',
+  prune: 'Prune',
+  showAll: 'Show all',
+  zoom: 'Zoom',
+  zoomOut: 'Zoom out',
+  minus: '−',
+  zoomLevel: 'Zoom level',
+  zoomIn: 'Zoom in',
+  plus: '+',
+  fit: 'Fit',
+  actual: '100%',
+  collapse: (pkg: string) => `Collapse ${pkg}`,
+  reveal: (name: string) => `Reveal ${name}`,
+  caption: 'callers above callees · each function shown once · scroll to zoom, drag to pan',
+  encoding: 'Encoding',
+  nodeSize: 'Node size and fill = self time',
+  innerBar: 'Inner bar = total time',
+  edgeWidth: 'Edge width = time passed to callee',
+  sampleEdge: '27% · ~96',
+  shareOfCaller: 'Share of caller · est. calls',
+  sampleHidden: '+3',
+  hiddenNeighbours: 'Hidden callers or callees',
+  hint: 'Each function appears once, with its whole cost in one box. Callers sit above callees; thicker edges carried more time. Select a node to fade everything more than two levels away.',
+  graph: (count: number) =>
+    `Call graph with ${count} functions. Scroll to zoom, drag to pan, plus and minus to zoom, 0 for 100%, arrows to pan.`,
+  recursionTitle: (times: number) => `Recursive: calls itself ${times} times`,
+  recursion: (times: number) => `↻ ×${times}`,
+  self: 'self',
+  total: (duration: string) => `total ${duration}`,
+  edge: (percent: number, calls: string) => `${percent}% · ${calls}`,
+  via: (frames: number) => `via ${frames} ${frames === 1 ? 'frame' : 'frames'}`,
+  expand: (name: string, members: number) => `Expand ${name}: ${members} functions`,
+  more: (count: number) => `+${count}`,
+  hiddenCallees: (count: number, name: string) =>
+    `Show ${count} hidden callee${count === 1 ? '' : 's'} of ${name}`,
+  hiddenCallers: (count: number, name: string) =>
+    `Show ${count} hidden caller${count === 1 ? '' : 's'} of ${name}`,
+  footer:
+    'Faded nodes are outside two levels of the selection. Positions stay put when the selection changes; only fading and highlight move.',
+  packagesCollapsed: ' Packages are collapsed; use the +N chip on a package to expand it in place.',
+} as const;
+
 export function CallGraph() {
   const { client, scope, scopeKey, snap, dispatch, selection, select, openDock } = useApp();
   const hoverFn = useHoverFn();
@@ -72,7 +123,7 @@ export function CallGraph() {
   if (!res)
     return (
       <div className="wf-empty" role="status">
-        Laying out the call graph…
+        {TEXT.laying}
       </div>
     );
   const { graph, layout } = res;
@@ -86,7 +137,12 @@ export function CallGraph() {
   const nodeBox = (fn: number): PlacedNode => pos.get(fn) ?? { fn, x: 0, y: 0, w: 200, h: NODE_H };
 
   const label = (n: CgNode): string =>
-    `${n.name}, ${n.isPackage ? 'package' : n.sub}, self ${fmtDuration(n.selfUs)}, total ${fmtDuration(n.totalUs)}`;
+    TEXT.node(
+      n.name,
+      n.isPackage ? TEXT.package : n.sub,
+      fmtDuration(n.selfUs),
+      fmtDuration(n.totalUs),
+    );
 
   return (
     <>
@@ -95,43 +151,41 @@ export function CallGraph() {
           checked={snap.options.ego}
           onChange={(v) => dispatch({ type: 'options', options: { ego: v } })}
         >
-          Ego mode{selection.fn !== null && selection.name ? `: ${selection.name}` : ''}
+          {TEXT.ego}
+          {selection.fn !== null && selection.name ? TEXT.egoName(selection.name) : ''}
         </Switch>
         <span className="fn-status">
-          Pruned to 80% of time ·{' '}
-          <strong>
-            {graph.shownFns} of {graph.totalFns}
-          </strong>{' '}
-          functions
+          {TEXT.pruned} <strong>{TEXT.shownOf(graph.shownFns, graph.totalFns)}</strong>{' '}
+          {TEXT.functions}
         </span>
         <button type="button" className="btn" onClick={() => setAll((v) => !v)}>
-          {all ? 'Prune' : 'Show all'}
+          {all ? TEXT.prune : TEXT.showAll}
         </button>
-        <div className="cg-zoom" role="group" aria-label="Zoom">
+        <div className="cg-zoom" role="group" aria-label={TEXT.zoom}>
           <button
             type="button"
             className="btn"
-            aria-label="Zoom out"
+            aria-label={TEXT.zoomOut}
             onClick={() => zoomBy(1 / ZOOM_STEP)}
           >
-            −
+            {TEXT.minus}
           </button>
-          <span className="cg-zoom-level num" aria-label="Zoom level">
+          <span className="cg-zoom-level num" aria-label={TEXT.zoomLevel}>
             {percent(view.k)}
           </span>
           <button
             type="button"
             className="btn"
-            aria-label="Zoom in"
+            aria-label={TEXT.zoomIn}
             onClick={() => zoomBy(ZOOM_STEP)}
           >
-            +
+            {TEXT.plus}
           </button>
           <button type="button" className="btn" onClick={fit}>
-            Fit
+            {TEXT.fit}
           </button>
           <button type="button" className="btn" onClick={actual}>
-            100%
+            {TEXT.actual}
           </button>
         </div>
         {expanded.map((p) => (
@@ -143,20 +197,20 @@ export function CallGraph() {
               dispatch({ type: 'options', options: { expanded: expanded.filter((x) => x !== p) } })
             }
           >
-            Collapse {p}
+            {TEXT.collapse(p)}
           </button>
         ))}
         {selectionHidden ? (
           <button type="button" className="btn" onClick={() => reveal([selFn])}>
-            Reveal {selection.name}
+            {TEXT.reveal(selection.name)}
           </button>
         ) : null}
         <p className="axis-caption" style={{ marginLeft: 'auto' }}>
-          callers above callees · each function shown once · scroll to zoom, drag to pan
+          {TEXT.caption}
         </p>
       </div>
       <Legend />
-      <ul className="cg-encoding" aria-label="Encoding">
+      <ul className="cg-encoding" aria-label={TEXT.encoding}>
         <li>
           <span
             aria-hidden="true"
@@ -167,48 +221,45 @@ export function CallGraph() {
               background: 'color-mix(in srgb, var(--c-origin-you) 70%, transparent)',
             }}
           />
-          Node size and fill = self time
+          {TEXT.nodeSize}
         </li>
         <li>
           <span
             aria-hidden="true"
             style={{ width: 18, height: 6, borderRadius: 3, background: 'var(--c-ink)' }}
           />
-          Inner bar = total time
+          {TEXT.innerBar}
         </li>
         <li>
           <span
             aria-hidden="true"
             style={{ width: 18, height: 0, borderTop: '4px solid var(--c-muted)' }}
           />
-          Edge width = time passed to callee
+          {TEXT.edgeWidth}
         </li>
         <li>
           <span className="cg-label" style={{ position: 'static', transform: 'none' }}>
-            27% · ~96
+            {TEXT.sampleEdge}
           </span>
-          Share of caller · est. calls
+          {TEXT.shareOfCaller}
         </li>
         <li>
           <span
             className="cg-label"
             style={{ position: 'static', transform: 'none', borderColor: 'var(--c-border-strong)' }}
           >
-            +3
+            {TEXT.sampleHidden}
           </span>
-          Hidden callers or callees
+          {TEXT.hiddenNeighbours}
         </li>
       </ul>
-      <Hint id="hint-callgraph">
-        Each function appears once, with its whole cost in one box. Callers sit above callees;
-        thicker edges carried more time. Select a node to fade everything more than two levels away.
-      </Hint>
+      <Hint id="hint-callgraph">{TEXT.hint}</Hint>
       <div
         className={`cg-scroll is-${detail}`}
         ref={setBoxEl}
         tabIndex={0}
         role="group"
-        aria-label={`Call graph with ${graph.nodes.length} functions. Scroll to zoom, drag to pan, plus and minus to zoom, 0 for 100%, arrows to pan.`}
+        aria-label={TEXT.graph(graph.nodes.length)}
         {...handlers}
       >
         <div className="cg-plot">
@@ -287,11 +338,8 @@ export function CallGraph() {
                     </span>
                     <span className="cg-node-sub">{n.sub}</span>
                     {n.recursion > 0 ? (
-                      <span
-                        className="cg-recursion"
-                        title={`Recursive: calls itself ${n.recursion} times`}
-                      >
-                        ↻ ×{n.recursion}
+                      <span className="cg-recursion" title={TEXT.recursionTitle(n.recursion)}>
+                        {TEXT.recursion(n.recursion)}
                       </span>
                     ) : null}
                   </span>
@@ -306,8 +354,8 @@ export function CallGraph() {
                   </span>
                   <span className="cg-node-stats">
                     <span className="cg-node-self">{fmtDuration(n.selfUs)}</span>
-                    <span className="cg-node-self-label">self</span>
-                    <span className="cg-node-total">total {fmtDuration(n.totalUs)}</span>
+                    <span className="cg-node-self-label">{TEXT.self}</span>
+                    <span className="cg-node-total">{TEXT.total(fmtDuration(n.totalUs))}</span>
                   </span>
                 </button>
               );
@@ -324,7 +372,7 @@ export function CallGraph() {
                     className="cg-label"
                     style={{ left: (a.x + a.w / 2 + b.x + b.w / 2) / 2, top: my - 9 }}
                   >
-                    {Math.round(e.share * 100)}% · {fmtCount(e.calls)}
+                    {TEXT.edge(Math.round(e.share * 100), fmtCount(e.calls))}
                   </span>
                 );
               })}
@@ -350,7 +398,7 @@ export function CallGraph() {
                       top: (a.y + a.h + b.y) / 2 + 6,
                     }}
                   >
-                    via {e.hiddenFrames} {e.hiddenFrames === 1 ? 'frame' : 'frames'}
+                    {TEXT.via(e.hiddenFrames)}
                   </span>
                 );
               })}
@@ -363,7 +411,7 @@ export function CallGraph() {
                     key={`x-${n.fn}`}
                     type="button"
                     className="cg-chip"
-                    aria-label={`Expand ${n.name}: ${n.members} functions`}
+                    aria-label={TEXT.expand(n.name, n.members)}
                     style={{ left: box.x + box.w - 18, top: box.y + box.h - 10 }}
                     onClick={() =>
                       dispatch({
@@ -372,7 +420,7 @@ export function CallGraph() {
                       })
                     }
                   >
-                    +{n.members}
+                    {TEXT.more(n.members)}
                   </button>,
                 );
               } else if (n.hiddenCallees > 0) {
@@ -381,11 +429,11 @@ export function CallGraph() {
                     key={`c-${n.fn}`}
                     type="button"
                     className="cg-chip"
-                    aria-label={`Show ${n.hiddenCallees} hidden callee${n.hiddenCallees === 1 ? '' : 's'} of ${n.name}`}
+                    aria-label={TEXT.hiddenCallees(n.hiddenCallees, n.name)}
                     style={{ left: box.x + box.w - 18, top: box.y + box.h - 10 }}
                     onClick={() => reveal([n.fn])}
                   >
-                    +{n.hiddenCallees}
+                    {TEXT.more(n.hiddenCallees)}
                   </button>,
                 );
               }
@@ -395,11 +443,11 @@ export function CallGraph() {
                     key={`u-${n.fn}`}
                     type="button"
                     className="cg-chip"
-                    aria-label={`Show ${n.hiddenCallers} hidden caller${n.hiddenCallers === 1 ? '' : 's'} of ${n.name}`}
+                    aria-label={TEXT.hiddenCallers(n.hiddenCallers, n.name)}
                     style={{ left: box.x + box.w - 18, top: box.y - 14 }}
                     onClick={() => reveal([n.fn])}
                   >
-                    +{n.hiddenCallers}
+                    {TEXT.more(n.hiddenCallers)}
                   </button>,
                 );
               }
@@ -409,11 +457,8 @@ export function CallGraph() {
         </div>
       </div>
       <p className="view-footer" style={{ display: 'block' }}>
-        Faded nodes are outside two levels of the selection. Positions stay put when the selection
-        changes; only fading and highlight move.
-        {snap.transforms.some((t) => t.k === 'collapse-deps')
-          ? ' Packages are collapsed; use the +N chip on a package to expand it in place.'
-          : ''}
+        {TEXT.footer}
+        {snap.transforms.some((t) => t.k === 'collapse-deps') ? TEXT.packagesCollapsed : ''}
       </p>
     </>
   );

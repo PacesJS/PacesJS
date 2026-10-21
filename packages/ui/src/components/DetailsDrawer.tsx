@@ -1,95 +1,46 @@
-import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import { useAsync } from '../app/hooks';
-import type { RelatedRow } from '../data/types';
 import { showInView } from '../state/show-in';
 import { originColor, originInfo } from '../theme/origin';
-import {
-  CLEAR_SELECTION,
-  clearShowMeAction,
-  hasSelection,
-  isShowing,
-  showMeContext,
-  showingText,
-} from '../state/showme';
 import { fmtCount, fmtDuration, fmtRange, fmtSeconds, fmtShare } from '../util/format';
+import { DetailsSection } from './DetailsSection';
+import { RelatedList } from './RelatedList';
 
-function RelatedList({ title, rows }: { title: string; rows: RelatedRow[] }) {
-  const { select } = useApp();
-  return (
-    <div className="related">
-      <h3 className="caps">{title}</h3>
-      <ul className="related-list">
-        {rows.map((r) => {
-          const cls = `related-name${r.origin === 0 ? ' is-user' : ''}${r.kind === 'self' ? ' is-self' : ''}`;
-          return (
-            <li key={`${r.kind}-${r.name}-${r.fn}`} className="related-row">
-              {r.fn !== null ? (
-                <button
-                  type="button"
-                  className={cls}
-                  onClick={() => select({ kind: 'fn', fn: r.fn as number })}
-                >
-                  {r.name}
-                </button>
-              ) : (
-                <span className={cls}>{r.name}</span>
-              )}
-              <span className="related-track" aria-hidden="true">
-                <span
-                  className="related-fill"
-                  style={{
-                    width: `${Math.min(100, r.frac * 100)}%`,
-                    background: r.kind === 'self' ? 'var(--c-ink)' : originColor(r.origin),
-                  }}
-                />
-              </span>
-              <span className="related-pct">{fmtShare(r.frac)}</span>
-            </li>
-          );
-        })}
-        {rows.length === 0 ? <li className="section-sub">None in this range</li> : null}
-      </ul>
-    </div>
-  );
-}
-
-/** "Showing: ..." for the active finding, plus the way out: a visible Clear selection chip. */
-function SelectionBar() {
-  const { summary, snap, selection, search, dispatch } = useApp();
-  const ctx = showMeContext(summary);
-  const finding = summary.findings.find((f) => isShowing(f, snap, search, ctx));
-  if (!hasSelection(snap) && !finding) return null;
-  const target =
-    selection.name || (snap.range ? `range ${fmtRange(snap.range[0], snap.range[1])}` : '');
-  return (
-    <div className="selection-bar">
-      <span className="selection-bar-text">
-        {finding ? showingText(finding, target) : `Selected: ${target || 'a time range'}`}
-      </span>
-      <button
-        type="button"
-        className="chip-action"
-        aria-label="Clear selection (Esc)"
-        onClick={() => dispatch(finding ? clearShowMeAction(finding, snap) : CLEAR_SELECTION)}
-      >
-        Clear selection <kbd className="kbd">Esc</kbd>
-      </button>
-    </div>
-  );
-}
+const TEXT = {
+  allTracks: 'all tracks',
+  task: 'Task',
+  showInWaterfall: 'Show in waterfall',
+  showInFlame: 'Show in flame graph',
+  duration: 'Duration',
+  busy: 'Busy (CPU)',
+  startedAt: 'Started at',
+  over50: 'Over 50 ms',
+  longTask: 'Yes, a long task',
+  no: 'No',
+  range: (range: string) => `Range ${range}`,
+  nothingSelected: 'Nothing selected',
+  rangeOn: (duration: string, track: string) =>
+    `${duration} on ${track}. Select a function, call or task to see its numbers.`,
+  selectAnything:
+    'Select a function, a call, a task or a time range to see its numbers here. Selection is shared by every view.',
+  showCallers: 'Show callers',
+  openInEditor: 'Open in editor',
+  thisCall: (total: string, self: string) => `This call: ${total} total (CPU) · ${self} self`,
+  allCalls: 'All calls',
+  allCallsCount: (count: string) => `All ${count} calls`,
+  allCallsOf: (which: string, name: string) => `${which} of ${name}`,
+  totalTime: 'Total time (CPU)',
+  selfTime: 'Self time',
+  share: (track: string) => `Share of ${track}`,
+  inRange: ', in range',
+  calls: 'Calls',
+  noCalls: '—',
+  estimate: 'est.',
+  callers: 'Callers',
+  callees: 'Callees and self',
+} as const;
 
 /** Numbers for the current selection: self, total, share, calls, origin, callers and callees. */
-/** The card every selection shows in the drawer; a new `key` remounts it, which cross-fades the content. */
-function DetailsSection({ children }: { children: ReactNode }) {
-  return (
-    <section aria-label="Selection details" className="details card" data-keeps-selection>
-      <SelectionBar />
-      {children}
-    </section>
-  );
-}
-
 export function DetailsDrawer() {
   const { client, host, scope, scopeKey, snap, selection, dispatch, summary, openDock } = useApp();
   const fn = selection.fn;
@@ -113,7 +64,7 @@ export function DetailsDrawer() {
   const src = fn === null ? null : sourceQ.data;
   const trackLabel =
     snap.track === 'all'
-      ? 'all tracks'
+      ? TEXT.allTracks
       : (summary.tracks.find((t) => t.id === snap.track)?.label ?? snap.track);
 
   if (selection.task) {
@@ -127,7 +78,7 @@ export function DetailsDrawer() {
             style={{ background: 'var(--c-origin-you)' }}
           />
           <h2 className="section-title">{t.label}</h2>
-          <span className="origin-pill is-other">Task</span>
+          <span className="origin-pill is-other">{TEXT.task}</span>
           <div className="details-actions">
             <button
               type="button"
@@ -136,26 +87,26 @@ export function DetailsDrawer() {
                 dispatch({ type: 'go', patch: { view: 'waterfall' }, options: { task: t.index } })
               }
             >
-              Show in waterfall
+              {TEXT.showInWaterfall}
             </button>
           </div>
         </div>
         <dl className="stat-grid">
           <div className="stat stat-big">
-            <dt>Duration</dt>
+            <dt>{TEXT.duration}</dt>
             <dd>{fmtDuration(t.durationUs)}</dd>
           </div>
           <div className="stat">
-            <dt>Busy (CPU)</dt>
+            <dt>{TEXT.busy}</dt>
             <dd>{fmtDuration(t.busyUs)}</dd>
           </div>
           <div className="stat">
-            <dt>Started at</dt>
+            <dt>{TEXT.startedAt}</dt>
             <dd>{fmtSeconds(t.startUs, 2)}</dd>
           </div>
           <div className="stat">
-            <dt>Over 50 ms</dt>
-            <dd>{t.durationUs > 50_000 ? 'Yes, a long task' : 'No'}</dd>
+            <dt>{TEXT.over50}</dt>
+            <dd>{t.durationUs > 50_000 ? TEXT.longTask : TEXT.no}</dd>
           </div>
         </dl>
       </DetailsSection>
@@ -167,12 +118,12 @@ export function DetailsDrawer() {
     return (
       <DetailsSection key={contentKey}>
         <h2 className="section-title">
-          {range ? `Range ${fmtRange(range[0], range[1])}` : 'Nothing selected'}
+          {range ? TEXT.range(fmtRange(range[0], range[1])) : TEXT.nothingSelected}
         </h2>
         <p className="muted" role="status">
           {range
-            ? `${fmtDuration(range[1] - range[0], { approx: false })} on ${trackLabel}. Select a function, call or task to see its numbers.`
-            : 'Select a function, a call, a task or a time range to see its numbers here. Selection is shared by every view.'}
+            ? TEXT.rangeOn(fmtDuration(range[1] - range[0], { approx: false }), trackLabel)
+            : TEXT.selectAnything}
         </p>
       </DetailsSection>
     );
@@ -180,7 +131,7 @@ export function DetailsDrawer() {
 
   const info = originInfo(d.origin);
   const user = d.origin === 0;
-  const jump = snap.view === 'waterfall' ? 'Show in flame graph' : 'Show in waterfall';
+  const jump = snap.view === 'waterfall' ? TEXT.showInFlame : TEXT.showInWaterfall;
   const jumpTo = snap.view === 'waterfall' ? 'flame' : 'waterfall';
 
   return (
@@ -207,7 +158,7 @@ export function DetailsDrawer() {
             className="btn"
             onClick={() => dispatch(showInView('functions', fn))}
           >
-            Show callers
+            {TEXT.showCallers}
           </button>
           <button
             type="button"
@@ -215,44 +166,48 @@ export function DetailsDrawer() {
             disabled={!src?.path}
             onClick={() => src && void host.openInEditor(src.path, src.startLine || 1)}
           >
-            Open in editor
+            {TEXT.openInEditor}
           </button>
         </div>
       </div>
       {call ? (
         <p className="scope-line is-call">
-          This call: {fmtDuration(call.totalUs)} total (CPU) · {fmtDuration(call.selfUs)} self
+          {TEXT.thisCall(fmtDuration(call.totalUs), fmtDuration(call.selfUs))}
         </p>
       ) : null}
       <p className="scope-line">
-        {d.calls > 0 ? `All ${fmtCount(d.calls)} calls` : 'All calls'} of {d.name}
+        {TEXT.allCallsOf(
+          d.calls > 0 ? TEXT.allCallsCount(fmtCount(d.calls)) : TEXT.allCalls,
+          d.name,
+        )}
       </p>
       <dl className="stat-grid">
         <div className="stat stat-big">
-          <dt>Total time (CPU)</dt>
+          <dt>{TEXT.totalTime}</dt>
           <dd>{fmtDuration(d.totalUs)}</dd>
         </div>
         <div className="stat">
-          <dt>Self time</dt>
+          <dt>{TEXT.selfTime}</dt>
           <dd>{fmtDuration(d.selfUs)}</dd>
         </div>
         <div className="stat">
           <dt>
-            Share of {trackLabel}
-            {snap.range ? ', in range' : ''}
+            {TEXT.share(trackLabel)}
+            {snap.range ? TEXT.inRange : ''}
           </dt>
           <dd>{fmtShare(d.share)}</dd>
         </div>
         <div className="stat">
-          <dt>Calls</dt>
+          <dt>{TEXT.calls}</dt>
           <dd>
-            {d.calls > 0 ? fmtCount(d.calls) : '—'} <span className="stat-est">est.</span>
+            {d.calls > 0 ? fmtCount(d.calls) : TEXT.noCalls}{' '}
+            <span className="stat-est">{TEXT.estimate}</span>
           </dd>
         </div>
       </dl>
       <div className="related-grid">
-        <RelatedList title="Callers" rows={d.callers} />
-        <RelatedList title="Callees and self" rows={d.callees} />
+        <RelatedList title={TEXT.callers} rows={d.callers} />
+        <RelatedList title={TEXT.callees} rows={d.callees} />
       </div>
     </DetailsSection>
   );

@@ -3,6 +3,14 @@ import { useAsync } from '../app/hooks';
 import { originInfo } from '../theme/origin';
 import { fmtDuration } from '../util/format';
 
+const TEXT = {
+  show: 'Show',
+  hidden: (label: string) => `${label} are hidden: click to show them`,
+  hide: (label: string) => `Hide ${label}`,
+  hiding: (names: string, duration: string) => `hiding ${names}: ${duration}`,
+  showAll: 'Show all',
+} as const;
+
 interface Group {
   label: string;
   /** Engine origin ids the chip toggles together. */
@@ -45,8 +53,8 @@ export function FilterBar() {
   const hiddenUs = parts.reduce((sum, p) => sum + p.selfUs, 0);
 
   return (
-    <div className="filter-bar" role="group" aria-label="Show">
-      <span className="caps">Show</span>
+    <div className="filter-bar" role="group" aria-label={TEXT.show}>
+      <span className="caps">{TEXT.show}</span>
       {ORIGIN_GROUPS.map((g) => {
         const off = g.origins.every((o) => hidden.includes(o));
         const info = originInfo(g.look);
@@ -56,7 +64,7 @@ export function FilterBar() {
             type="button"
             className={`filter-chip${off ? ' is-off' : ''}`}
             aria-pressed={!off}
-            title={off ? `${g.label} are hidden: click to show them` : `Hide ${g.label}`}
+            title={off ? TEXT.hidden(g.label) : TEXT.hide(g.label)}
             onClick={() => set(toggleGroup(hidden, g))}
           >
             <span
@@ -72,9 +80,9 @@ export function FilterBar() {
       })}
       {hidden.length > 0 ? (
         <span className="filter-summary" role="status">
-          hiding {names.join(', ')}: {fmtDuration(hiddenUs)}
+          {TEXT.hiding(names.join(', '), fmtDuration(hiddenUs))}
           <button type="button" className="filter-reset" onClick={() => set([])}>
-            Show all
+            {TEXT.showAll}
           </button>
         </span>
       ) : null}

@@ -35,6 +35,20 @@ import { WaterfallToolbar } from './WaterfallToolbar';
 
 const VIEWPORT_H = 720;
 
+const TEXT = {
+  loading: 'Loading waterfall…',
+  empty: 'No tasks were recorded on this track.',
+  hint: 'Each row is one call. The bar shows when it started and how long it took inside this task. Ctrl + wheel zooms the time axis; drag the column edges to resize them.',
+  minimap: 'Minimap',
+  call: 'Call',
+  time: 'Time',
+  timeTitle: 'Elapsed time of the call (includes awaiting)',
+  share: 'Share',
+  rows: 'Waterfall rows',
+  summary: (label: string, duration: string, calls: number) =>
+    `${label}, ${duration}, ${calls} calls`,
+} as const;
+
 export function Waterfall() {
   const { client, scope, scopeKey, snap, state, dispatch, selection, select, summary, openDock } =
     useApp();
@@ -241,7 +255,7 @@ export function Waterfall() {
   if (!data) {
     return (
       <div className="wf-empty" role="status">
-        {wfQ.loading ? 'Loading waterfall…' : 'No tasks were recorded on this track.'}
+        {wfQ.loading ? TEXT.loading : TEXT.empty}
       </div>
     );
   }
@@ -303,15 +317,12 @@ export function Waterfall() {
         hiding={hiding}
         hiddenSmall={folded?.hiddenSmall ?? 0}
       />
-      <Hint id="hint-waterfall">
-        Each row is one call. The bar shows when it started and how long it took inside this task.
-        Ctrl + wheel zooms the time axis; drag the column edges to resize them.
-      </Hint>
+      <Hint id="hint-waterfall">{TEXT.hint}</Hint>
 
       <div className="wf-scroll">
         <div className="wf" style={{ ...gridStyle, minWidth }}>
           <div className="wf-grid" style={{ paddingTop: 0 }}>
-            <div className="caps">Minimap</div>
+            <div className="caps">{TEXT.minimap}</div>
             <div
               className="wf-minimap"
               data-keeps-selection
@@ -329,10 +340,10 @@ export function Waterfall() {
           </div>
           <div className="wf-grid wf-head">
             <div className="caps wf-head-cell">
-              Call
+              {TEXT.call}
               <ColumnResizer
                 column="call"
-                label="Call"
+                label={TEXT.call}
                 cols={cols}
                 edge="right"
                 onLive={setLiveCols}
@@ -353,32 +364,29 @@ export function Waterfall() {
                 </span>
               ))}
             </div>
-            <div
-              className="caps wf-col-right wf-head-cell"
-              title="Elapsed time of the call (includes awaiting)"
-            >
+            <div className="caps wf-col-right wf-head-cell" title={TEXT.timeTitle}>
               <ColumnResizer
                 column="time"
-                label="Time"
+                label={TEXT.time}
                 cols={cols}
                 edge="left"
                 onLive={setLiveCols}
                 onCommit={(c) => dispatch({ type: 'prefs', prefs: { wfCols: c } })}
                 onFit={fit}
               />
-              Time
+              {TEXT.time}
             </div>
             <div className="caps wf-col-right wf-head-cell">
               <ColumnResizer
                 column="share"
-                label="Share"
+                label={TEXT.share}
                 cols={cols}
                 edge="left"
                 onLive={setLiveCols}
                 onCommit={(c) => dispatch({ type: 'prefs', prefs: { wfCols: c } })}
                 onFit={fit}
               />
-              Share
+              {TEXT.share}
             </div>
           </div>
           <div
@@ -386,7 +394,7 @@ export function Waterfall() {
             className="wf-body"
             tabIndex={0}
             role="table"
-            aria-label="Waterfall rows"
+            aria-label={TEXT.rows}
             aria-rowcount={rows.length}
             style={{ ['--wf-grid-size' as string]: `${gridSize}%` }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
@@ -456,7 +464,7 @@ export function Waterfall() {
         : null}
       <WaterfallLegend threshold={threshold} />
       <span className="sr-only" role="status" aria-live="polite">
-        {data.taskLabel}, {fmtDuration(data.taskUs)}, {data.rows.length - 1} calls
+        {TEXT.summary(data.taskLabel, fmtDuration(data.taskUs), data.rows.length - 1)}
       </span>
     </>
   );

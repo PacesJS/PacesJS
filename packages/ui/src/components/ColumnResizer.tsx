@@ -5,6 +5,10 @@ import type { ColumnKey } from '../view/waterfall-columns';
 
 const KEY_STEP_PX = 8;
 
+const TEXT = {
+  resize: (label: string) => `Resize ${label} column`,
+} as const;
+
 interface ResizerProps {
   column: ColumnKey;
   label: string;
@@ -31,7 +35,7 @@ export function ColumnResizer({
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Resize ${label} column`}
+      aria-label={TEXT.resize(label)}
       aria-valuenow={cols[column]}
       tabIndex={0}
       className={`wf-resizer is-${edge}`}

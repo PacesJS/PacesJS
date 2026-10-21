@@ -12,6 +12,18 @@ interface SandwichProps {
 
 const ROW = 30;
 
+const TEXT = {
+  title: (name: string) => `Sandwich · ${name}`,
+  sub: (duration: string) =>
+    `Callers above, inverted · callees below · width = share of this function's ${duration}`,
+  none: 'none',
+  entry: (name: string, share: string) => `${name} ${share}`,
+  plot: (name: string, callers: string, callees: string) =>
+    `Sandwich view of ${name}. Callers: ${callers}. Callees: ${callees}.`,
+  self: (share: string) => `self · ${share}`,
+  bar: (name: string, share: string, parent: string) => `${name}, ${share} of ${parent}`,
+} as const;
+
 function sandwichTop(level: number, minLevel: number): number {
   return (level - minLevel) * ROW + (level > 0 ? 12 : 0);
 }
@@ -26,25 +38,26 @@ export function Sandwich({ fn, name, totalUs }: SandwichProps) {
   const height = sandwichTop(maxLevel, minLevel) + ROW;
   const callers = rows
     .filter((r) => r.level === -1)
-    .map((r) => `${r.name} ${fmtShare(r.end - r.start)}`);
+    .map((r) => TEXT.entry(r.name, fmtShare(r.end - r.start)));
   const callees = rows
     .filter((r) => r.level === 1)
-    .map((r) => `${r.name} ${fmtShare(r.end - r.start)}`);
+    .map((r) => TEXT.entry(r.name, fmtShare(r.end - r.start)));
 
   return (
     <div className="sandwich">
       <div className="sandwich-head">
-        <h2 className="section-title">Sandwich · {name}</h2>
-        <span className="section-sub">
-          Callers above, inverted · callees below · width = share of this function&apos;s{' '}
-          {fmtDuration(totalUs)}
-        </span>
+        <h2 className="section-title">{TEXT.title(name)}</h2>
+        <span className="section-sub">{TEXT.sub(fmtDuration(totalUs))}</span>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <div
           className="sandwich-plot"
           role="img"
-          aria-label={`Sandwich view of ${name}. Callers: ${callers.join(', ') || 'none'}. Callees: ${callees.join(', ') || 'none'}.`}
+          aria-label={TEXT.plot(
+            name,
+            callers.join(', ') || TEXT.none,
+            callees.join(', ') || TEXT.none,
+          )}
           style={{ height }}
         >
           {rows.map((r, i) => {
@@ -57,7 +70,7 @@ export function Sandwich({ fn, name, totalUs }: SandwichProps) {
                   className="sandwich-self"
                   style={{ left: `calc(${r.start * 100}% + 12px)`, top: top + 6 }}
                 >
-                  self · {fmtShare(r.end - r.start)}
+                  {TEXT.self(fmtShare(r.end - r.start))}
                 </span>
               );
             }
@@ -68,7 +81,7 @@ export function Sandwich({ fn, name, totalUs }: SandwichProps) {
                 key={`${r.level}-${r.fn}-${r.start}`}
                 type="button"
                 className={`sandwich-bar${focus ? ' is-focus' : ''}`}
-                aria-label={`${r.name}, ${fmtShare(r.end - r.start)} of ${name}`}
+                aria-label={TEXT.bar(r.name, fmtShare(r.end - r.start), name)}
                 style={{
                   top,
                   left: `${r.start * 100}%`,

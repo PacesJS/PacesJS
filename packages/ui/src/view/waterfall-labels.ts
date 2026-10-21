@@ -2,10 +2,24 @@ import type { CSSProperties } from 'react';
 import type { WaterfallRow } from '../data/types';
 import { fmtDuration, fmtShare } from '../util/format';
 
+const TEXT = {
+  below: (threshold: string) => `< ${threshold}`,
+  idle: (duration: string) => `idle ${duration}`,
+  span: (start: string, end: string) => `${start}–${end} ms`,
+  belowPrecision: (threshold: string) => `< ${threshold}, below sampling precision`,
+  elapsed: (elapsed: string, cpu: string, waiting: string) =>
+    `elapsed ${elapsed} (CPU ${cpu}, ${waiting} awaiting)`,
+  details: (lead: string, share: string, whole: string, span: string) =>
+    `${lead} · ${share} of the ${whole} · ${span}`,
+  eventLoopTask: 'event-loop task',
+  resumedTip:
+    'Continuations after an await are attached to the call that started them (inferred; run with --async for exact).',
+} as const;
+
 /** The "< X" label of a row below measurement precision; set once the summary is known. */
 export function durLabel(r: WaterfallRow, threshold = '2 ms'): string {
   if (r.kind === 'fold' && r.fold === 'small') return '';
-  if (r.belowPrecision) return `< ${threshold}`;
+  if (r.belowPrecision) return TEXT.below(threshold);
   return fmtDuration(r.end - r.start, { decimals: 1 });
 }
 
@@ -29,27 +43,31 @@ export function barDetails(
   whole: string,
   elapsed?: Elapsed,
 ): string {
-  if (r.kind === 'wait') return `idle ${fmtDuration(r.end - r.start, { decimals: 1 })}`;
+  if (r.kind === 'wait') return TEXT.idle(fmtDuration(r.end - r.start, { decimals: 1 }));
   if (r.kind === 'fold' && r.fold === 'small') return '';
-  const span = `${(r.start / 1000).toFixed(1)}–${(r.end / 1000).toFixed(1)} ms`;
+  const span = TEXT.span((r.start / 1000).toFixed(1), (r.end / 1000).toFixed(1));
   const dur = r.end - r.start;
   let lead: string;
-  if (r.belowPrecision) lead = `< ${threshold}, below sampling precision`;
+  if (r.belowPrecision) lead = TEXT.belowPrecision(threshold);
   else if (
     elapsed &&
     r.kind === 'call' &&
     dur - elapsed.cpuUs >= Math.max(MIN_AWAIT_US, AWAIT_SHARE * dur)
   ) {
     const waiting = Math.max(0, dur - elapsed.cpuUs);
-    lead = `elapsed ${fmtDuration(dur, { approx: false, decimals: 1 })} (CPU ${fmtDuration(elapsed.cpuUs, { decimals: 1 })}, ${fmtDuration(waiting, { decimals: 0 })} awaiting)`;
+    lead = TEXT.elapsed(
+      fmtDuration(dur, { approx: false, decimals: 1 }),
+      fmtDuration(elapsed.cpuUs, { decimals: 1 }),
+      fmtDuration(waiting, { decimals: 0 }),
+    );
   } else lead = durLabel(r, threshold);
-  return `${lead} · ${fmtShare(r.share)} of the ${whole} · ${span}`;
+  return TEXT.details(lead, fmtShare(r.share), whole, span);
 }
 
 const ORIGIN_HINT: Record<number, string> = { 1: 'node_modules', 3: 'node', 4: 'native', 6: 'V8' };
 
 export function rowLocation(r: WaterfallRow): string {
-  if (r.kind === 'task') return 'event-loop task';
+  if (r.kind === 'task') return TEXT.eventLoopTask;
   if (r.kind === 'wait' || r.kind === 'summary') return '';
   return r.loc || (ORIGIN_HINT[r.origin] ?? '');
 }
@@ -76,5 +94,4 @@ export function tipStyle(
   };
 }
 
-export const RESUMED_TIP =
-  'Continuations after an await are attached to the call that started them (inferred; run with --async for exact).';
+export const RESUMED_TIP = TEXT.resumedTip;

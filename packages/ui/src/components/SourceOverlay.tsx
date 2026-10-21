@@ -4,7 +4,25 @@ import { useAsync } from '../app/hooks';
 import { useSource } from '../app/useSource';
 import { originColor } from '../theme/origin';
 import { fmtDuration } from '../util/format';
-import { EmptySourceNote, SourceBody, SourceHeader, WrapButton, functionBand } from './SourcePanel';
+import { functionBand } from '../view/source-lines';
+import { EmptySourceNote } from './EmptySourceNote';
+import { SourceBody } from './SourceBody';
+import { SourceHeader } from './SourceHeader';
+import { WrapButton } from './WrapButton';
+
+const TEXT = {
+  maximized: 'Source, maximized',
+  closeTitle: 'Close (Esc)',
+  close: 'Close',
+  noFunction: 'No function selected',
+  outline: 'Functions in this file',
+  inFile: 'In this file',
+  outlineMeta: (line: number, selfTime: string) => `:${line} · ${selfTime}`,
+  noOthers: 'No other function of this file ran.',
+  source: 'Source',
+  foot: 'Bars = self time on each line, from V8 line ticks. The shaded lines are the function itself.',
+  openedAt: (line: number) => ` Opened at line ${line}.`,
+} as const;
 
 /** The dock, maximized: the whole file full screen, with an outline of the functions that ran in it. */
 function Overlay({ children }: { children: ReactNode }) {
@@ -15,7 +33,7 @@ function Overlay({ children }: { children: ReactNode }) {
         className="dock-overlay"
         role="dialog"
         aria-modal="true"
-        aria-label="Source, maximized"
+        aria-label={TEXT.maximized}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.stopPropagation();
@@ -46,9 +64,9 @@ export function SourceOverlay() {
         type="button"
         className="btn btn-sm"
         onClick={() => dispatch({ type: 'set-dock-maximized', maximized: false })}
-        title="Close (Esc)"
+        title={TEXT.closeTitle}
       >
-        Close
+        {TEXT.close}
       </button>
     </>
   );
@@ -56,7 +74,7 @@ export function SourceOverlay() {
   if (!info || fn === null) {
     return (
       <Overlay>
-        <p className="section-title">No function selected</p>
+        <p className="section-title">{TEXT.noFunction}</p>
         <EmptySourceNote fn={fn} name={selection.name} loading={source.loading} />
         {tools}
       </Overlay>
@@ -68,8 +86,8 @@ export function SourceOverlay() {
   return (
     <Overlay>
       <div className="source-view">
-        <nav className="source-outline" aria-label="Functions in this file">
-          <h3 className="caps">In this file</h3>
+        <nav className="source-outline" aria-label={TEXT.outline}>
+          <h3 className="caps">{TEXT.inFile}</h3>
           <ul>
             {(outline?.items ?? []).map((it) => (
               <li key={it.fn}>
@@ -86,23 +104,22 @@ export function SourceOverlay() {
                   />
                   <span className="outline-name">{it.name}</span>
                   <span className="outline-meta">
-                    :{it.line} · {fmtDuration(it.selfUs)}
+                    {TEXT.outlineMeta(it.line, fmtDuration(it.selfUs))}
                   </span>
                 </button>
               </li>
             ))}
             {outline && outline.items.length === 0 ? (
-              <li className="section-sub">No other function of this file ran.</li>
+              <li className="section-sub">{TEXT.noOthers}</li>
             ) : null}
           </ul>
         </nav>
-        <section aria-label="Source" className="source card source-full">
+        <section aria-label={TEXT.source} className="source card source-full">
           <SourceHeader source={source} tools={tools} />
           <SourceBody source={source} wrap={wrap} band={band} />
           <p className="source-foot">
-            Bars = self time on each line, from V8 line ticks. The shaded lines are the function
-            itself.
-            {snap.options.line > 0 ? ` Opened at line ${snap.options.line}.` : ''}
+            {TEXT.foot}
+            {snap.options.line > 0 ? TEXT.openedAt(snap.options.line) : ''}
           </p>
         </section>
       </div>

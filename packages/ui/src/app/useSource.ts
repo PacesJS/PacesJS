@@ -10,6 +10,11 @@ import { fmtCount } from '../util/format';
 import { sourceReason } from '../view/source-reason';
 import type { SourceReason } from '../view/source-reason';
 
+const TEXT = {
+  acrossAllCalls: (count: string) => `across all ${count} calls`,
+  acrossAll: 'across all calls',
+} as const;
+
 export interface SourceLine {
   n: number;
   text: string;
@@ -190,9 +195,7 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
     scopeMode,
     calls: details?.calls ?? 0,
     acrossAll:
-      details && details.calls > 0
-        ? `across all ${fmtCount(details.calls)} calls`
-        : 'across all calls',
+      details && details.calls > 0 ? TEXT.acrossAllCalls(fmtCount(details.calls)) : TEXT.acrossAll,
     reason,
     loading: infoQ.loading || (path !== '' && textQ.loading),
   };

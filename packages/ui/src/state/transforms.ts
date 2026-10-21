@@ -1,35 +1,51 @@
 import { encodeTransform } from './hash';
 import type { Transform } from './types';
 
+const TEXT = {
+  stitch: 'Stitch continuations (inferred)',
+  collapseDeps: 'Collapse dependencies',
+  mergePlumbing: 'Merge plumbing',
+  dropIdle: 'Drop idle',
+  invert: 'Invert',
+  collapsePkg: (pkg: string) => `Collapse ${pkg}`,
+  merge: (name: string) => `Merge ${name}`,
+  mergeNode: 'Merge node',
+  focusOn: (name: string) => `Focus on ${name}`,
+  focusSelf: (name: string) => `Focus on ${name} self`,
+  focusSubtree: 'Focus on subtree',
+  collapseRec: (name: string) => `Collapse recursion in ${name}`,
+  dropSamples: (name: string) => `Drop samples with ${name}`,
+} as const;
+
 /** Names for transform chips. `fnName` resolves function ids to display names. */
 export function transformLabel(t: Transform, fnName: (fn: number) => string): string {
   switch (t.k) {
     case 'stitch':
-      return 'Stitch continuations (inferred)';
+      return TEXT.stitch;
     case 'collapse-deps':
-      return 'Collapse dependencies';
+      return TEXT.collapseDeps;
     case 'merge-plumbing':
-      return 'Merge plumbing';
+      return TEXT.mergePlumbing;
     case 'drop-idle':
-      return 'Drop idle';
+      return TEXT.dropIdle;
     case 'invert':
-      return 'Invert';
+      return TEXT.invert;
     case 'collapse-pkg':
-      return `Collapse ${t.pkg}`;
+      return TEXT.collapsePkg(t.pkg);
     case 'merge-fn':
-      return `Merge ${fnName(t.fn)}`;
+      return TEXT.merge(fnName(t.fn));
     case 'merge-node':
-      return `Merge node`;
+      return TEXT.mergeNode;
     case 'focus-fn':
-      return `Focus on ${fnName(t.fn)}`;
+      return TEXT.focusOn(fnName(t.fn));
     case 'focus-self':
-      return `Focus on ${fnName(t.fn)} self`;
+      return TEXT.focusSelf(fnName(t.fn));
     case 'focus-node':
-      return `Focus on subtree`;
+      return TEXT.focusSubtree;
     case 'collapse-rec':
-      return `Collapse recursion in ${fnName(t.fn)}`;
+      return TEXT.collapseRec(fnName(t.fn));
     case 'drop-fn':
-      return `Drop samples with ${fnName(t.fn)}`;
+      return TEXT.dropSamples(fnName(t.fn));
   }
 }
 

@@ -8,6 +8,21 @@ import { clamp } from '../view/scale';
 import { Icon } from './Icon';
 import { LanePlot } from './LanePlot';
 
+const TEXT = {
+  peak: (delay: string, at: string) => `peak ${delay} at ${at}`,
+  loading: 'Loading tracks…',
+  pin: (label: string) => `Pin ${label}`,
+  unpin: (label: string) => `Unpin ${label}`,
+  supporting: 'supporting',
+  supportingTitle: 'npx/npm wrapper process: it launches the target and does little work itself',
+  loopDelay: 'Loop delay, p99',
+  longest: (label: string) => `Longest tasks on ${label}`,
+  task: 'task',
+  taskEntry: (label: string, duration: string, at: string) => `${label}, ${duration}, at ${at}`,
+  selectedRange: (range: string) => `Selected range ${range}`,
+  trackCount: (count: number) => `${count} tracks`,
+} as const;
+
 function DelayPlot({ lane }: { lane: LaneData }) {
   const pal = usePalette();
   const ref = useCanvas(
@@ -18,8 +33,10 @@ function DelayPlot({ lane }: { lane: LaneData }) {
     <div className="lane-delay-plot">
       <canvas ref={ref} className="lane-canvas" aria-hidden="true" />
       <span className="lane-delay-peak">
-        peak {fmtDuration(lane.peakDelayUs, { approx: false })} at{' '}
-        {fmtSeconds(lane.peakDelayAtUs, 1)}
+        {TEXT.peak(
+          fmtDuration(lane.peakDelayUs, { approx: false }),
+          fmtSeconds(lane.peakDelayAtUs, 1),
+        )}
       </span>
     </div>
   );
@@ -44,7 +61,7 @@ export function TrackLanes() {
   if (!overview)
     return (
       <div className="status-line" role="status">
-        Loading tracks…
+        {TEXT.loading}
       </div>
     );
 
@@ -76,7 +93,7 @@ export function TrackLanes() {
                   <button
                     type="button"
                     className="pin-btn"
-                    aria-label={`${pinned ? 'Unpin' : 'Pin'} ${lane.label}`}
+                    aria-label={pinned ? TEXT.unpin(lane.label) : TEXT.pin(lane.label)}
                     aria-pressed={pinned}
                     onClick={() => dispatch({ type: 'toggle-pin', track: lane.id })}
                   >
@@ -86,11 +103,8 @@ export function TrackLanes() {
                     <span className="lane-title">{lane.label}</span>
                     <span className="lane-meta">{lane.meta}</span>
                     {lane.support ? (
-                      <span
-                        className="lane-support"
-                        title="npx/npm wrapper process: it launches the target and does little work itself"
-                      >
-                        supporting
+                      <span className="lane-support" title={TEXT.supportingTitle}>
+                        {TEXT.supporting}
                       </span>
                     ) : null}
                   </div>
@@ -128,11 +142,11 @@ export function TrackLanes() {
               </div>
               {lane.hasLoopData ? (
                 <div className="lane-delay">
-                  <span className="lane-delay-label">Loop delay, p99</span>
+                  <span className="lane-delay-label">{TEXT.loopDelay}</span>
                   <DelayPlot lane={lane} />
                 </div>
               ) : null}
-              <ul className="sr-only" aria-label={`Longest tasks on ${lane.label}`}>
+              <ul className="sr-only" aria-label={TEXT.longest(lane.label)}>
                 {top.map((i) => (
                   <li key={i}>
                     <button
@@ -145,7 +159,11 @@ export function TrackLanes() {
                         })
                       }
                     >
-                      {`${lane.taskLabels[i] || 'task'}, ${fmtDuration((lane.taskEnd[i] ?? 0) - (lane.taskStart[i] ?? 0))}, at ${fmtSeconds(lane.taskStart[i] ?? 0, 2)}`}
+                      {TEXT.taskEntry(
+                        lane.taskLabels[i] || TEXT.task,
+                        fmtDuration((lane.taskEnd[i] ?? 0) - (lane.taskStart[i] ?? 0)),
+                        fmtSeconds(lane.taskStart[i] ?? 0, 2),
+                      )}
                     </button>
                   </li>
                 ))}
@@ -157,7 +175,7 @@ export function TrackLanes() {
           <div
             className="range-overlay"
             role="group"
-            aria-label={`Selected range ${fmtRange(range[0], range[1])}`}
+            aria-label={TEXT.selectedRange(fmtRange(range[0], range[1]))}
             style={{
               left: `calc(var(--lane-head-w) + var(--sp-12) + (100% - var(--lane-head-w) - var(--sp-12)) * ${frac(range[0])})`,
               width: `calc((100% - var(--lane-head-w) - var(--sp-12)) * ${frac(range[1]) - frac(range[0])})`,
@@ -167,7 +185,7 @@ export function TrackLanes() {
           </div>
         ) : null}
         <span className="sr-only" role="status">
-          {summary.tracks.length} tracks
+          {TEXT.trackCount(summary.tracks.length)}
         </span>
       </div>
     </div>

@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { SHORTCUTS } from '../state/keymap';
 
+const TEXT = {
+  title: 'Keyboard shortcuts',
+  close: 'Close',
+} as const;
+
 interface ShortcutSheetProps {
   onClose(): void;
 }
@@ -16,14 +21,14 @@ export function ShortcutSheet({ onClose }: ShortcutSheetProps) {
         className="sheet card"
         role="dialog"
         aria-modal="true"
-        aria-label="Keyboard shortcuts"
+        aria-label={TEXT.title}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onClose();
         }}
       >
         <div className="section-head">
-          <h2 className="section-title">Keyboard shortcuts</h2>
+          <h2 className="section-title">{TEXT.title}</h2>
           <button
             ref={closeRef}
             type="button"
@@ -31,7 +36,7 @@ export function ShortcutSheet({ onClose }: ShortcutSheetProps) {
             style={{ marginLeft: 'auto' }}
             onClick={onClose}
           >
-            Close
+            {TEXT.close}
           </button>
         </div>
         <dl className="sheet-list">

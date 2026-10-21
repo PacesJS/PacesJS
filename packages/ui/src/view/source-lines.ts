@@ -1,5 +1,14 @@
 /** Pure helpers for the source panel: line windows and a tiny syntax tokenizer. */
 
+const TEXT = {
+  samples: (count: number) => `${count} sample${count === 1 ? '' : 's'}`,
+  across: (samples: string, across: string) => `${samples} ${across}.`,
+  approximate: (samples: string) =>
+    `About ${samples}: below the measurement precision, so the time on this line is approximate.`,
+  rolledUp: (lineCount: number, lines: string) =>
+    `V8 reported this time on line${lineCount > 1 ? 's' : ''} ${lines}, inside this statement.`,
+} as const;
+
 export interface LineWindow {
   /** 1-based first and last line shown. */
   first: number;
@@ -26,6 +35,12 @@ export function functionEnd(lines: readonly string[], startLine: number): number
     if (opened && depth <= 0) return i + 1;
   }
   return Math.min(lines.length, startLine + 24);
+}
+
+/** First and last line of the function in `lines` (for the Source view's band). */
+export function functionBand(texts: readonly string[], startLine: number): LineWindow | null {
+  if (texts.length === 0 || startLine <= 0) return null;
+  return { first: startLine, last: functionEnd(texts, startLine) };
 }
 
 export function lineWindow(
@@ -217,7 +232,7 @@ export function isLowConfidence(selfUs: number, precisionUs: number): boolean {
 /** "1 sample" / "3 samples": how many sampling intervals the time stands for, at least one. */
 export function sampleLabel(selfUs: number, precisionUs: number): string {
   const n = Math.max(1, precisionUs > 0 ? Math.round(selfUs / precisionUs) : 1);
-  return `${n} sample${n === 1 ? '' : 's'}`;
+  return TEXT.samples(n);
 }
 
 /** Tooltip for a line's gutter: why a faint bar is approximate, and where V8 put rolled-up time. */
@@ -230,16 +245,12 @@ export function gutterTitle(
   if (selfUs <= 0) return '';
   const parts: string[] = [];
   // The bar is a sum over every call of the function, a handful of samples at most.
-  if (across) parts.push(`${sampleLabel(selfUs, precisionUs)} ${across}.`);
+  if (across) parts.push(TEXT.across(sampleLabel(selfUs, precisionUs), across));
   if (isLowConfidence(selfUs, precisionUs)) {
-    parts.push(
-      `About ${sampleLabel(selfUs, precisionUs)}: below the measurement precision, so the time on this line is approximate.`,
-    );
+    parts.push(TEXT.approximate(sampleLabel(selfUs, precisionUs)));
   }
   if (from.length > 0) {
-    parts.push(
-      `V8 reported this time on line${from.length > 1 ? 's' : ''} ${from.join(', ')}, inside this statement.`,
-    );
+    parts.push(TEXT.rolledUp(from.length, from.join(', ')));
   }
   return parts.join(' ');
 }

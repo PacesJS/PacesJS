@@ -11,6 +11,18 @@ import {
   tokenize,
 } from '../view/source-lines';
 
+const TEXT = {
+  jump: (line: number, duration: string) => `Jump to hottest line · ${line} · ${duration}`,
+  lines: 'Source lines with self time',
+  lineSelf: (n: number, duration: string) => `Line ${n}, self ${duration}`,
+  lineSample: (sample: string) => `, ${sample}`,
+  lineDefinitionSuffix: ', function definition',
+  lineDefinition: (n: number) => `Line ${n}, function definition`,
+  perCall: (across: string) => `${across}; per-call line ticks are not recorded`,
+  inThisCall: 'in this call',
+  chipTitle: (scope: string) => `Time spent in the callee ${scope}, matched to this line by name`,
+} as const;
+
 interface SourceCodeProps {
   source: SourceState;
   wrap: boolean;
@@ -60,12 +72,12 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
             className="btn btn-sm"
             onClick={() => dispatch({ type: 'options', options: { line: hottest }, replace: true })}
           >
-            Jump to hottest line · {hottest} · {fmtDuration(hottestSelf)}
+            {TEXT.jump(hottest, fmtDuration(hottestSelf))}
           </button>
         </div>
       ) : null}
       <div className={`source-scroll${wrap ? ' is-wrap' : ''}`} ref={scrollRef}>
-        <ol className="source-lines" aria-label="Source lines with self time">
+        <ol className="source-lines" aria-label={TEXT.lines}>
           {lines.map((l, idx) => {
             const self = selfByLine.get(l.n) ?? 0;
             const from = rolledFrom.get(l.n) ?? [];
@@ -81,9 +93,9 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                 aria-current={isDefinition ? 'location' : undefined}
                 aria-label={
                   self > 0
-                    ? `Line ${l.n}, self ${fmtDuration(self)}${low ? `, ${sampleLabel(self, precisionUs)}` : ''}${isDefinition ? ', function definition' : ''}`
+                    ? `${TEXT.lineSelf(l.n, fmtDuration(self))}${low ? TEXT.lineSample(sampleLabel(self, precisionUs)) : ''}${isDefinition ? TEXT.lineDefinitionSuffix : ''}`
                     : isDefinition
-                      ? `Line ${l.n}, function definition`
+                      ? TEXT.lineDefinition(l.n)
                       : undefined
                 }
               >
@@ -93,9 +105,7 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                     self,
                     precisionUs,
                     from,
-                    scopeMode === 'call'
-                      ? `${acrossAll}; per-call line ticks are not recorded`
-                      : acrossAll,
+                    scopeMode === 'call' ? TEXT.perCall(acrossAll) : acrossAll,
                   )}
                 >
                   {self > 0 ? (
@@ -124,7 +134,7 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                     <button
                       type="button"
                       className="call-chip"
-                      title={`Time spent in the callee ${scopeMode === 'call' ? 'in this call' : acrossAll}, matched to this line by name`}
+                      title={TEXT.chipTitle(scopeMode === 'call' ? TEXT.inThisCall : acrossAll)}
                       onClick={() => chip.fn !== null && select({ kind: 'fn', fn: chip.fn })}
                     >
                       <span

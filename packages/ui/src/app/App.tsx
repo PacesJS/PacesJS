@@ -16,6 +16,12 @@ import { initialSnapshot } from '../state/types';
 import type { Snapshot } from '../state/types';
 import { Shell } from './Shell';
 
+const TEXT = {
+  failed: 'paces could not open this session',
+  restart: 'Restart paces, or reopen the session with paces open <file.paces>.',
+  loading: 'Loading profile…',
+} as const;
+
 interface AppProps {
   host: HostAdapter;
   /** Force the in-process query path (tests); the default uses a Web Worker when available. */
@@ -107,18 +113,16 @@ export function App({ host, inProcess = false, elk }: AppProps) {
   if (state.error) {
     return (
       <div className="status-line" role="alert">
-        <h1 className="section-title">paces could not open this session</h1>
+        <h1 className="section-title">{TEXT.failed}</h1>
         <p>{state.error}</p>
-        <p className="muted">
-          Restart paces, or reopen the session with paces open &lt;file.paces&gt;.
-        </p>
+        <p className="muted">{TEXT.restart}</p>
       </div>
     );
   }
   if (!state.ready) {
     return (
       <div className="status-line" role="status">
-        Loading profile…
+        {TEXT.loading}
       </div>
     );
   }

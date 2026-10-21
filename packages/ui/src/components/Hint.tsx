@@ -1,6 +1,10 @@
 import { useApp } from '../app/context';
 import { Icon } from './Icon';
 
+const TEXT = {
+  dismiss: 'Dismiss tip',
+} as const;
+
 interface HintProps {
   /** Stable id so a dismissed hint stays dismissed (persisted through settings). */
   id: string;
@@ -18,7 +22,7 @@ export function Hint({ id, children }: HintProps) {
       <button
         type="button"
         className="note-btn"
-        aria-label="Dismiss tip"
+        aria-label={TEXT.dismiss}
         onClick={() => dispatch({ type: 'dismiss-hint', id })}
       >
         <Icon name="close" size={14} strokeWidth={2} />

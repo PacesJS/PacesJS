@@ -12,6 +12,13 @@ import { SourcePanel } from './SourcePanel';
 const KEY_STEP_FRACTION = 0.02;
 const KEY_STEP_PX = 24;
 
+const TEXT = {
+  resize: 'Resize source dock',
+  widthText: (percent: number) => `${percent}% of the width`,
+  heightText: (pixels: number) => `${pixels} pixels high`,
+  dock: 'Source dock',
+} as const;
+
 interface HandleProps {
   dock: DockPrefs;
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -57,11 +64,11 @@ function DockHandle({ dock, containerRef, onLive, onCommit }: HandleProps) {
     <div
       role="separator"
       aria-orientation={right ? 'vertical' : 'horizontal'}
-      aria-label="Resize source dock"
+      aria-label={TEXT.resize}
       aria-valuenow={clamp(now, limits[0] ?? 0, limits[1] ?? 100)}
       aria-valuemin={limits[0]}
       aria-valuemax={limits[1]}
-      aria-valuetext={right ? `${now}% of the width` : `${now} pixels high`}
+      aria-valuetext={right ? TEXT.widthText(now) : TEXT.heightText(now)}
       tabIndex={0}
       className={`dock-handle is-${dock.orientation}`}
       onPointerDown={(e) => {
@@ -127,11 +134,7 @@ export function Workspace() {
           onCommit={(d) => dispatch({ type: 'prefs', prefs: { dock: d } })}
         />
       )}
-      <aside
-        aria-label="Source dock"
-        className={`dock is-${dock.orientation}`}
-        data-keeps-selection
-      >
+      <aside aria-label={TEXT.dock} className={`dock is-${dock.orientation}`} data-keeps-selection>
         <SourcePanel />
       </aside>
       {state.dockMaximized ? <SourceOverlay /> : null}

@@ -5,6 +5,26 @@ import { TaskPicker } from './TaskPicker';
 import { SORTS, MIN_DURATIONS } from '../view/waterfall-rows';
 import type { WaterfallSort } from '../view/waterfall-rows';
 
+const TEXT = {
+  criticalPath: 'Critical path',
+  pathOnly: 'Path only',
+  pathOnlyKey: 'p',
+  logicalFlow: 'Logical flow',
+  fromAsync: 'from --async',
+  needsAsync: 'needs --async',
+  hideSmall: 'Hide small tasks',
+  showSmall: (count: number) => `Show ${count} small tasks`,
+  order: 'Order',
+  timeOrder: 'time order',
+  minDuration: 'Min duration',
+  auto: (threshold: string) => `Auto · hide under ${threshold}`,
+  atLeast: (label: string) => `≥ ${label}`,
+  hiding: (fold: string, count: number) => `Hiding rows under ${fold} (${count})`,
+  show: 'show',
+  axis: (order: string) =>
+    `x = time inside the task, ms · siblings in ${order} · ~ = sampled estimate`,
+} as const;
+
 interface WaterfallToolbarProps {
   data: WaterfallData;
   tasks: readonly TaskOption[];
@@ -34,7 +54,7 @@ export function WaterfallToolbar({
   const { wfSort, minDurUs, pathOnly } = snap.options;
   const hasAsync = data.hasAsync;
   const smallCount = tasks.filter((t) => t.group === 'Small tasks').length;
-  const order = SORTS.find((s) => s.value === wfSort)?.label.toLowerCase() ?? 'time order';
+  const order = SORTS.find((s) => s.value === wfSort)?.label.toLowerCase() ?? TEXT.timeOrder;
   return (
     <div className="toolbar-row">
       <div className="toolbar" style={{ gap: 12 }}>
@@ -42,21 +62,21 @@ export function WaterfallToolbar({
           checked={snap.options.critical}
           onChange={(v) => dispatch({ type: 'options', options: { critical: v } })}
         >
-          Critical path
+          {TEXT.criticalPath}
         </Switch>
         <Switch
           checked={pathOnly}
           onChange={(v) => dispatch({ type: 'options', options: { pathOnly: v } })}
         >
-          Path only <kbd className="kbd">p</kbd>
+          {TEXT.pathOnly} <kbd className="kbd">{TEXT.pathOnlyKey}</kbd>
         </Switch>
         <Switch
           checked={snap.options.logical && hasAsync}
           disabled={!hasAsync}
           onChange={(v) => dispatch({ type: 'options', options: { logical: v } })}
-          hint={hasAsync ? 'from --async' : 'needs --async'}
+          hint={hasAsync ? TEXT.fromAsync : TEXT.needsAsync}
         >
-          Logical flow
+          {TEXT.logicalFlow}
         </Switch>
         <TaskPicker data={data} tasks={tasks} showSmall={showSmall} />
         {smallCount > 0 ? (
@@ -66,11 +86,11 @@ export function WaterfallToolbar({
             aria-pressed={showSmall}
             onClick={onToggleSmall}
           >
-            {showSmall ? 'Hide small tasks' : `Show ${smallCount} small tasks`}
+            {showSmall ? TEXT.hideSmall : TEXT.showSmall(smallCount)}
           </button>
         ) : null}
         <div className="field">
-          <label htmlFor="wf-sort">Order</label>
+          <label htmlFor="wf-sort">{TEXT.order}</label>
           <select
             id="wf-sort"
             className="select"
@@ -90,7 +110,7 @@ export function WaterfallToolbar({
           </select>
         </div>
         <div className="field">
-          <label htmlFor="wf-min">Min duration</label>
+          <label htmlFor="wf-min">{TEXT.minDuration}</label>
           <select
             id="wf-min"
             className="select"
@@ -99,10 +119,10 @@ export function WaterfallToolbar({
               dispatch({ type: 'options', options: { minDurUs: Number(e.target.value) } })
             }
           >
-            <option value={-1}>Auto · hide under {threshold}</option>
+            <option value={-1}>{TEXT.auto(threshold)}</option>
             {MIN_DURATIONS.map((m) => (
               <option key={m.us} value={m.us}>
-                {m.us === 0 ? m.label : `≥ ${m.label}`}
+                {m.us === 0 ? m.label : TEXT.atLeast(m.label)}
               </option>
             ))}
           </select>
@@ -110,18 +130,18 @@ export function WaterfallToolbar({
       </div>
       {hiding && hiddenSmall > 0 ? (
         <span className="filter-summary" role="status">
-          Hiding rows under {foldLabel} ({hiddenSmall})
+          {TEXT.hiding(foldLabel, hiddenSmall)}
           <button
             type="button"
             className="filter-reset"
             onClick={() => dispatch({ type: 'options', options: { minDurUs: 0 } })}
           >
-            show
+            {TEXT.show}
           </button>
         </span>
       ) : null}
       <p className="axis-caption" style={{ fontWeight: 400 }}>
-        x = time inside the task, ms · siblings in {order} · ~ = sampled estimate
+        {TEXT.axis(order)}
       </p>
     </div>
   );
