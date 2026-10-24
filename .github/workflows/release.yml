@@ -26,7 +26,7 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm test
+      - run: pnpm test --continue
       - run: node --test scripts/next-version.test.mjs
 
   publish:
