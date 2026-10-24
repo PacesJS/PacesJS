@@ -59,32 +59,39 @@ function withoutSources(bytes: Uint8Array): Uint8Array {
   return zipSync(files);
 }
 
+// The eslint-cli capture is large; compressing it takes seconds when the whole workspace tests at once.
+const HEAVY_FIXTURE_TIMEOUT_MS = 30_000;
+
 describe('format golden masters', () => {
   for (const name of ['worker-imbalance', 'eslint-cli', 'orders-server']) {
-    it(`${name}: write and read`, () => {
-      const capture = fixture(name);
-      const sources = [
-        { path: 'src\\a.js', content: strToU8('console.log(1);') },
-        { path: 'src/b.js', content: strToU8('console.log(2);') },
-      ];
-      const plainBytes = writeSession(capture, { engineVersion: '1.2.3' });
-      const rich = writeSession(capture, {
-        engineVersion: '1.2.3',
-        model: strToU8('model-bytes'),
-        sources,
-      });
-      check(`${name}/files`, captureToFiles(capture, '1.2.3'));
-      check(`${name}/plain-bytes`, plainBytes);
-      check(`${name}/rich-bytes`, rich);
-      check(`${name}/plain-manifest`, readManifest(plainBytes));
-      check(`${name}/rich-manifest`, readManifest(rich));
-      check(`${name}/plain-session`, readSession(plainBytes));
-      check(`${name}/rich-session`, readSession(rich, { engineVersion: '1.2.3' }));
-      check(`${name}/rich-session-nomodel`, readSession(rich, { engineVersion: '9.9.9' }));
-      const old = withoutSources(rich);
-      check(`${name}/old-manifest`, readManifest(old));
-      check(`${name}/old-session`, readSession(old));
-    });
+    it(
+      `${name}: write and read`,
+      () => {
+        const capture = fixture(name);
+        const sources = [
+          { path: 'src\\a.js', content: strToU8('console.log(1);') },
+          { path: 'src/b.js', content: strToU8('console.log(2);') },
+        ];
+        const plainBytes = writeSession(capture, { engineVersion: '1.2.3' });
+        const rich = writeSession(capture, {
+          engineVersion: '1.2.3',
+          model: strToU8('model-bytes'),
+          sources,
+        });
+        check(`${name}/files`, captureToFiles(capture, '1.2.3'));
+        check(`${name}/plain-bytes`, plainBytes);
+        check(`${name}/rich-bytes`, rich);
+        check(`${name}/plain-manifest`, readManifest(plainBytes));
+        check(`${name}/rich-manifest`, readManifest(rich));
+        check(`${name}/plain-session`, readSession(plainBytes));
+        check(`${name}/rich-session`, readSession(rich, { engineVersion: '1.2.3' }));
+        check(`${name}/rich-session-nomodel`, readSession(rich, { engineVersion: '9.9.9' }));
+        const old = withoutSources(rich);
+        check(`${name}/old-manifest`, readManifest(old));
+        check(`${name}/old-session`, readSession(old));
+      },
+      HEAVY_FIXTURE_TIMEOUT_MS,
+    );
   }
 
   it('writes or checks the hash file', () => {
