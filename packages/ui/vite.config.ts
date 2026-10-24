@@ -12,5 +12,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['test/**/*.test.{ts,tsx}'],
     setupFiles: ['./test/setup.ts'],
+    // The golden screens render whole views in jsdom; a cold CI runner needs more than 5 s.
+    testTimeout: 30_000,
   },
 });
