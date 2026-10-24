@@ -219,6 +219,7 @@ export function Waterfall() {
           origin: r.origin,
           hatched: r.belowPrecision,
           critical: snap.options.critical && r.critical,
+          own: r.kind === 'call' ? { selfUs: r.selfUs, totalUs: r.end - r.start } : undefined,
         });
         if (r.belowPrecision || !labelFitsBar(rect.w, col.x1 - col.x0)) return;
         // Only label a bar the text fits inside, never one it would spill out of.

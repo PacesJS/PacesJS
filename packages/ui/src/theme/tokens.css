@@ -75,6 +75,7 @@
   --c-accent-fill: rgba(255, 138, 31, 0.28);
   --c-on-accent: #171a3a;
   --c-kbd-on-accent: #ffffff99;
+  --c-self-stripe: #ffffff;
   --c-focus-gap: #ffffff;
   --grad-accent: linear-gradient(
     135deg,

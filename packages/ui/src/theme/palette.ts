@@ -5,6 +5,8 @@ export interface Palette {
   ink: string;
   accent: string;
   outline: string;
+  /** Stripes marking a call's own time on its bar: light, so the origin color shows between them. */
+  selfStripe: string;
   cpuLine: string;
   cpuFill: string;
   gcTick: string;
@@ -28,6 +30,7 @@ export function readPalette(el: Element = document.documentElement): Palette {
     ink: v('--c-ink'),
     accent: v('--c-accent'),
     outline: v('--c-outline'),
+    selfStripe: v('--c-self-stripe'),
     cpuLine: v('--c-cpu-line'),
     cpuFill: v('--c-cpu-fill'),
     gcTick: v('--c-gc-tick'),

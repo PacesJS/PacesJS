@@ -1,5 +1,6 @@
 import type { Palette } from '../theme/palette';
 import { roundedRectPath } from './draw-shapes';
+import { selfWidth } from './self-share';
 
 /** Diagonal stripes inside a rect: "below measurement precision". */
 export function hatch(
@@ -25,10 +26,35 @@ export function hatch(
   ctx.restore();
 }
 
+/**
+ * The call's own time, as white stripes over the left part of its bar, the full height of the bar and
+ * clipped to its rounded shape. The origin color shows between the stripes.
+ */
+export function drawSelf(
+  ctx: CanvasRenderingContext2D,
+  pal: Palette,
+  x: number,
+  y: number,
+  barW: number,
+  barH: number,
+  selfUs: number,
+  totalUs: number,
+): void {
+  const w = selfWidth(barW, selfUs, totalUs);
+  if (w <= 0) return;
+  ctx.save();
+  roundedRectPath(ctx, x, y, barW, barH, 4);
+  ctx.clip();
+  hatch(ctx, x, y, w, barH, pal.selfStripe);
+  ctx.restore();
+}
+
 export interface BarStyle {
   origin: number;
   hatched: boolean;
   critical: boolean;
+  /** Own and total time of the call; the own share is striped before the outline is drawn over it. */
+  own?: { selfUs: number; totalUs: number };
 }
 
 /** One bar: dim fill for non-user origins, stripes under the sampling precision, outline for critical. */
@@ -49,6 +75,7 @@ export function drawBar(
     ctx.fillStyle = dim;
     roundedRectPath(ctx, x, y, w, h, 4);
     ctx.fill();
+    if (style.own) drawSelf(ctx, pal, x, y, w, h, style.own.selfUs, style.own.totalUs);
   }
   if (style.critical) {
     ctx.strokeStyle = pal.outline;

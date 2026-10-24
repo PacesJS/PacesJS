@@ -6,6 +6,7 @@ import { showInView } from '../state/show-in';
 import type { ViewId } from '../state/types';
 import { originInfo } from '../theme/origin';
 import { fmtDuration, fmtRange, fmtShare } from '../util/format';
+import { drawSelf } from '../view/draw-bars';
 import { roundedRectPath } from '../view/draw-shapes';
 import { flameFill } from '../view/flame-fill';
 import { FLAME, flameHeight, flameRects, hitRect } from '../view/flame-geometry';
@@ -124,6 +125,8 @@ export function FlameGraph() {
         ctx.fillStyle = flameFill(pal, data, i, color);
         roundedRectPath(ctx, r.x, r.y, r.w, r.h, 4);
         ctx.fill();
+        if (!isRoot)
+          drawSelf(ctx, pal, r.x, r.y, r.w, r.h, data.selfUs[i] ?? 0, data.totalUs[i] ?? 0);
         const isSel = selFn !== null && !isRoot && data.fn[i] === selFn;
         const isHover = hoverFn !== null && !isRoot && data.fn[i] === hoverFn;
         if (isSel || isHover) {
