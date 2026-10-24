@@ -6,6 +6,7 @@ export type IconName =
   | 'close'
   | 'plus'
   | 'pin'
+  | 'flag'
   | 'file'
   | 'collapse'
   | 'expand'
@@ -27,6 +28,7 @@ const PATHS: Record<IconName, string[]> = {
   close: ['M6 6l12 12M18 6L6 18'],
   plus: ['M12 5v14M5 12h14'],
   pin: ['M9 4h6l-1 6 3 3H7l3-3-1-6z', 'M12 13v7'],
+  flag: ['M6 21V4', 'M6 5h11l-2 4 2 4H6'],
   file: ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5'],
   collapse: ['M13 6l6 6-6 6', 'M5 6l6 6-6 6'],
   expand: ['M11 6l-6 6 6 6', 'M19 6l-6 6 6 6'],

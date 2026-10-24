@@ -1801,3 +1801,63 @@
   color: var(--c-ink);
   font-weight: var(--fw-semi);
 }
+
+/* Marks: flags on the time axis, one dashed line through the lanes for each. */
+.mark-row {
+  align-items: center;
+  min-height: 44px;
+}
+
+.mark-heading {
+  color: var(--c-muted);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semi);
+}
+
+.mark-track {
+  position: relative;
+  height: 44px;
+}
+
+/* The transform makes this its own stacking context, so the menu inside it is only as high as the
+   anchor: lift the anchor over the lanes and the dashed lines, and an open one over its neighbours. */
+.mark-anchor {
+  position: absolute;
+  top: 0;
+  z-index: 10;
+  transform: translateX(-14px);
+}
+
+.mark-anchor:has(.mark-flag[aria-expanded='true']) {
+  z-index: 11;
+}
+
+.mark-flag {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--sp-6);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-6);
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--c-accent-ink);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semi);
+  white-space: nowrap;
+}
+
+.mark-flag:hover,
+.mark-flag[aria-expanded='true'] {
+  background: var(--c-accent-soft);
+}
+
+.mark-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--c-accent-ink);
+  pointer-events: none;
+}

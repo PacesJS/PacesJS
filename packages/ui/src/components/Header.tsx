@@ -16,6 +16,7 @@ const TEXT = {
     exit: 'Exit',
     sigint: 'Ctrl+C',
     duration: 'Duration limit',
+    stop: 'Stop key',
     crash: 'Crash',
   } as Record<string, string>,
   brand: 'paces',

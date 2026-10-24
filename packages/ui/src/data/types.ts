@@ -1,5 +1,6 @@
 import type { Finding, ModelWarning, RunKind } from '@pacesjs/engine';
 import type { Selection, TimeRange, Transform } from '../state/types';
+import type { RunMark } from './marks';
 
 // View models: what the components render. Every number comes from an engine query; the adapter
 // only attaches display text (names, locations) and renames fields for the views.
@@ -56,6 +57,8 @@ export interface ModelSummary {
   /** Every package name, sorted: collapsed package `i` has function id `functionCount + i`. */
   packages: string[];
   hasBaseline: boolean;
+  /** Moments the user flagged while profiling, in time order. */
+  marks: RunMark[];
 }
 
 export interface TaskInfo {

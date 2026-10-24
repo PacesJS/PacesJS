@@ -37,6 +37,53 @@ async function ready(): Promise<void> {
 
 const current = (name: RegExp) => screen.getByRole('button', { name }).getAttribute('aria-current');
 
+describe('marks', () => {
+  const at = (ms: number): number => orders.meta.startedAt + ms;
+  const marked: ExecutionModel = {
+    ...orders,
+    meta: {
+      ...orders.meta,
+      marks: [
+        { at: at(300), label: 'Mark 1' },
+        { at: at(800), label: 'Mark 2' },
+      ],
+    },
+  };
+  const hashRange = (): string => new URLSearchParams(location.hash.slice(1)).get('r') ?? '';
+
+  it('shows nothing about marks for a run without any', async () => {
+    open();
+    await ready();
+    expect(screen.queryByRole('button', { name: /^Mark \d/ })).toBeNull();
+  });
+
+  it('says a run ended with the stop key, in words', async () => {
+    open({ ...orders, meta: { ...orders.meta, endedBy: 'stop' } });
+    await ready();
+    expect(screen.getByText('Stop key')).toBeTruthy();
+  });
+
+  it('puts each mark on the timeline as a button with its time', async () => {
+    open(marked);
+    await ready();
+    expect(await screen.findByRole('button', { name: 'Mark 1, at 0.30 s' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mark 2, at 0.80 s' })).toBeTruthy();
+  });
+
+  it.each([
+    ['Focus before Mark 2', '0..800000'],
+    ['Focus after Mark 1', `300000..${orders.meta.durationUs}`],
+    ['Focus between Mark 1 and Mark 2', '300000..800000'],
+  ])('%s sets the range %s', async (item, range) => {
+    open(marked);
+    await ready();
+    const name = item.includes('Mark 2') && !item.includes('Mark 1') ? 'Mark 2' : 'Mark 1';
+    await userEvent.click(await screen.findByRole('button', { name: new RegExp(`^${name},`) }));
+    await userEvent.click(screen.getByRole('menuitem', { name: item }));
+    await waitFor(() => expect(hashRange()).toBe(range));
+  });
+});
+
 describe('paces screen', () => {
   it('shows the brand, the command and the default transforms in the header', async () => {
     open();

@@ -32,6 +32,27 @@ describe('summary', () => {
     expect(s.findings[0]?.kind).toBe('hot-function');
   });
 
+  it('has no marks for a run where none were added', () => {
+    expect(q.summary().marks).toEqual([]);
+  });
+
+  it('places the marks of a run on its timeline, from the start of the run', () => {
+    const marked = {
+      ...model,
+      meta: {
+        ...model.meta,
+        marks: [
+          { at: model.meta.startedAt + 250, label: 'Mark 1' },
+          { at: model.meta.startedAt + 900, label: 'Mark 2' },
+        ],
+      },
+    };
+    expect(createQueries(marked, null, nodeElk).summary().marks).toEqual([
+      { us: 250_000, label: 'Mark 1' },
+      { us: 900_000, label: 'Mark 2' },
+    ]);
+  });
+
   it('knows whether a baseline was loaded', () => {
     expect(q.summary().hasBaseline).toBe(false);
     expect(createQueries(model, model, nodeElk).summary().hasBaseline).toBe(true);

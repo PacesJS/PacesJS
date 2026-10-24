@@ -7,6 +7,7 @@ import { fmtAxis, fmtDuration, fmtRange, fmtSeconds } from '../util/format';
 import { clamp } from '../view/scale';
 import { Icon } from './Icon';
 import { LanePlot } from './LanePlot';
+import { MarkFlags } from './MarkFlags';
 
 const TEXT = {
   peak: (delay: string, at: string) => `peak ${delay} at ${at}`,
@@ -67,6 +68,14 @@ export function TrackLanes() {
 
   const frac = (us: number): number => clamp(us / overview.durationUs, 0, 1);
   const range = snap.range;
+  const focusRange = (from: number, to: number): void =>
+    dispatch({
+      type: 'go',
+      patch: {
+        range: [Math.round(from), Math.round(to)],
+        selection: { kind: 'range', from: Math.round(from), to: Math.round(to) },
+      },
+    });
 
   return (
     <div className="tracks-scroll">
@@ -81,6 +90,7 @@ export function TrackLanes() {
             ))}
           </div>
         </div>
+        <MarkFlags marks={summary.marks} durationUs={overview.durationUs} onRange={focusRange} />
         {lanes.map((lane) => {
           const pinned = state.pinned.includes(lane.id);
           const selectedTask =
@@ -129,15 +139,7 @@ export function TrackLanes() {
                         : { type: 'select', selection: { kind: 'none' } },
                     )
                   }
-                  onRange={(from, to) =>
-                    dispatch({
-                      type: 'go',
-                      patch: {
-                        range: [Math.round(from), Math.round(to)],
-                        selection: { kind: 'range', from: Math.round(from), to: Math.round(to) },
-                      },
-                    })
-                  }
+                  onRange={focusRange}
                 />
               </div>
               {lane.hasLoopData ? (
@@ -171,6 +173,16 @@ export function TrackLanes() {
             </div>
           );
         })}
+        {summary.marks.map((m, i) => (
+          <div
+            key={`${m.us}-${i}`}
+            className="mark-line"
+            aria-hidden="true"
+            style={{
+              left: `calc(var(--lane-head-w) + var(--sp-12) + (100% - var(--lane-head-w) - var(--sp-12)) * ${frac(m.us)})`,
+            }}
+          />
+        ))}
         {range ? (
           <div
             className="range-overlay"

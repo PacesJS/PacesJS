@@ -21,6 +21,7 @@ import {
 } from './adapt';
 import { browserElk } from './elk-browser';
 import { layoutGraph } from './layout';
+import { runMarks } from './marks';
 import type { ElkProvider, GraphLayout } from './layout';
 import {
   locationOf,
@@ -191,6 +192,7 @@ export function createQueries(
         functionCount: F,
         packages: ctx.pkgs,
         hasBaseline: baseline !== null,
+        marks: runMarks(model.meta.marks, model.meta.startedAt, model.meta.durationUs),
       };
     },
     overview() {
