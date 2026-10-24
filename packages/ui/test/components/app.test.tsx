@@ -884,6 +884,29 @@ describe('whole-run waterfall noise', () => {
     });
   });
 
+  it('walks the arrow keys down onto a fold and past it, with nothing focused', async () => {
+    const table = await openRun();
+    await waitFor(() => expect(rowsOf(table).length).toBeGreaterThan(3));
+    const isFold = (r: HTMLElement): boolean =>
+      /^node bootstrap,|rows? under .* hidden,/.test(r.getAttribute('aria-label') ?? '');
+    const at = rowsOf(table).findIndex(isFold);
+    expect(at).toBeGreaterThan(0);
+    await userEvent.click(rowsOf(table)[at - 1] as HTMLElement);
+    (document.activeElement as HTMLElement).blur();
+
+    await userEvent.keyboard('{ArrowDown}');
+    const onFold = rowsOf(table)[at] as HTMLElement;
+    expect(onFold.getAttribute('aria-selected')).toBe('true');
+    expect(onFold.getAttribute('aria-expanded')).toBe('false');
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect((rowsOf(table)[at] as HTMLElement).getAttribute('aria-selected')).toBe('false');
+    expect((rowsOf(table)[at + 1] as HTMLElement).getAttribute('aria-selected')).toBe('true');
+
+    await userEvent.keyboard('{ArrowUp}{Enter}');
+    expect((rowsOf(table)[at] as HTMLElement).getAttribute('aria-expanded')).toBe('true');
+  });
+
   it('shows every row when Any is chosen, and the chip goes away', async () => {
     await openRun();
     await userEvent.selectOptions(screen.getByLabelText('Min duration'), '0');

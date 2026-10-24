@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../app/context';
+import { isTypingTarget } from '../state/keymap';
 import { useBarTooltip } from '../app/useBarTooltip';
 import { useTimeWindow } from '../app/useTimeWindow';
 import {
@@ -23,7 +24,7 @@ import type { ColumnKey } from '../view/waterfall-columns';
 import { WF, barColumn, barRect, labelFitsBar, visibleSlice } from '../view/waterfall-geometry';
 import { foldRows, hotTargetPath, reconcileCollapsed } from '../view/waterfall-fold';
 import { rowFacts, selectedRowIdOf } from '../view/waterfall-facts';
-import { waterfallKeyAction } from '../view/waterfall-keys';
+import { isCursorOnly, waterfallKeyAction } from '../view/waterfall-keys';
 import { durLabel, tipStyle } from '../view/waterfall-labels';
 import { visibleRows } from '../view/waterfall-rows';
 import type { Transform } from '../state/types';
@@ -64,6 +65,8 @@ export function Waterfall() {
   const data = wfQ.data;
 
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+  // The row the keyboard rests on when it is a fold or summary: those are never selected.
+  const [cursorId, setCursorId] = useState<number | null>(null);
   const [hover] = useState(createHoverStore);
   const { tip, show: showTip, hide: hideTip } = useBarTooltip();
   const [liveCols, setLiveCols] = useState<WfColumns | null>(null);
@@ -139,12 +142,15 @@ export function Waterfall() {
     if (next) setCollapsed(next);
     setSeenData(folded);
     setSeenRow(selectedRowId);
+    setCursorId(null);
   }
+  const cursor = cursorId !== null && rows.some((r) => r.id === cursorId) ? cursorId : null;
+  const currentId = cursor ?? selectedRowId;
 
-  // Scroll the selected row into view when the selection changes.
+  // Scroll the current row into view when the selection or the keyboard's row changes.
   useEffect(() => {
-    if (selectedRowId === null) return;
-    const at = visible.findIndex((i) => rows[i]?.id === selectedRowId);
+    if (currentId === null) return;
+    const at = visible.findIndex((i) => rows[i]?.id === currentId);
     const box = bodyRef.current;
     if (at < 0 || !box) return;
     const top = at * WF.rowH;
@@ -153,7 +159,7 @@ export function Waterfall() {
     }
     // Only a change of selection moves the scroll position, not collapsing or sorting.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRowId, data]);
+  }, [currentId, data]);
 
   // The first screen of a fresh result starts at the hot chain, not at the top of a long run.
   const focusId = useMemo(() => {
@@ -179,6 +185,7 @@ export function Waterfall() {
   }, []);
   const selectRow = useStableCallback((r: WaterfallRow): void => {
     if (!data) return;
+    setCursorId(null);
     if (r.kind === 'fold') {
       onToggle(r.id);
       return;
@@ -203,6 +210,38 @@ export function Waterfall() {
   );
   const onBarEnter = useStableCallback(showTip);
   const onBarLeave = useStableCallback(hideTip);
+
+  const move = (e: Pick<KeyboardEvent, 'key' | 'preventDefault'>): void => {
+    const action = waterfallKeyAction(e.key, {
+      visible,
+      rows,
+      collapsed,
+      selectedRowId: currentId,
+    });
+    if (!action) return;
+    e.preventDefault();
+    if (action.type === 'select') {
+      if (isCursorOnly(action.row)) setCursorId(action.row.id);
+      else selectRow(action.row);
+    } else if (action.type === 'activate') selectRow(action.row);
+    else if (action.type === 'collapse') setCollapsed(action.collapsed);
+    else if (action.type === 'open-dock') openDock();
+    else if (action.type === 'back') dispatch({ type: 'back' });
+  };
+
+  // The footer advertises the arrows, so they work with nothing focused too (the page body). Keys
+  // already handled inside the table, or aimed at another control, are left alone.
+  const onWindowKey = useStableCallback((e: globalThis.KeyboardEvent): void => {
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.target))
+      return;
+    if (e.target !== document.body && e.target !== document.documentElement) return;
+    move(e);
+  });
+  useEffect(() => {
+    // `window` is the time window in this component.
+    globalThis.addEventListener('keydown', onWindowKey);
+    return () => globalThis.removeEventListener('keydown', onWindowKey);
+  }, [onWindowKey]);
 
   const canvasRef = useCanvas(
     (ctx, { width: w }) => {
@@ -291,16 +330,6 @@ export function Waterfall() {
             (t) => measureText(t, `600 14px ${pal.fontSans}`),
           );
     dispatch({ type: 'prefs', prefs: { wfCols: { ...state.prefs.wfCols, [column]: next } } });
-  };
-
-  const move = (e: KeyboardEvent<HTMLDivElement>): void => {
-    const action = waterfallKeyAction(e.key, { visible, rows, collapsed, selectedRowId });
-    if (!action) return;
-    e.preventDefault();
-    if (action.type === 'select') selectRow(action.row);
-    else if (action.type === 'collapse') setCollapsed(action.collapsed);
-    else if (action.type === 'open-dock') openDock();
-    else if (action.type === 'back') dispatch({ type: 'back' });
   };
 
   const winStartPct = (window.start / total) * 100;
@@ -412,7 +441,7 @@ export function Waterfall() {
               />
               {slice.map((ri, k) => {
                 const r = rows[ri] as WaterfallRow;
-                const isSel = r.id === selectedRowId;
+                const isSel = r.id === currentId;
                 return (
                   <WaterfallRowView
                     key={r.id}

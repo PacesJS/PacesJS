@@ -5,6 +5,8 @@ export type WaterfallKeyAction =
   | { type: 'select'; row: WaterfallRow }
   | { type: 'collapse'; collapsed: ReadonlySet<number> }
   | { type: 'open-dock' }
+  /** Enter on a row that only the keyboard rests on (a fold or summary): do what a click does. */
+  | { type: 'activate'; row: WaterfallRow }
   | { type: 'back' }
   | { type: 'noop' };
 
@@ -14,6 +16,14 @@ interface KeyState {
   rows: readonly WaterfallRow[];
   collapsed: ReadonlySet<number>;
   selectedRowId: number | null;
+}
+
+/**
+ * Fold and summary rows stand for rows that are not there; selecting one would change the view or
+ * toggle it, so the keyboard rests on them without selecting and acts only on Enter.
+ */
+export function isCursorOnly(row: WaterfallRow): boolean {
+  return row.kind === 'fold' || row.kind === 'summary';
 }
 
 /** Arrows walk and fold rows, Enter opens the source, Backspace goes back; null for any other key. */
@@ -46,7 +56,9 @@ export function waterfallKeyAction(key: string, s: KeyState): WaterfallKeyAction
     const next = rows[visible[idx + 1] as number];
     return next && next.depth > cur.depth ? { type: 'select', row: next } : { type: 'noop' };
   }
-  if (key === 'Enter' && cur) return { type: 'open-dock' };
+  if (key === 'Enter' && cur) {
+    return isCursorOnly(cur) ? { type: 'activate', row: cur } : { type: 'open-dock' };
+  }
   if (key === 'Backspace') return { type: 'back' };
   return null;
 }
