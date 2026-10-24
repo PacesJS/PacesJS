@@ -150,6 +150,7 @@ describe('format version policy', () => {
     const attempt = () => readSession(withVersion(`${major + 1}.0.0`));
     expect(attempt).toThrow(FormatVersionError);
     expect(attempt).toThrow(/upgrade paces/);
+    expect(attempt).toThrow('npm i -g @pacesjs/paces@latest');
   });
 
   it('refuses an older, unsupported major', () => {

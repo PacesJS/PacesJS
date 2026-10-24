@@ -1,6 +1,6 @@
 # pacesJS
 
-`paces` profiles a Node command (`npx paces -- node app.js`) and opens a UI that shows what the JavaScript did in linked views. Spec: `docs/JS Execution Profiler — Technical Design.md` (written under the old name "Trailmap"). Design boards: `docs/*.png`, source `docs/Trailmap — Node profiler.html`.
+`paces` profiles a Node command (`npx @pacesjs/paces -- node app.js`) and opens a UI that shows what the JavaScript did in linked views. Spec: `docs/JS Execution Profiler — Technical Design.md` (written under the old name "Trailmap"). Design boards: `docs/*.png`, source `docs/Trailmap — Node profiler.html`.
 
 **Naming: Trailmap → paces.** Org/scope `@pacesjs`, CLI `paces`, sessions `.paces` in `./.paces/`, env `PACES_SESSION` / `PACES_SOCKET`. Never write "trailmap" in code, UI copy or new docs.
 

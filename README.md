@@ -3,8 +3,10 @@
 Profile a Node command and read what the JavaScript did.
 
 ```sh
-npx paces -- node app.js
+npx @pacesjs/paces -- node app.js
 ```
+
+The package installs a `paces` command: `npm i -g @pacesjs/paces`, then `paces -- node app.js`. The rest of this page uses the short form.
 
 `paces` runs your command unchanged, samples it with V8's CPU profiler, and when it exits (or you press Ctrl+C on a server) opens a window with linked views of the run: a findings summary, a track timeline, a waterfall, a flame graph, a call graph, a functions table and the source, all driven by one selection. Nothing leaves your machine, and there are no native binaries to compile.
 
@@ -75,7 +77,7 @@ pnpm workspace with Turborepo and TypeScript.
 
 | Package                   | Role                                                                         |
 | ------------------------- | ---------------------------------------------------------------------------- |
-| `paces`                   | The published CLI, bundled for `npx`                                         |
+| `@pacesjs/paces`          | The published CLI, bundled for `npx`                                         |
 | `@pacesjs/engine`         | Analysis passes, execution model, query and transform layer (no Node or DOM) |
 | `@pacesjs/format`         | `.paces` session reader and writer                                           |
 | `@pacesjs/collector-node` | Preload scripts and control socket that run inside the target                |

@@ -63,7 +63,7 @@ export function assertReadable(version: unknown): void {
   }
   if (theirs > mine) {
     throw new FormatVersionError(
-      `This session uses format ${String(version)}, newer than this paces understands (${FORMAT_VERSION}). Please upgrade paces: npm i -g paces@latest.`,
+      `This session uses format ${String(version)}, newer than this paces understands (${FORMAT_VERSION}). Please upgrade paces: npm i -g @pacesjs/paces@latest.`,
     );
   }
   if (theirs < mine) {

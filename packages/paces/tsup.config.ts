@@ -4,7 +4,7 @@ import { defineConfig } from 'tsup';
 const version = (path: string): string =>
   (JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8')) as { version: string }).version;
 
-// Everything is bundled so `npx paces` installs with zero runtime dependencies (R5).
+// Everything is bundled so `npx @pacesjs/paces` installs with zero runtime dependencies (R5).
 export default defineConfig({
   entry: { cli: 'src/cli.ts' },
   format: ['esm'],
