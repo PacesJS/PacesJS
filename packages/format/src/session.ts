@@ -28,11 +28,12 @@ export interface Session {
   sources: Record<string, Uint8Array>;
 }
 
-// Fixed timestamp: identical input gives identical bytes.
-const MTIME = Date.UTC(2000, 0, 1);
+// Fixed timestamp: identical input gives identical bytes. fflate reads the date back in local time,
+// so it is built from local fields; a UTC instant would change the bytes with the time zone.
+const fixedMtime = (): number => new Date(2000, 0, 1).getTime();
 const entry = (data: Uint8Array, level: ZipOptions['level'] = 6): [Uint8Array, ZipOptions] => [
   data,
-  { level, mtime: MTIME },
+  { level, mtime: fixedMtime() },
 ];
 
 export function writeSession(capture: RawCapture, options: WriteOptions): Uint8Array {

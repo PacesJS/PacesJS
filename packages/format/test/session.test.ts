@@ -266,3 +266,21 @@ describe('marks', () => {
     expect(back.capture.meta.endedBy).toBe('stop');
   });
 });
+
+describe('writeSession is deterministic', () => {
+  it('writes the same bytes in every time zone', () => {
+    const capture = fixture('hot-regex');
+    const zone = process.env['TZ'];
+    const bytesIn = (tz: string): string => {
+      process.env['TZ'] = tz;
+      return Buffer.from(writeSession(capture, { engineVersion: '1.0.0' })).toString('base64');
+    };
+    try {
+      expect(bytesIn('America/New_York')).toBe(bytesIn('UTC'));
+      expect(bytesIn('Asia/Tokyo')).toBe(bytesIn('UTC'));
+    } finally {
+      if (zone === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = zone;
+    }
+  });
+});
