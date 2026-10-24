@@ -21,7 +21,9 @@ export type ToCli =
       interval: number;
       start: number;
     }
-  | { type: 'flushed'; track: string };
+  | { type: 'flushed'; track: string }
+  /** The program touched `process.stdin`, so it may want the keyboard for itself. */
+  | { type: 'stdin' };
 
 /** Messages sent from the CLI to a profiled process. */
 export type ToTarget = { type: 'start' } | { type: 'stop' } | { type: 'sigint' };

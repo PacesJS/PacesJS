@@ -16,6 +16,7 @@ import { after, createInterruptHandler } from './interrupt.js';
 import { killTree } from './launch.js';
 import { detectLostTracks } from './lost-tracks.js';
 import type { RegisteredTrack } from './lost-tracks.js';
+import { formatElapsed } from './progress.js';
 import { planSpawn } from './spawn-plan.js';
 
 export class NoProcessesError extends Error {
@@ -47,6 +48,29 @@ export interface ProfileOptions {
   onSignal?: (signal: string, handler: () => void) => () => void;
   /** Project root recorded in the session; defaults to `cwd`. */
   projectRoot?: string;
+  /**
+   * paces is holding the keyboard for its hotkeys, so the program gets no stdin at all. Sharing the
+   * console with the program lets any process in its tree (the `npx.cmd` shim, a child) read the
+   * keystrokes or reset the console's input mode, which turns Ctrl+C into a signal for all of them.
+   */
+  holdStdin?: boolean;
+  /** Hands the caller the controls once the program is starting; returns what undoes it. */
+  attach?: (controls: ProfileControls) => () => void;
+}
+
+/** What the terminal layer can do to a profile while it runs. */
+export interface ProfileControls {
+  /** Flags the current moment, numbered `Mark 1`, `Mark 2`, ... */
+  mark(): { at: number; label: string };
+  /** Stops profiling, ends the program at once and keeps what was collected. */
+  stop(): void;
+  /** The same as Ctrl+C: stop profiling, then let the program shut itself down. */
+  interrupt(): void;
+  state(): { processes: number; marks: number };
+  /** A profiled program has used `process.stdin`. */
+  stdinUsed(): boolean;
+  /** Calls back, once, when a profiled program first uses `process.stdin`. */
+  onStdinUsed(listener: () => void): void;
 }
 
 export interface ProfileResult {
@@ -117,6 +141,9 @@ interface ControlServer {
   registrations: Map<string, RegisteredTrack>;
   /** Resolves once every connected track has acknowledged its flush (or hung up). */
   allFlushed: Promise<void>;
+  /** A profiled program has used `process.stdin`. */
+  stdinUsed: boolean;
+  stdinListeners: Array<() => void>;
   broadcast(type: ToTarget['type']): void;
 }
 
@@ -157,6 +184,11 @@ async function startControlServer(sock: string, started: boolean): Promise<Contr
               });
               conns.set(track, { socket, flushed: false });
               if (control.started) socket.write(`${JSON.stringify({ type: 'start' })}\n`);
+            } else if (msg.type === 'stdin') {
+              if (!control.stdinUsed) {
+                control.stdinUsed = true;
+                for (const listener of control.stdinListeners) listener();
+              }
             } else if (msg.type === 'flushed' && msg.track) {
               const c = conns.get(msg.track);
               if (c) c.flushed = true;
@@ -173,6 +205,8 @@ async function startControlServer(sock: string, started: boolean): Promise<Contr
     conns,
     registrations,
     allFlushed,
+    stdinUsed: false,
+    stdinListeners: [],
     broadcast: (type) => {
       for (const c of conns.values()) {
         if (!c.socket.destroyed) c.socket.write(`${JSON.stringify({ type })}\n`);
@@ -220,6 +254,7 @@ interface MetaInput {
   endedBy: CaptureMeta['endedBy'];
   projectRoot: string;
   lost: ReturnType<typeof detectLostTracks>;
+  marks: Array<{ at: number; label: string }>;
 }
 
 function captureMeta(m: MetaInput): CaptureMeta {
@@ -235,6 +270,7 @@ function captureMeta(m: MetaInput): CaptureMeta {
     endedBy: m.endedBy,
     projectRoot: m.projectRoot,
     ...(m.lost.length > 0 ? { lostTracks: m.lost } : {}),
+    ...(m.marks.length > 0 ? { marks: m.marks } : {}),
   };
 }
 
@@ -276,7 +312,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   const child = spawn(plan.file, plan.args, {
     cwd,
     env,
-    stdio: 'inherit',
+    stdio: [options.holdStdin ? 'ignore' : 'inherit', 'inherit', 'inherit'],
     windowsVerbatimArguments: plan.verbatim,
     windowsHide: false,
   });
@@ -303,6 +339,11 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   });
   let endedBy: CaptureMeta['endedBy'] = 'exit';
   const cleanups: Array<() => void> = [];
+  const marks: Array<{ at: number; label: string }> = [];
+  let requestStop: () => void = () => {};
+  const stopRequested = new Promise<'stop'>((resolve) => {
+    requestStop = () => resolve('stop');
+  });
 
   const interrupt = createInterruptHandler({
     sendStop: () => broadcast('stop'),
@@ -340,6 +381,29 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
     );
   }
 
+  if (options.attach) {
+    const detach = options.attach({
+      mark: () => {
+        const m = { at: Date.now(), label: `Mark ${marks.length + 1}` };
+        marks.push(m);
+        log(`paces: ${m.label} at ${formatElapsed(m.at - startedAt)}`);
+        return m;
+      },
+      stop: requestStop,
+      interrupt: () => {
+        endedBy = 'sigint';
+        void interrupt();
+      },
+      state: () => ({ processes: registrations.size, marks: marks.length }),
+      stdinUsed: () => control.stdinUsed,
+      onStdinUsed: (listener) => {
+        if (control.stdinUsed) listener();
+        else control.stdinListeners.push(listener);
+      },
+    });
+    cleanups.push(detach);
+  }
+
   let windowEnd: Promise<'duration'> | undefined;
   const { duration } = flags;
   if (duration) {
@@ -359,10 +423,19 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
     const first = await Promise.race([
       spawnFailed,
       exited.then((c) => ({ exit: c })),
+      stopRequested,
       ...(windowEnd ? [windowEnd] : []),
     ]);
     if (first === 'duration') {
       endedBy = 'duration';
+      stoppedEarly = true;
+      exitCode = 0;
+    } else if (first === 'stop') {
+      endedBy = 'stop';
+      broadcast('stop');
+      await Promise.race([allFlushed, after(5000)]);
+      killTree(child);
+      await Promise.race([exited, after(3000)]);
       stoppedEarly = true;
       exitCode = 0;
     } else exitCode = (first as { exit: number }).exit;
@@ -391,6 +464,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
       endedBy,
       projectRoot: options.projectRoot ?? cwd,
       lost,
+      marks,
     });
     const capture = readCaptureDir(dir, meta);
     rmSync(dir, { recursive: true, force: true });

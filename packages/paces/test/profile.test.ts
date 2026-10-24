@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultReportFlags } from '../src/args.js';
 import type { Flags } from '../src/args.js';
 import { nodeOptionsWith, runProfile } from '../src/profile.js';
+import type { ProfileControls } from '../src/profile.js';
 
 const preload = createRequire(import.meta.url).resolve('@pacesjs/collector-node/preload.cjs');
 const flags = (over: Partial<Flags> = {}): Flags => ({
@@ -216,6 +217,179 @@ describe('runProfile', () => {
     },
   );
 });
+
+describe('runProfile controls', () => {
+  const spin = `setInterval(() => { let x = 0; for (let i = 0; i < 1e5; i++) x += i; }, 5);`;
+  const readyFile = (): string => join(mkdtempSync(join(tmpdir(), 'paces-ready-')), 'ready');
+  const withReady = (body: string): string =>
+    `${body} require('fs').writeFileSync(process.env.READY, String(process.pid));`;
+
+  function attached() {
+    const box: { controls?: ProfileControls; detached: boolean } = { detached: false };
+    return {
+      box,
+      attach: (c: ProfileControls) => {
+        box.controls = c;
+        return () => {
+          box.detached = true;
+        };
+      },
+    };
+  }
+
+  it('records the marks the user adds, numbered and in order, inside the run', async () => {
+    const ready = readyFile();
+    const a = attached();
+    const run = runProfile({
+      ...base,
+      command: node(withReady(`${spin} setTimeout(() => process.exit(0), 1200);`)),
+      flags: flags(),
+      env: { ...process.env, READY: ready },
+      attach: a.attach,
+    });
+    await waitFor(() => existsSync(ready), 15);
+    const first = a.box.controls?.mark();
+    await new Promise((r) => setTimeout(r, 50));
+    const second = a.box.controls?.mark();
+    const r = await run;
+    expect(first?.label).toBe('Mark 1');
+    expect(second?.label).toBe('Mark 2');
+    expect(r.capture.meta.marks).toEqual([first, second]);
+    const [m1, m2] = r.capture.meta.marks ?? [];
+    expect(m1?.at).toBeGreaterThanOrEqual(r.capture.meta.startedAt);
+    expect(m2?.at).toBeGreaterThan(m1?.at ?? Infinity);
+    expect(m2?.at).toBeLessThanOrEqual(r.capture.meta.endedAt);
+    expect(a.box.detached).toBe(true);
+  }, 20_000);
+
+  it('leaves meta.marks unset when none were added', async () => {
+    const r = await runProfile({ ...base, command: node(busy), flags: flags() });
+    expect(r.capture.meta.marks).toBeUndefined();
+  });
+
+  it('reports how many processes have registered and how many marks there are', async () => {
+    const ready = readyFile();
+    const a = attached();
+    const run = runProfile({
+      ...base,
+      command: node(withReady(`${spin} setTimeout(() => process.exit(0), 1200);`)),
+      flags: flags(),
+      env: { ...process.env, READY: ready },
+      attach: a.attach,
+    });
+    await waitFor(() => (a.box.controls?.state().processes ?? 0) > 0, 15);
+    a.box.controls?.mark();
+    expect(a.box.controls?.state()).toEqual({ processes: 1, marks: 1 });
+    await run;
+  }, 20_000);
+
+  it('stops profiling and ends the program at once on stop, keeping what was collected', async () => {
+    const ready = readyFile();
+    const a = attached();
+    const run = runProfile({
+      ...base,
+      command: node(withReady(spin)),
+      flags: flags(),
+      env: { ...process.env, READY: ready },
+      attach: a.attach,
+    });
+    await waitFor(() => (a.box.controls?.state().processes ?? 0) > 0, 15);
+    await new Promise((r) => setTimeout(r, 200));
+    a.box.controls?.stop();
+    const r = await run;
+    expect(r.capture.meta.endedBy).toBe('stop');
+    expect(r.exitCode).toBe(0);
+    expect(r.capture.tracks[0]?.cpuProfile?.samples.length).toBeGreaterThan(0);
+    const pid = Number(readFileSync(ready, 'utf8'));
+    await waitFor(() => !isAlive(pid), 5);
+  }, 30_000);
+
+  it('says when a profiled program reads process.stdin, once', async () => {
+    const ready = readyFile();
+    const a = attached();
+    const run = runProfile({
+      ...base,
+      command: node(
+        withReady(
+          `process.stdin.on('data', () => {}); ${spin} setTimeout(() => process.exit(0), 1500);`,
+        ),
+      ),
+      flags: flags(),
+      env: { ...process.env, READY: ready },
+      attach: (c) => {
+        a.attach(c);
+        c.onStdinUsed(() => {
+          used++;
+        });
+        return () => {};
+      },
+    });
+    let used = 0;
+    await waitFor(() => a.box.controls?.stdinUsed() === true, 15);
+    await run;
+    expect(used).toBe(1);
+  }, 20_000);
+
+  it('reports a program that reads stdin through readline', async () => {
+    const a = attached();
+    const run = runProfile({
+      ...base,
+      command: node(
+        `require('readline').createInterface({ input: process.stdin }); ${spin} setTimeout(() => process.exit(0), 1000);`,
+      ),
+      flags: flags(),
+      attach: a.attach,
+    });
+    await waitFor(() => a.box.controls?.stdinUsed() === true, 15);
+    await run;
+  }, 20_000);
+
+  it('does not report a program that only looks at process.stdin without reading it', async () => {
+    const a = attached();
+    const run = runProfile({
+      ...base,
+      command: node(`process.stdin.isTTY; ${spin} setTimeout(() => process.exit(0), 800);`),
+      flags: flags(),
+      attach: a.attach,
+    });
+    await run;
+    expect(a.box.controls?.stdinUsed()).toBe(false);
+  }, 20_000);
+
+  it('gives the program an empty stdin, not the keyboard, when paces holds it for the hotkeys', async () => {
+    // A program waiting on the keyboard would never end; with no stdin it sees the end at once.
+    const result = await runProfile({
+      ...base,
+      command: node(
+        `process.stdin.on('end', () => process.exit(7)); process.stdin.resume(); ${spin}`,
+      ),
+      flags: flags(),
+      holdStdin: true,
+    });
+    expect(result.exitCode).toBe(7);
+  }, 20_000);
+
+  it('does not report stdin use for a program that never touches it', async () => {
+    const a = attached();
+    const run = runProfile({
+      ...base,
+      command: node(`${spin} setTimeout(() => process.exit(0), 800);`),
+      flags: flags(),
+      attach: a.attach,
+    });
+    await run;
+    expect(a.box.controls?.stdinUsed()).toBe(false);
+  }, 20_000);
+});
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function waitFor(cond: () => boolean, timeoutMs: number): Promise<void> {
   const end = Date.now() + timeoutMs * 1000;

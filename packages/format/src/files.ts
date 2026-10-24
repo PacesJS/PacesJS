@@ -38,6 +38,7 @@ export function captureToFiles(
     tracks: capture.tracks.map((t) => t.info),
     sources: [],
     ...(m.lostTracks && m.lostTracks.length > 0 ? { lostTracks: m.lostTracks } : {}),
+    ...(m.marks && m.marks.length > 0 ? { marks: m.marks } : {}),
   };
   return { manifest, files };
 }
@@ -83,6 +84,7 @@ export function filesToCapture(files: FileMap, manifest: Manifest): RawCapture {
       endedBy: manifest.endedBy,
       projectRoot: manifest.projectRoot,
       ...(manifest.lostTracks ? { lostTracks: manifest.lostTracks } : {}),
+      ...(manifest.marks ? { marks: manifest.marks } : {}),
     },
     tracks,
     sourceMaps: parse<Record<string, string>>(files, SOURCE_MAPS, {}),

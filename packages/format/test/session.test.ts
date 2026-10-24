@@ -238,3 +238,31 @@ describe('loadModel with an old cache', () => {
     expect(seen).toEqual([[{ id: 'p9', kind: 'process' }]]);
   });
 });
+
+describe('marks', () => {
+  const marks = [
+    { at: 1_700_000_000_500, label: 'Mark 1' },
+    { at: 1_700_000_002_000, label: 'Mark 2' },
+  ];
+
+  it('round-trips meta.marks through the manifest, in order', () => {
+    const capture = fixture('hot-regex');
+    capture.meta.marks = marks;
+    const back = readSession(writeSession(capture, { engineVersion: '1.0.0' }));
+    expect(back.capture.meta.marks).toEqual(marks);
+    expect(back.manifest.marks).toEqual(marks);
+  });
+
+  it('reads a session written without marks as having none', () => {
+    const back = readSession(writeSession(fixture('hot-regex'), { engineVersion: '1.0.0' }));
+    expect(back.capture.meta.marks).toBeUndefined();
+    expect(back.manifest.marks).toBeUndefined();
+  });
+
+  it('records a run ended with the stop key', () => {
+    const capture = fixture('hot-regex');
+    capture.meta.endedBy = 'stop';
+    const back = readSession(writeSession(capture, { engineVersion: '1.0.0' }));
+    expect(back.capture.meta.endedBy).toBe('stop');
+  });
+});

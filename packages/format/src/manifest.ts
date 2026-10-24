@@ -27,6 +27,8 @@ export interface Manifest {
   sources: SourceEntry[];
   /** Processes and workers stopped before they could write a profile; absent in older sessions. */
   lostTracks?: NonNullable<CaptureMeta['lostTracks']>;
+  /** Marks the user added while profiling; absent in older sessions and runs without any. */
+  marks?: NonNullable<CaptureMeta['marks']>;
   /** Model cache entry, if one was written. */
   model?: string;
 }

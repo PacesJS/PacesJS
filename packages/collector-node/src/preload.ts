@@ -239,6 +239,38 @@ function start(): void {
     const send = (m: object): void => {
       if (!socket.destroyed) socket.write(`${JSON.stringify(m)}\n`);
     };
+    // Looking at `process.stdin` (`.isTTY`, as npx and many CLIs do) does not read the keyboard;
+    // starting to read does, and that is what the CLI needs to know. Both ways in, `resume` (data
+    // listeners, pipe) and `read` (readable listeners, iteration), go through the instance, so the
+    // first call is reported and the wrappers removed.
+    const stdinGet = Object.getOwnPropertyDescriptor(process, 'stdin');
+    const readStdin = stdinGet?.get;
+    if (isMainThread && stdinGet?.configurable && readStdin) {
+      let watched = false;
+      Object.defineProperty(process, 'stdin', {
+        ...stdinGet,
+        get() {
+          const stream: NodeJS.ReadStream = readStdin.call(process);
+          if (!watched) {
+            watched = true;
+            const names = ['resume', 'read'] as const;
+            for (const name of names) {
+              const original = stream[name] as (...args: unknown[]) => unknown;
+              Object.defineProperty(stream, name, {
+                configurable: true,
+                writable: true,
+                value(this: unknown, ...args: unknown[]) {
+                  for (const n of names) delete (stream as unknown as Record<string, unknown>)[n];
+                  send({ type: 'stdin' });
+                  return original.apply(this, args);
+                },
+              });
+            }
+          }
+          return stream;
+        },
+      });
+    }
     socket.on('connect', () =>
       send({
         type: 'register',

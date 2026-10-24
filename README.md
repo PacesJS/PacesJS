@@ -25,6 +25,18 @@ npx paces -- node app.js
 
 Flags: `--interval <µs>` (default 1000), `--async` (record async causality, opt-in), `--duration <s>`, `--out <file>`, `--embed-sources`, `--no-open`, `--include <glob>` / `--exclude <glob>`. `--start-on <signal>` is not available on Windows; use `--duration`.
 
+### Marks and hotkeys for long-running programs
+
+For a server or anything that does not exit by itself, paces keeps a status panel on the bottom rows of the terminal (a spinner, how long it has been profiling, and the keys below); the program's own output scrolls above it. Where the panel does not fit, paces prints a line every 10 s instead. In a terminal it also reads three keys:
+
+| Key      | Does                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------- |
+| `m`      | Add a mark (`Mark 1`, `Mark 2`, ...) at this moment. Press it just before you send a request. |
+| `s`      | Stop profiling, end the program and open what was collected.                                  |
+| `Ctrl+C` | Stop profiling and let the program shut itself down, then open the results.                   |
+
+The keys are on from the start, so paces holds the keyboard and the program gets an empty stdin (it sees end of input at once). That keeps every process the command starts, such as the `npx` wrapper, from reading your keystrokes or changing the terminal mode. For a program that reads stdin (a prompt, a REPL), run with `--no-keys`; paces then never touches stdin, and marks and the `s` key are not available (Ctrl+C still works). If a program tries to read stdin while the keys are on, paces says so in the panel and in a line. In the UI, each mark is a flag on the Tracks timeline; its menu focuses on the time before it, after it, or between it and another mark.
+
 Sessions are saved to `./.paces/` as timestamped `.paces` files. Sampled timings are estimates and are labelled that way (`~`, `±` precision).
 
 ## Reports for people and agents (no window)

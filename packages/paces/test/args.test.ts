@@ -2,6 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { UsageError, parseArgs } from '../src/args.js';
 
 describe('parseArgs', () => {
+  it('reads --no-panel as noPanel', () => {
+    const p = parseArgs(['--no-panel', '--', 'node', 'app.js']);
+    expect(p.kind === 'profile' ? p.flags.noPanel : 'not a profile').toBe(true);
+  });
+
+  it.each([
+    [['--keys'], true],
+    [['--no-keys'], false],
+    [[], undefined],
+  ])('reads the hotkey flags %j as keys: %s', (own, keys) => {
+    const p = parseArgs([...own, '--', 'node', 'app.js']);
+    expect(p).toMatchObject({ kind: 'profile' });
+    expect(p.kind === 'profile' ? p.flags.keys : 'not a profile').toBe(keys);
+  });
+
+  it('leaves --keys after -- to the target', () => {
+    const p = parseArgs(['--', 'node', 'app.js', '--keys']);
+    expect(p).toMatchObject({ command: ['node', 'app.js', '--keys'] });
+    expect(p.kind === 'profile' ? p.flags.keys : 'not a profile').toBeUndefined();
+  });
+
   it('passes everything after -- to the target untouched, including look-alike flags', () => {
     const p = parseArgs(['--no-open', '--', 'node', 'app.js', '--no-open', '--interval', '5']);
     expect(p).toMatchObject({

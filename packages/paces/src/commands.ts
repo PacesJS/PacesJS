@@ -24,6 +24,8 @@ import {
   run,
 } from './launch.js';
 import { DEFAULT_GRACE_MS, waitForWindowClose } from './lifecycle.js';
+import { keysEnabled } from './keys.js';
+import { attachTerminal } from './terminal.js';
 import { serveMcp } from './mcp.js';
 import { buildTools } from './mcp-tools.js';
 import { lostTracksLines } from './lost-tracks.js';
@@ -217,6 +219,7 @@ function engineOrExplain(io: Io): Engine | undefined {
 async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Promise<number> {
   const cwd = process.cwd();
   io.err(`paces: profiling \`${p.command.join(' ')}\``);
+  const isTTY = Boolean(process.stdin.isTTY);
   const result = await runProfile({
     command: p.command,
     flags: p.flags,
@@ -224,6 +227,30 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
     preload: resolvePreload(),
     projectRoot: findProjectRoot(cwd),
     log: (l) => io.err(l),
+    holdStdin: keysEnabled({ flag: p.flags.keys, isTTY }),
+    attach: (controls) =>
+      attachTerminal({
+        controls,
+        flag: p.flags.keys,
+        input: process.stdin,
+        isTTY,
+        log: (l) => io.err(l),
+        title: (sequence) => {
+          if (process.stderr.isTTY) process.stderr.write(sequence);
+        },
+        panel:
+          process.stderr.isTTY && !p.flags.noPanel
+            ? {
+                color: !process.env['NO_COLOR'],
+                write: (s) => void process.stderr.write(s),
+                size: () => ({ rows: process.stderr.rows, cols: process.stderr.columns }),
+                onResize: (listener) => {
+                  process.stderr.on('resize', listener);
+                  return () => void process.stderr.off('resize', listener);
+                },
+              }
+            : undefined,
+      }),
   });
   const { capture } = result;
   const out = resolve(cwd, p.flags.out ?? defaultSessionPath(cwd));

@@ -90,7 +90,7 @@ export interface CaptureMeta {
   /** Epoch ms. */
   startedAt: number;
   endedAt: number;
-  endedBy: 'exit' | 'sigint' | 'duration' | 'crash';
+  endedBy: 'exit' | 'sigint' | 'duration' | 'crash' | 'stop';
   /** Absolute project root: source reads are restricted to it. */
   projectRoot: string;
   /**
@@ -104,6 +104,8 @@ export interface CaptureMeta {
     label?: string;
     kind: 'process' | 'worker';
   }>;
+  /** Moments the user flagged while the program ran, oldest first. `at` is epoch ms, like `startedAt`. */
+  marks?: Array<{ at: number; label: string }>;
 }
 
 /** Everything the engine needs. Source maps are pre-read by the host because the engine does no I/O. */

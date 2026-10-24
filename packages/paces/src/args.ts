@@ -8,6 +8,10 @@ export interface Flags {
   out?: string;
   embedSources: boolean;
   noOpen: boolean;
+  /** `--no-keys` turns the terminal hotkeys off and leaves stdin alone; they are on in a terminal otherwise. */
+  keys?: boolean;
+  /** `--no-panel` keeps the status panel at the bottom of the terminal off. */
+  noPanel?: boolean;
   include: string[];
   exclude: string[];
   json: boolean;
@@ -94,6 +98,11 @@ Flags (before --)
   --out <file>           session path (default ./.paces/<time>.paces)
   --embed-sources        copy source files and maps into the session
   --no-open              print the URL instead of opening a window
+  --no-keys              no terminal hotkeys (m adds a mark, s stops and shows results). The keys are
+                         on by default in a terminal and take the keyboard: the program gets an empty
+                         stdin. Use --no-keys for a program that reads stdin; paces then leaves stdin
+                         alone and marks are off.
+  --no-panel             no status panel at the bottom of the terminal; print a line now and then
   --include <glob>       only profile matching processes (repeatable)
   --exclude <glob>       skip matching processes (repeatable)
   --focus <pkg|glob>     rank this package or path first in findings and summaries (repeatable)
@@ -138,6 +147,9 @@ const BOOL_FLAGS = new Set([
   '--async',
   '--embed-sources',
   '--no-open',
+  '--keys',
+  '--no-keys',
+  '--no-panel',
   '--json',
   '--report',
   '--tree',
@@ -241,6 +253,9 @@ export function parseArgs(argv: string[]): Parsed {
       if (name === '--async') flags.async = true;
       else if (name === '--embed-sources') flags.embedSources = true;
       else if (name === '--no-open') flags.noOpen = true;
+      else if (name === '--keys') flags.keys = true;
+      else if (name === '--no-keys') flags.keys = false;
+      else if (name === '--no-panel') flags.noPanel = true;
       else if (name === '--json') flags.json = true;
       else if (name === '--report') r.runMode = true;
       else if (name === '--tree') r.tree = true;

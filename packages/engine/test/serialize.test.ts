@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { analyze } from '../src/analyze.js';
 import { ENGINE_VERSION } from '../src/config.js';
 import {
   deserializeModel,
@@ -6,7 +7,7 @@ import {
   readModelEngineVersion,
   serializeModel,
 } from '../src/serialize.js';
-import { FIXTURES, loadModel } from './helpers/fixtures.js';
+import { FIXTURES, loadCapture, loadModel } from './helpers/fixtures.js';
 
 describe('model serialization', () => {
   it.each(FIXTURES)('round-trips the %s model exactly', (name) => {
@@ -54,5 +55,18 @@ describe('model serialization', () => {
     const model = loadModel('orders-server');
     const samples = model.tracks.reduce((n, t) => n + t.samples.length, 0);
     expect(serializeModel(model).length / samples).toBeLessThan(100);
+  });
+});
+
+describe('marks in the model', () => {
+  it('keeps the capture marks in the model meta and through serialization', () => {
+    const capture = loadCapture('hot-regex');
+    const marks = [
+      { at: capture.meta.startedAt + 120, label: 'Mark 1' },
+      { at: capture.meta.startedAt + 340, label: 'Mark 2' },
+    ];
+    const model = analyze({ ...capture, meta: { ...capture.meta, marks } });
+    expect(model.meta.marks).toEqual(marks);
+    expect(deserializeModel(serializeModel(model)).meta.marks).toEqual(marks);
   });
 });
