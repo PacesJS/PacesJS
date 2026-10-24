@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { waitForWindowClose } from '../src/lifecycle.js';
+import { DEFAULT_GRACE_MS, waitForWindowClose } from '../src/lifecycle.js';
 
 function activity(initial: { request: number; heartbeat?: number; goodbye?: number }) {
   const state = { ...initial };
@@ -10,6 +10,13 @@ function activity(initial: { request: number; heartbeat?: number; goodbye?: numb
     lastGoodbyeAt: () => state.goodbye,
   };
 }
+
+describe('DEFAULT_GRACE_MS', () => {
+  it('outlasts the page heartbeat (2 s) so a live window never looks gone, yet exits promptly', () => {
+    expect(DEFAULT_GRACE_MS).toBeGreaterThan(2000);
+    expect(DEFAULT_GRACE_MS).toBeLessThanOrEqual(3000);
+  });
+});
 
 describe('waitForWindowClose', () => {
   it('closes after the browser exits and the grace period passes quietly', async () => {

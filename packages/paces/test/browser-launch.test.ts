@@ -1,13 +1,32 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Manifest } from '@pacesjs/format';
-import { appModeArgs, findBrowser, killTree, removeQuietly } from '../src/launch.js';
+import {
+  appModeArgs,
+  findBrowser,
+  killTree,
+  removeDetached,
+  removeQuietly,
+} from '../src/launch.js';
 import { startHost } from '../src/server.js';
 
 const browser = findBrowser();
+
+describe('removeDetached', () => {
+  it('removes the directory in a separate process, without waiting for it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'paces-browser-'));
+    writeFileSync(join(dir, 'leftover'), 'x');
+    removeDetached(dir);
+    const end = Date.now() + 10_000;
+    while (existsSync(dir) && Date.now() < end) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(existsSync(dir)).toBe(false);
+  });
+});
 
 describe.skipIf(!browser)('launching an installed Chromium browser in app mode', () => {
   it('loads the host page with its token and the page sends a heartbeat', async () => {

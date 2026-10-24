@@ -43,6 +43,18 @@ describe('appModeArgs', () => {
       expect.arrayContaining(['--app=http://127.0.0.1:1/?token=t', '--user-data-dir=C:\\tmp\\p']),
     );
   });
+
+  it('turns extensions off so installed ones cannot open onboarding pages', () => {
+    expect(appModeArgs('http://127.0.0.1:1/?token=t', 'C:\\tmp\\p')).toEqual(
+      expect.arrayContaining(['--disable-extensions', '--disable-default-apps']),
+    );
+  });
+
+  it('keeps the throwaway profile from signing in and syncing', () => {
+    expect(appModeArgs('http://127.0.0.1:1/?token=t', 'C:\\tmp\\p')).toEqual(
+      expect.arrayContaining(['--disable-sync', '--disable-features=msImplicitSignin']),
+    );
+  });
 });
 
 describe('planEditorOpen', () => {

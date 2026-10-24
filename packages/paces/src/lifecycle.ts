@@ -1,6 +1,9 @@
 /** Five minutes: beyond browsers' intensive timer throttling (once a minute) with margin. */
 const DEFAULT_STALE_HEARTBEAT_MS = 5 * 60_000;
 
+/** Just over the page's 2 s heartbeat: a live window always shows up inside it, a reload fits too. */
+export const DEFAULT_GRACE_MS = 3000;
+
 export interface Activity {
   lastRequestAt(): number;
   lastHeartbeatAt(): number | undefined;

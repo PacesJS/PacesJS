@@ -20,10 +20,10 @@ import {
   killTree,
   osOpen,
   planEditorOpen,
-  removeQuietly,
+  removeDetached,
   run,
 } from './launch.js';
-import { waitForWindowClose } from './lifecycle.js';
+import { DEFAULT_GRACE_MS, waitForWindowClose } from './lifecycle.js';
 import { serveMcp } from './mcp.js';
 import { buildTools } from './mcp-tools.js';
 import { lostTracksLines } from './lost-tracks.js';
@@ -191,7 +191,7 @@ async function present(session: HostSession, flags: Flags, io: Io): Promise<void
   const abort = new AbortController();
   const onSigint = (): void => abort.abort();
   process.once('SIGINT', onSigint);
-  const grace = Number(process.env.PACES_GRACE_MS) || 10_000;
+  const grace = Number(process.env.PACES_GRACE_MS) || DEFAULT_GRACE_MS;
   const stale = Number(process.env.PACES_STALE_HEARTBEAT_MS) || undefined;
   await waitForWindowClose(host, {
     graceMs: grace,
@@ -202,7 +202,7 @@ async function present(session: HostSession, flags: Flags, io: Io): Promise<void
   process.off('SIGINT', onSigint);
   await host.close();
   if (browser && browser.exitCode === null) killTree(browser);
-  if (profileDir) removeQuietly(profileDir);
+  if (profileDir) removeDetached(profileDir);
 }
 
 function engineOrExplain(io: Io): Engine | undefined {

@@ -115,6 +115,10 @@ export function appModeArgs(url: string, profileDir: string): string[] {
     `--user-data-dir=${profileDir}`,
     '--no-first-run',
     '--no-default-browser-check',
+    '--disable-extensions',
+    '--disable-default-apps',
+    '--disable-sync',
+    '--disable-features=msImplicitSignin',
     '--window-size=1440,900',
   ];
 }
@@ -125,6 +129,27 @@ export function killTree(child: ChildProcess): void {
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
   } else child.kill('SIGKILL');
+}
+
+/**
+ * Removes a directory in a separate process so the CLI can exit at once. The browser's helper
+ * processes may hold files for a second or more after the window closes, and waiting on them is
+ * what made `paces` linger.
+ */
+export function removeDetached(dir: string): void {
+  const script =
+    "require('node:fs').rmSync(process.argv[1],{recursive:true,force:true,maxRetries:10,retryDelay:300})";
+  try {
+    const child = spawn(process.execPath, ['-e', script, dir], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.once('error', () => removeQuietly(dir));
+    child.unref();
+  } catch {
+    removeQuietly(dir);
+  }
 }
 
 /** Removes a directory a browser may still be releasing; never throws. */
