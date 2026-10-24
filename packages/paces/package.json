@@ -1,8 +1,13 @@
 {
   "name": "paces",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Profile a Node command and read what the JavaScript did. Run: npx paces -- node app.js",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PacesJS/PacesJS.git",
+    "directory": "packages/paces"
+  },
   "type": "module",
   "bin": {
     "paces": "./dist/cli.js"
