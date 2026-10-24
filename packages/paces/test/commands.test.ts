@@ -146,6 +146,37 @@ describe('paces commands', () => {
     expect(readSession(new Uint8Array(readFileSync(out))).manifest.command[0]).toBe('import');
   });
 
+  describe('a gzipped profile (DevTools saves traces as .json.gz)', () => {
+    let gz: string;
+    beforeAll(async () => {
+      const { spawnSync } = await import('node:child_process');
+      const { readdirSync } = await import('node:fs');
+      const { gzipSync } = await import('node:zlib');
+      const profDir = join(dir, 'prof-gz');
+      spawnSync(process.execPath, ['--cpu-prof', '--cpu-prof-dir', profDir, join(dir, 'app.js')]);
+      const prof = join(profDir, readdirSync(profDir)[0] as string);
+      gz = join(dir, 'Trace-1.json.gz');
+      writeFileSync(gz, gzipSync(readFileSync(prof)));
+    });
+
+    it('open: imports it instead of refusing it as a session', async () => {
+      const c = capture();
+      const done = main(['open', gz, '--no-open'], c.io);
+      await closeWindowWhenReady(c.err);
+      expect(await done).toBe(0);
+      expect(c.err.join('\n')).toContain('imported');
+    });
+
+    it('import: turns it into a session', async () => {
+      const out = join(dir, 'imported-gz.paces');
+      const c = capture();
+      const done = main(['import', gz, '--no-open', '--out', out], c.io);
+      await closeWindowWhenReady(c.err);
+      expect(await done).toBe(0);
+      expect(readSession(new Uint8Array(readFileSync(out))).manifest.command[0]).toBe('import');
+    });
+  });
+
   it('reports a missing file with a way forward and exit code 2', async () => {
     const c = capture();
     expect(await main(['open', join(dir, 'missing.paces')], c.io)).toBe(2);

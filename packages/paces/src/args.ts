@@ -84,9 +84,9 @@ Usage
   paces --report [flags] -- <cmd>   profile, print a report with next: drill-down commands, exit
   paces report <file> [flags]       drill into a saved session (.paces or .cpuprofile)
   paces guide                       print a usage guide for coding agents
-  paces open <file.paces>           reopen a saved session
+  paces open <file.paces>           reopen a saved session (a profile file is imported)
   paces diff <a.paces> <b.paces>    compare two sessions (a is the baseline)
-  paces import <file>               open a .cpuprofile or DevTools trace JSON
+  paces import <file>               open a .cpuprofile or DevTools trace JSON (.gz is fine)
   paces summary <file.paces> [--json]   print findings, no UI
   paces mcp <file.paces>            serve findings to an AI agent over MCP (stdio)
 

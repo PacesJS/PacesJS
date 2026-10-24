@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ENGINE_VERSION, analyze } from '@pacesjs/engine';
 import type { ExecutionModel, RawCapture } from '@pacesjs/engine';
@@ -287,6 +287,40 @@ describe('--json', () => {
     const r = await cli(['report', eslintFile, '--top', 'self', '--limit', '3', '--json']);
     expect(r.code).toBe(0);
     expect((JSON.parse(r.out) as { rows: unknown[] }).rows).toHaveLength(3);
+  });
+});
+
+describe('a profile file', () => {
+  const profile = (): { text: string; dir: string } => {
+    const out = mkdtempSync(join(dir, 'prof-'));
+    const r = spawnSync(
+      process.execPath,
+      [
+        '--cpu-prof',
+        '--cpu-prof-dir',
+        out,
+        '-e',
+        'let x=0;const t=Date.now();while(Date.now()-t<60){x+=Math.sqrt(x+1)}',
+      ],
+      { encoding: 'utf8' },
+    );
+    if (r.status !== 0) throw new Error(`node --cpu-prof failed: ${r.stderr}`);
+    const file = readdirSync(out).find((f) => f.endsWith('.cpuprofile')) as string;
+    return { text: readFileSync(join(out, file), 'utf8'), dir: out };
+  };
+
+  it('reads a gzipped DevTools-style .json.gz like the plain file', async () => {
+    const { text, dir: out } = profile();
+    const plain = join(out, 'p.json');
+    const gz = join(out, 'Trace-1.json.gz');
+    writeFileSync(plain, text);
+    writeFileSync(gz, gzipSync(text));
+
+    const fromPlain = await cli(['report', plain, '--no-color']);
+    const fromGz = await cli(['report', gz, '--no-color']);
+
+    expect(fromGz.code).toBe(0);
+    expect(fromGz.out.replaceAll('Trace-1.json.gz', 'p.json')).toBe(fromPlain.out);
   });
 });
 

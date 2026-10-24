@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -81,9 +82,21 @@ function requireFile(file: string): void {
   if (!existsSync(file)) throw new UsageError(`No such file: ${file}`);
 }
 
-/** Reads a `.cpuprofile` (or Chrome trace JSON) as a capture, named after the file. */
+/** A `.cpuprofile` or DevTools trace JSON, gzipped or not, as opposed to a `.paces` session. */
+function isProfileFile(file: string): boolean {
+  return /\.(cpuprofile|json)(\.gz)?$/i.test(file);
+}
+
+/** DevTools saves traces gzipped (`.json.gz`); the magic bytes tell, whatever the file is called. */
+function readProfileText(file: string): string {
+  const bytes = readFileSync(file);
+  const gzipped = bytes[0] === 0x1f && bytes[1] === 0x8b;
+  return (gzipped ? gunzipSync(bytes) : bytes).toString('utf8');
+}
+
+/** Reads a `.cpuprofile` (or Chrome trace JSON, gzipped or not) as a capture, named after the file. */
 function importFile(file: string, cwd: string): RawCapture {
-  return importProfile(readFileSync(file, 'utf8'), {
+  return importProfile(readProfileText(file), {
     name: basename(file),
     cwd,
     mtimeMs: statSync(file).mtimeMs,
@@ -349,7 +362,7 @@ function printReport(
 function cmdReport(file: string, flags: Flags, io: Io): number {
   requireFile(file);
   const engine = loadEngine();
-  if (/\.(cpuprofile|json)$/i.test(file)) {
+  if (isProfileFile(file)) {
     const capture = importFile(file, process.cwd());
     const model = engine.analyze(capture, analyzeOptions(flags));
     return printReport(model, undefined, file, flags, io) ? 0 : 1;
@@ -369,6 +382,7 @@ function modelOf(
 }
 
 async function cmdOpen(file: string, flags: Flags, io: Io): Promise<number> {
+  if (existsSync(file) && isProfileFile(file)) return cmdImport(file, flags, io);
   const engine = loadEngine();
   const { session, model } = modelOf(file, engine, flags);
   await present(toHostSession(resolve(file), session, model, engine), flags, io);
