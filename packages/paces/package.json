@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "paces": "./dist/cli.js"
+    "paces": "dist/cli.js"
   },
   "files": [
     "dist"

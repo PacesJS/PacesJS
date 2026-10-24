@@ -33,22 +33,21 @@ jobs:
     name: Publish to npm
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      - name: Require the npm token
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Require an npm that supports trusted publishing
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Add an npm automation token as the repository secret NPM_TOKEN."
-            exit 1
-          fi
+          v=$(npm --version)
+          node -e "const [M,m,p]='$v'.split('.').map(Number); if (M<11||(M===11&&(m<5||(m===5&&p<1)))) { console.error('::error::npm $v cannot publish with trusted publishing; 11.5.1 or newer is needed.'); process.exit(1); }"
       - run: pnpm install --frozen-lockfile
       - name: Choose the version
         id: version
@@ -57,8 +56,6 @@ jobs:
         working-directory: packages/paces
         run: npm version "${{ steps.version.outputs.value }}" --no-git-tag-version --allow-same-version
       - run: pnpm build
-      - name: Publish
+      - name: Publish (trusted publishing, no token)
         working-directory: packages/paces
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm publish --no-git-checks --access public
+        run: npm publish --access public
