@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
@@ -315,6 +315,9 @@ describe('a profile file', () => {
     const gz = join(out, 'Trace-1.json.gz');
     writeFileSync(plain, text);
     writeFileSync(gz, gzipSync(text));
+    const when = new Date('2026-01-01T00:00:00Z');
+    utimesSync(plain, when, when);
+    utimesSync(gz, when, when);
 
     const fromPlain = await cli(['report', plain, '--no-color']);
     const fromGz = await cli(['report', gz, '--no-color']);
