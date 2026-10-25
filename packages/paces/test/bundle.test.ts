@@ -32,7 +32,7 @@ describe('published package', () => {
 
   it('requires Node 20.19 or newer and exposes the paces bin', () => {
     expect((pkg.engines as { node: string }).node).toBe('>=20.19');
-    expect(pkg.bin).toEqual({ paces: './dist/cli.js' });
+    expect(pkg.bin).toEqual({ paces: 'dist/cli.js' });
   });
 });
 
