@@ -13,6 +13,7 @@ import type {
   TransformedView,
   ViewFnId,
 } from './types.js';
+import { deoptSites } from './deopts.js';
 import { describeFunction, withoutInversion } from './view.js';
 
 const SPARK_BUCKETS = 60;
@@ -162,6 +163,7 @@ export function functionSource(
     callSites,
     calleeTime,
     lineInfo,
+    deopts: deoptSites(model, view.trackIndex, fn),
     sparkline,
     mapMissing: info.mapMissing,
   };

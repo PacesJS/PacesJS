@@ -6,6 +6,7 @@ import type { Transform } from '../state/types';
 import { originColor } from '../theme/origin';
 import { fmtShare } from '../util/format';
 import { WF } from '../view/waterfall-geometry';
+import { deoptNote } from '../view/deopt-text';
 import { guideLevels } from '../view/waterfall-indent';
 import { RESUMED_TIP, durLabel } from '../view/waterfall-labels';
 import { waterfallRowModel } from '../view/waterfall-row-model';
@@ -119,7 +120,9 @@ export const WaterfallRowView = memo(function WaterfallRowView({
       aria-expanded={r.hasChildren ? !collapsed : undefined}
       aria-selected={selected}
       aria-description={
-        [m.details, m.hiddenNote].filter(Boolean).join(TEXT.descriptionSep) || undefined
+        [m.details, m.hiddenNote, r.deopts > 0 ? deoptNote(r.deopts) : '']
+          .filter(Boolean)
+          .join(TEXT.descriptionSep) || undefined
       }
       aria-label={TEXT.row(
         r.name,

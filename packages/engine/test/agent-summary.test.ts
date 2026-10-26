@@ -181,3 +181,18 @@ describe('agent summary phases', () => {
     expect(work?.hottest[0]).toMatchObject({ name: 'compute', file: 'src/app.js', line: 1 });
   });
 });
+
+describe('finding hints in the agent summary', () => {
+  it('carries the fix of a finding that has one', () => {
+    const finding = buildAgentSummary(loadModel('deopt-loop')).findings.find(
+      (f) => f.kind === 'v8-deopt',
+    );
+    expect(finding?.hint).toContain('same properties in the same order');
+  });
+
+  it('leaves the field out for findings without one, so their summaries do not change', () => {
+    const findings = buildAgentSummary(loadModel('hot-regex')).findings;
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings.every((f) => !('hint' in f))).toBe(true);
+  });
+});

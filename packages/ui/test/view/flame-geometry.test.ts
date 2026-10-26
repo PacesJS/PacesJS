@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createQueries } from '../../src/data/queries';
 import { DEFAULT_TRANSFORMS } from '../../src/state/types';
+import { DEOPT_MARK_ROOM } from '../../src/view/draw-bars';
 import { FLAME, flameRects, hitRect } from '../../src/view/flame-geometry';
+import { charBudget } from '../../src/view/truncate';
 import { ordersModel } from '../helpers/real-model';
 
 const model = ordersModel();
@@ -52,5 +54,20 @@ describe('flame geometry', () => {
   it('shows name and location when they fit, name only when tight', () => {
     const rects = flameRects(data, 100000, 'icicle', labelOf);
     expect(rects[0]?.label).toBe('getOrders · src/routes/orders.ts:18');
+  });
+});
+
+describe('flame geometry with deopt marks', () => {
+  const longName = (): { name: string; loc: string } => ({ name: 'n'.repeat(300), loc: '' });
+
+  it('leaves room for the mark so the label never runs under it', () => {
+    const plain = flameRects(data, 1000, 'icicle', longName);
+    const target = plain.find((r) => r.w > 120);
+    const i = target?.index ?? 0;
+    const w = target?.w ?? 0;
+    const marked = { ...data, deopts: Uint32Array.from(data.deopts, (_, k) => (k === i ? 3 : 0)) };
+    const withMark = flameRects(marked, 1000, 'icicle', longName).find((r) => r.index === i);
+    expect(target?.label.length).toBe(charBudget(w, FLAME.pad, FLAME.glyph));
+    expect(withMark?.label.length).toBe(charBudget(w - DEOPT_MARK_ROOM, FLAME.pad, FLAME.glyph));
   });
 });

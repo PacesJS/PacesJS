@@ -123,3 +123,58 @@ describe('request events', () => {
     expect(parse(off).filter((e) => e.type === 'async')).toHaveLength(0);
   });
 });
+
+describe('V8 deoptimization trace', () => {
+  const TRACED = { PACES_V8_TRACE: '1' };
+
+  // `add` is optimized for small integers, then fed doubles and strings.
+  const DEOPTING = `function add(a,b){return a+b}
+    let t=0;
+    for(let i=0;i<200000;i++)t+=add(i,1);
+    for(let i=0;i<200000;i++)t+=add(i,0.5);
+    for(let i=0;i<200000;i++)t+=add('a',i).length;
+    console.log('done')`;
+
+  it('writes the deoptimizations of a process next to its profile, with the position of each', async () => {
+    const r = await runWithPreload(['-e', DEOPTING], TRACED);
+    const trace = rawFiles(r.dir).find((f) => f.endsWith('.deopt'));
+    expect(trace).toBeDefined();
+    const text = readRaw(r.dir, trace!);
+    expect(text).toMatch(
+      /\[bailout \(kind: deopt-eager, reason: [^)]+\): begin\. deoptimizing .*<JSFunction add /,
+    );
+    expect(text).toMatch(/;;; deoptimize at <[^>]*:\d+:\d+>/);
+  });
+
+  it('is off unless asked for, and then leaves the program output exactly as it was', async () => {
+    const r = await runWithPreload(['-e', DEOPTING]);
+    expect(rawFiles(r.dir).some((f) => f.endsWith('.deopt'))).toBe(false);
+    expect(r.stdout).toBe('done\n');
+    expect(r.stderr).toBe('');
+  });
+
+  // V8 prints the tail of "[marking dependent code ...]" with a plain PrintF, past the redirect. The
+  // CLI documents this for --v8; if V8 fixes it, this test fails and the warning can go.
+  it('lets V8 print the tail of its dependent-code messages to stdout (known V8 behavior)', async () => {
+    const code = `function Foo(){}
+      Foo.prototype.x=1;
+      function get(o){return o.x}
+      const o=new Foo();
+      let t=0;
+      for(let i=0;i<300000;i++)t+=get(o);
+      Object.setPrototypeOf(Foo.prototype,{y:1});
+      for(let i=0;i<300000;i++)t+=get(o);
+      console.log('done')`;
+    const r = await runWithPreload(['-e', code], TRACED);
+    expect(r.stdout).toMatch(/^\) \(opt id \d+\) for deoptimization, reason: [^\]]+\]$/m);
+    expect(r.stdout).toContain('done');
+  });
+
+  it('keeps worker deoptimizations in the process file instead of starting a second one', async () => {
+    const worker = `${DEOPTING}`;
+    const code = `const {Worker}=require('node:worker_threads');
+      new Worker(${JSON.stringify(worker)},{eval:true}).on('exit',()=>{${DEOPTING}})`;
+    const r = await runWithPreload(['-e', code], TRACED);
+    expect(rawFiles(r.dir).filter((f) => f.endsWith('.deopt'))).toHaveLength(1);
+  });
+});

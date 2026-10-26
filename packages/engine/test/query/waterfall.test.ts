@@ -5,7 +5,7 @@ import type { RuntimeEvent } from '../../src/raw.js';
 import { DEFAULT_TRANSFORMS } from '../../src/query/types.js';
 import { describeTasks } from '../../src/query/tasks.js';
 import { applyTransforms, describeFunction } from '../../src/query/view.js';
-import { waterfallForRange, waterfallForTask } from '../../src/query/waterfall.js';
+import { waterfallForRange, waterfallForRun, waterfallForTask } from '../../src/query/waterfall.js';
 import { loadModel } from '../helpers/fixtures.js';
 import { synthCapture } from '../helpers/synth.js';
 
@@ -211,5 +211,22 @@ describe('waterfall options on the eslint cli', () => {
 
   it('keeps ids equal to indexes when a depth limit removes rows', () => {
     expect(isConsistent(waterfallForTask(m, view, entryTask, { maxDepth: 3 }))).toBe(true);
+  });
+});
+
+describe('deopt marks on the waterfall', () => {
+  const m = loadModel('deopt-loop');
+  const w = waterfallForRun(m, 0);
+  const price = w.rows.filter(
+    (r) => r.kind === 'call' && describeFunction(m, r.fn).name === 'price',
+  );
+
+  it('marks the rows of a function V8 deoptimized', () => {
+    expect(price.length).toBeGreaterThan(0);
+    for (const r of price) expect(r.deopts).toBe(10);
+  });
+
+  it('leaves wait and summary rows unmarked', () => {
+    for (const r of w.rows.filter((x) => x.kind !== 'call')) expect(r.deopts).toBe(0);
   });
 });

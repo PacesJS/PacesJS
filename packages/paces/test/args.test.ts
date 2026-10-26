@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UsageError, parseArgs } from '../src/args.js';
+import { USAGE, UsageError, parseArgs } from '../src/args.js';
 
 describe('parseArgs', () => {
   it('reads --no-panel as noPanel', () => {
@@ -37,6 +37,7 @@ describe('parseArgs', () => {
       '--interval',
       '100',
       '--async',
+      '--v8',
       '--duration=5',
       '--start-on',
       'SIGUSR2',
@@ -56,6 +57,7 @@ describe('parseArgs', () => {
       flags: {
         interval: 100,
         async: true,
+        v8: true,
         duration: 5,
         startOn: 'SIGUSR2',
         out: 'a.paces',
@@ -97,6 +99,35 @@ describe('parseArgs', () => {
     [['diff', 'a.paces'], /two files/],
     [['open'], /one file/],
     [['x', '--', 'node'], /Unexpected "x"/],
+  ])('rejects %j with an actionable message', (argv, message) => {
+    expect(() => parseArgs(argv)).toThrow(UsageError);
+    expect(() => parseArgs(argv)).toThrow(message);
+  });
+});
+
+describe('paces mcp', () => {
+  it('with nothing starts the generic server', () => {
+    expect(parseArgs(['mcp'])).toMatchObject({ kind: 'mcp', files: [] });
+  });
+
+  it('with a file serves that session', () => {
+    expect(parseArgs(['mcp', 'a.paces'])).toMatchObject({ kind: 'mcp', files: ['a.paces'] });
+  });
+
+  it('with -- profiles the command first, keeping flags and the command untouched', () => {
+    expect(
+      parseArgs(['mcp', '--interval', '500', '--v8', '--', 'node', 'a.js', '--tree']),
+    ).toMatchObject({
+      kind: 'mcp-run',
+      command: ['node', 'a.js', '--tree'],
+      flags: { interval: 500, v8: true },
+    });
+  });
+
+  it.each([
+    [['mcp', 'a.paces', '--', 'node'], /either a file or a command/],
+    [['mcp', '--'], /Nothing to run/],
+    [['mcp', 'a.paces', 'b.paces'], /at most one file/],
   ])('rejects %j with an actionable message', (argv, message) => {
     expect(() => parseArgs(argv)).toThrow(UsageError);
     expect(() => parseArgs(argv)).toThrow(message);
@@ -209,5 +240,16 @@ describe('report flags', () => {
 
   it('knows guide', () => {
     expect(parseArgs(['guide'])).toEqual({ kind: 'guide' });
+  });
+});
+
+describe('--v8', () => {
+  it('is off by default', () => {
+    expect(parseArgs(['--', 'node', 'x.js'])).toMatchObject({ flags: { v8: false } });
+  });
+
+  it('is described in the help, with the stdout it can add to', () => {
+    expect(USAGE).toContain('--v8');
+    expect(USAGE).toMatch(/--v8[^\n]*\n[^\n]*stdout/);
   });
 });

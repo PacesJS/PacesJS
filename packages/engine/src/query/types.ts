@@ -2,6 +2,7 @@
 // (track, transform stack) and every view reads it through the pure query functions.
 
 import type { CallTree, FnId, NodeId, OriginId, Samples, TaskKindId } from '../model.js';
+import type { DeoptSite } from './deopts.js';
 
 /** Function ids >= `model.functions.length` are synthetic nodes made by "collapse package". */
 export type ViewFnId = number;
@@ -130,6 +131,8 @@ export interface WaterfallRow {
    * so they are not in `summaryTasks`). The row's total is the tasks' busy time plus this. 0 on other rows.
    */
   summaryRuntimeUs: number;
+  /** Times V8 threw away optimized code of this call's function (--v8 runs); 0 on other rows. */
+  deopts: number;
 }
 
 export interface WaterfallMinimap {
@@ -215,6 +218,8 @@ export interface FlameLayout {
   intensity: Float32Array;
   /** `'diff'` only: -1 faster, 0 unchanged, 1 slower, 2 new in head. */
   change: Int8Array;
+  /** Times V8 threw away optimized code of the bar's function (--v8 runs), else 0. */
+  deopts: Uint32Array;
   maxDepth: number;
   totalUs: number;
   /** Zoom breadcrumb: node ids from the root to the zoomed node. */
@@ -385,6 +390,8 @@ export interface FunctionSourceInfo {
   /** Callees with the time under this function, largest total first. */
   calleeTime: CalleeTime[];
   lineInfo: LineInfo;
+  /** Where V8 threw away optimized code in this function (--v8 runs), most often first. */
+  deopts: DeoptSite[];
   /** Busy fraction of this function per bucket across the track (for the header sparkline). */
   sparkline: Float32Array;
   mapMissing: boolean;

@@ -27,6 +27,29 @@ describe('readCaptureDir', () => {
     expect(info?.cwd).toBe(process.cwd());
   });
 
+  describe('the V8 deoptimization trace', () => {
+    const DEOPTING = `function add(a,b){return a+b}
+      let t=0;
+      for(let i=0;i<200000;i++)t+=add(i,1);
+      for(let i=0;i<200000;i++)t+=add(i,0.5);
+      for(let i=0;i<200000;i++)t+=add('a',i).length`;
+
+    it('keeps only the line that names each deoptimized function and the line that gives its position', async () => {
+      const r = await runWithPreload(['-e', DEOPTING], { PACES_V8_TRACE: '1' });
+      const trace = readCaptureDir(r.dir, META).tracks[0]?.deoptTrace ?? '';
+      const lines = trace.split('\n').filter(Boolean);
+      expect(lines.length).toBeGreaterThan(1);
+      expect(
+        lines.every((l) => l.startsWith('[bailout (kind:') || l.includes(';;; deoptimize at')),
+      ).toBe(true);
+    });
+
+    it('leaves the field out when the process was not traced', async () => {
+      const r = await runWithPreload(['-e', DEOPTING]);
+      expect(readCaptureDir(r.dir, META).tracks[0]).not.toHaveProperty('deoptTrace');
+    });
+  });
+
   it('builds tracks for a process and its worker thread, linked by parent', async () => {
     const code = `${BUSY};const {Worker}=require('node:worker_threads');
       new Worker(${JSON.stringify(`${BUSY};busy()`)},{eval:true}).on('exit',()=>busy())`;
@@ -75,5 +98,20 @@ describe('readCaptureDir', () => {
     const capture = readCaptureDir(dir, META);
     expect(Object.keys(capture.sourceMaps)).toEqual([url]);
     expect(rawFiles(dir)).toContain('p1.info');
+  });
+});
+
+describe('a traced process that is killed before it can flush', () => {
+  const DEOPTING = `function add(a,b){return a+b}
+    let t=0;
+    for(let i=0;i<200000;i++)t+=add(i,1);
+    for(let i=0;i<200000;i++)t+=add(i,0.5);
+    for(let i=0;i<200000;i++)t+=add('a',i).length;
+    process.kill(process.pid,'SIGKILL')`;
+
+  it('leaves no track behind: V8 writes the trace as it runs, the rest only at exit', async () => {
+    const r = await runWithPreload(['-e', DEOPTING], { PACES_V8_TRACE: '1' });
+    expect(rawFiles(r.dir).some((f) => f.endsWith('.deopt'))).toBe(true);
+    expect(readCaptureDir(r.dir, META).tracks).toEqual([]);
   });
 });

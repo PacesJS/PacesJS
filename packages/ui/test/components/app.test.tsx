@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { serializeModel } from '@pacesjs/engine';
@@ -1097,5 +1099,86 @@ describe('linked selection', () => {
     expect(current(/Flame graph/)).toBe('page');
     expect(screen.queryByRole('button', { name: 'Rewind to Merge plumbing' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Rewind to Drop idle' })).toBeTruthy();
+  });
+});
+
+describe('finding fixes', () => {
+  it('shows what to change on a finding that knows, and nothing extra on one that does not', async () => {
+    open(fixtureModel('deopt-loop'));
+    await ready();
+    expect(
+      screen.getByText(/Fix: Objects of different shapes reach the same property access/),
+    ).toBeTruthy();
+    expect(screen.queryAllByText(/^Fix:/)).toHaveLength(1);
+  });
+
+  it('shows no fix line for a run without a V8 finding', async () => {
+    open();
+    await ready();
+    expect(screen.queryByText(/^Fix:/)).toBeNull();
+  });
+});
+
+describe('deopt marks in the source panel', () => {
+  const loop = fixtureModel('deopt-loop');
+  const loopFile = 'zoo/apps/deopt-loop.cjs';
+  const loopText = readFileSync(resolve(process.cwd(), '../../', loopFile), 'utf8');
+  const fnNamed = (name: string): number =>
+    Array.from({ length: loop.functions.length }, (_, f) => f).find(
+      (f) => loop.strings[loop.functions.name[f] ?? 0] === name,
+    ) ?? -1;
+
+  it('marks the line where V8 threw away optimized code, with the reason and count', async () => {
+    history.replaceState(
+      null,
+      '',
+      `#v=functions&tr=${loop.tracks[0]?.id}&sel=fn:${fnNamed('price')}`,
+    );
+    open(loop, undefined, { [loopFile]: { text: loopText } });
+    await ready();
+    const source = await screen.findByRole('region', { name: 'Source' });
+    const lines = await within(source).findByRole('list', { name: 'Source lines with self time' });
+    const mark = await within(lines).findByRole('img', {
+      name: 'V8 threw away optimized code here 10 times: wrong map ×10',
+    });
+    expect(mark.closest('li')?.querySelector('.source-n')?.textContent).toBe('6');
+  });
+
+  const ordersFn = (name: string): number =>
+    Array.from({ length: orders.functions.length }, (_, f) => f).find(
+      (f) => orders.strings[orders.functions.name[f] ?? 0] === name,
+    ) ?? -1;
+
+  it('marks no line of a function V8 never deoptimized', async () => {
+    history.replaceState(
+      null,
+      '',
+      `#v=functions&tr=${orders.tracks[0]?.id}&sel=fn:${ordersFn('lineTotal')}`,
+    );
+    open(orders, undefined, { [MONEY]: { text: moneyText } });
+    await ready();
+    const source = await screen.findByRole('region', { name: 'Source' });
+    await within(source).findByRole('list', { name: 'Source lines with self time' });
+    expect(within(source).queryByRole('img', { name: /V8 threw away/ })).toBeNull();
+  });
+});
+
+describe('deopt legend', () => {
+  const loop = fixtureModel('deopt-loop');
+  const LEGEND = /V8 threw away this function's optimized code/;
+
+  it.each(['waterfall', 'flame'])('explains the mark on the %s of a --v8 run', async (view) => {
+    history.replaceState(null, '', `#v=${view}&tr=${loop.tracks[0]?.id}`);
+    open(loop);
+    await ready();
+    expect(await screen.findByText(LEGEND)).toBeTruthy();
+  });
+
+  it.each(['waterfall', 'flame'])('does not mention it on the %s of other runs', async (view) => {
+    history.replaceState(null, '', `#v=${view}&tr=${orders.tracks[0]?.id}`);
+    open();
+    await ready();
+    await screen.findByRole('list', { name: 'Origin colors' });
+    expect(screen.queryByText(LEGEND)).toBeNull();
   });
 });

@@ -506,3 +506,35 @@ describe('a hot path in a stitched run', () => {
     expect(names.at(-1)).toBe('parse');
   });
 });
+
+describe('deopt marks', () => {
+  const deoptModel = fixtureModel('deopt-loop');
+  const dq = createQueries(deoptModel, null, nodeElk);
+  const dscope = {
+    track: deoptModel.tracks[0]?.id ?? '',
+    transforms: [...DEFAULT_TRANSFORMS],
+    range: null,
+    hide: [] as number[],
+  };
+  const price = dq.functions(dscope, 'price').rows.find((r) => r.name === 'price')?.fn ?? -1;
+
+  it('puts the deopt count of price on its flame bars', () => {
+    const f = dq.flame(dscope, { sort: 'heavy', color: 'origin', zoom: [], zoomPath: [] });
+    const bars = Array.from({ length: f.length }, (_, i) => i).filter((i) => f.fn[i] === price);
+    expect(bars.length).toBeGreaterThan(0);
+    for (const i of bars) expect(f.deopts[i]).toBe(10);
+  });
+
+  it('puts it on the waterfall rows of price', () => {
+    const wf = dq.waterfall(dscope, -1, { sort: 'time', minDurUs: 0 });
+    const rows = (wf?.rows ?? []).filter((r) => r.kind === 'call' && r.fn === price);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.deopts).toBe(10);
+  });
+
+  it('lists the deopts of price with the source panel info', () => {
+    expect(dq.source(dscope, price)?.deopts).toEqual([
+      { line: 6, reason: 'wrong map', kind: 'eager', count: 10 },
+    ]);
+  });
+});

@@ -54,6 +54,8 @@ export interface ProfileOptions {
    * keystrokes or reset the console's input mode, which turns Ctrl+C into a signal for all of them.
    */
   holdStdin?: boolean;
+  /** Where the program's stdout goes instead of ours, e.g. stderr when our stdout carries a protocol. */
+  stdoutFd?: number;
   /** Hands the caller the controls once the program is starting; returns what undoes it. */
   attach?: (controls: ProfileControls) => () => void;
 }
@@ -100,12 +102,15 @@ function exitCodeOf(code: number | null, signal: NodeJS.Signals | null): number 
 /** `p123-w1.cpuprofile` and `p123-w1.info` both belong to track `p123-w1`. */
 const trackOfFile = (name: string): string => name.slice(0, name.lastIndexOf('.'));
 
-/** Tracks that wrote anything: a profile, or at least the info file written next to it. */
+/**
+ * Tracks that wrote anything at exit: a profile, or at least the info file written next to it. The V8
+ * deopt trace does not count, because V8 writes it while the program runs, so a killed process has one.
+ */
 function deliveredTracks(dir: string): Set<string> {
   const raw = join(dir, 'raw');
   const out = new Set<string>();
   if (!existsSync(raw)) return out;
-  for (const name of readdirSync(raw)) out.add(trackOfFile(name));
+  for (const name of readdirSync(raw)) if (!name.endsWith('.deopt')) out.add(trackOfFile(name));
   return out;
 }
 
@@ -241,6 +246,8 @@ function pacesEnv(base: NodeJS.ProcessEnv, session: SessionEnv): NodeJS.ProcessE
   else delete env.PACES_DEFER;
   if (session.flags.async) env.PACES_ASYNC = '1';
   else delete env.PACES_ASYNC;
+  if (session.flags.v8) env.PACES_V8_TRACE = '1';
+  else delete env.PACES_V8_TRACE;
   env.NODE_OPTIONS = nodeOptionsWith(env.NODE_OPTIONS, session.preload);
   return env;
 }
@@ -312,7 +319,7 @@ export async function runProfile(options: ProfileOptions): Promise<ProfileResult
   const child = spawn(plan.file, plan.args, {
     cwd,
     env,
-    stdio: [options.holdStdin ? 'ignore' : 'inherit', 'inherit', 'inherit'],
+    stdio: [options.holdStdin ? 'ignore' : 'inherit', options.stdoutFd ?? 'inherit', 'inherit'],
     windowsVerbatimArguments: plan.verbatim,
     windowsHide: false,
   });

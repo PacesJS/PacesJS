@@ -120,3 +120,32 @@ describe('flame graph differential coloring', () => {
     expect(layout.change[0]).toBe(0);
   });
 });
+
+describe('deopt marks on the flame graph', () => {
+  const m = loadModel('deopt-loop');
+  const view = applyTransforms(m, 0, DEFAULT_TRANSFORMS);
+  const layout = flameLayout(m, view);
+  const bars = (name: string) =>
+    Array.from({ length: layout.length }, (_, i) => i).filter(
+      (i) => describeFunction(m, layout.fn[i] ?? 0, view.syntheticPackages).name === name,
+    );
+
+  it('carries the deopt count of the function on each of its bars', () => {
+    const price = bars('price');
+    expect(price.length).toBeGreaterThan(0);
+    for (const i of price) expect(layout.deopts[i]).toBe(10);
+  });
+
+  it('marks total for its one real deopt, not for the warm-up exits', () => {
+    const total = bars('total');
+    expect(total.length).toBeGreaterThan(0);
+    for (const i of total) expect(layout.deopts[i]).toBe(1);
+  });
+
+  it('has an all-zero column for a run without a V8 trace', () => {
+    const orders = loadModel('orders-server');
+    const l = flameLayout(orders, applyTransforms(orders, 0, DEFAULT_TRANSFORMS));
+    expect(l.deopts).toHaveLength(l.length);
+    expect(Math.max(...l.deopts)).toBe(0);
+  });
+});

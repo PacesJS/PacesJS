@@ -3,6 +3,7 @@ import { ORIGIN_NAMES } from '@pacesjs/engine';
 export interface Flags {
   interval?: number;
   async: boolean;
+  v8: boolean;
   duration?: number;
   startOn?: string;
   out?: string;
@@ -64,7 +65,9 @@ export function defaultReportFlags(): ReportFlags {
 
 export type Parsed =
   | { kind: 'profile'; flags: Flags; command: string[] }
-  | { kind: 'open' | 'summary' | 'mcp' | 'import' | 'report'; flags: Flags; files: [string] }
+  | { kind: 'open' | 'summary' | 'import' | 'report'; flags: Flags; files: [string] }
+  | { kind: 'mcp'; flags: Flags; files: [] | [string] }
+  | { kind: 'mcp-run'; flags: Flags; command: string[] }
   | { kind: 'guide' }
   | { kind: 'diff'; flags: Flags; files: [string, string] }
   | { kind: 'help' }
@@ -88,11 +91,16 @@ Usage
   paces diff <a.paces> <b.paces>    compare two sessions (a is the baseline)
   paces import <file>               open a .cpuprofile or DevTools trace JSON (.gz is fine)
   paces summary <file.paces> [--json]   print findings, no UI
-  paces mcp <file.paces>            serve findings to an AI agent over MCP (stdio)
+  paces mcp                         serve paces over MCP (stdio); the client's profile tool runs commands
+  paces mcp <file.paces>            the same, with a saved session already loaded
+  paces mcp [flags] -- <cmd...>     the same, after profiling a command
 
 Flags (before --)
   --interval <us>        sampling interval in microseconds (default 1000)
   --async                record async causality
+  --v8                   record V8 deoptimizations to find easy optimizations. V8 prints some trace
+                         lines to stdout, like ") (opt id 5) for deoptimization, reason: ...]", so
+                         the program's stdout can gain a few lines in this mode
   --duration <s>         stop profiling after N seconds, keep the app running
   --start-on <SIGNAL>    start profiling when paces receives the signal (not on Windows)
   --out <file>           session path (default ./.paces/<time>.paces)
@@ -145,6 +153,7 @@ const REPORT_VALUE_FLAGS = new Set([
 ]);
 const BOOL_FLAGS = new Set([
   '--async',
+  '--v8',
   '--embed-sources',
   '--no-open',
   '--keys',
@@ -219,6 +228,7 @@ export function parseArgs(argv: string[]): Parsed {
   const command = sep >= 0 ? argv.slice(sep + 1) : [];
   const flags: Flags = {
     async: false,
+    v8: false,
     embedSources: false,
     noOpen: false,
     include: [],
@@ -251,6 +261,7 @@ export function parseArgs(argv: string[]): Parsed {
     if (BOOL_FLAGS.has(name)) {
       if (eq >= 0) throw new UsageError(`${name} does not take a value.`);
       if (name === '--async') flags.async = true;
+      else if (name === '--v8') flags.v8 = true;
       else if (name === '--embed-sources') flags.embedSources = true;
       else if (name === '--no-open') flags.noOpen = true;
       else if (name === '--keys') flags.keys = true;
@@ -285,6 +296,17 @@ export function parseArgs(argv: string[]): Parsed {
   if (help) return { kind: 'help' };
   if (version) return { kind: 'version' };
 
+  if (sep >= 0 && positional[0] === 'mcp') {
+    if (command.length === 0)
+      throw new UsageError('Nothing to run after "--". Example: paces mcp -- npm test');
+    if (positional.length > 1) {
+      throw new UsageError(
+        'paces mcp takes either a file or a command after "--", not both. Example: paces mcp -- npm test',
+      );
+    }
+    return { kind: 'mcp-run', flags, command };
+  }
+
   if (sep >= 0) {
     if (command.length === 0)
       throw new UsageError('Nothing to run after "--". Example: paces -- node app.js');
@@ -305,6 +327,11 @@ export function parseArgs(argv: string[]): Parsed {
     );
   }
   const files = positional.slice(1);
+  if (first === 'mcp') {
+    if (files.length > 1)
+      throw new UsageError('paces mcp takes at most one file: paces mcp [file.paces]');
+    return { kind: 'mcp', flags, files: files[0] === undefined ? [] : [files[0]] };
+  }
   const need = first === 'diff' ? 2 : 1;
   if (files.length !== need) {
     throw new UsageError(
@@ -316,7 +343,7 @@ export function parseArgs(argv: string[]): Parsed {
   if (first === 'diff')
     return { kind: 'diff', flags, files: [files[0] as string, files[1] as string] };
   return {
-    kind: first as 'open' | 'summary' | 'mcp' | 'import' | 'report',
+    kind: first as 'open' | 'summary' | 'import' | 'report',
     flags,
     files: [files[0] as string],
   };

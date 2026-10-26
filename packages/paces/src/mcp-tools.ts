@@ -47,14 +47,31 @@ function oneOf<T extends string>(
   return v as T;
 }
 
-/** The tools an agent uses to find where time goes, over one loaded model. Times are sampled estimates. */
+/** What the tools answer from: the model of the current session and its digest. */
+export interface LoadedModel {
+  model: ExecutionModel;
+  summary: () => AgentSummary;
+}
+
+/** The tools over one fixed model. */
 export function buildTools(model: ExecutionModel, summary: () => AgentSummary): McpTool[] {
-  const primary = model.primaryTrack;
-  const targetTracks = model.tracks
-    .map((t, i) => ({ t, i }))
-    .filter(({ t }) => t.role !== 'support');
-  const primaryBusy = (model.tracks[primary] as Track).busyUs || 1;
-  const indexOf = new Map<Track, Map<FnId, number>>();
+  return toolsOver(() => ({ model, summary }));
+}
+
+/**
+ * The tools an agent uses to find where time goes. The model is read on every call, so one server
+ * can switch sessions without its tool list changing. Times are sampled estimates.
+ */
+export function toolsOver(current: () => LoadedModel): McpTool[] {
+  const m = (): ExecutionModel => current().model;
+  const summary = (): AgentSummary => current().summary();
+  const primary = (): number => m().primaryTrack;
+  const targetTracks = () =>
+    m()
+      .tracks.map((t, i) => ({ t, i }))
+      .filter(({ t }) => t.role !== 'support');
+  const primaryBusy = (): number => (m().tracks[primary()] as Track).busyUs || 1;
+  const indexOf = new WeakMap<Track, Map<FnId, number>>();
   const slot = (t: Track, fn: FnId): number | undefined => {
     let m = indexOf.get(t);
     if (!m) {
@@ -64,10 +81,10 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
     }
     return m.get(fn);
   };
-  const str_ = (id: number): string => model.strings[id] ?? '';
+  const str_ = (id: number): string => m().strings[id] ?? '';
 
   const fnIdentity = (fn: FnId) => {
-    const f = fnFacts(model, fn, false);
+    const f = fnFacts(m(), fn, false);
     return {
       name: orAnon(f.name),
       package: f.pkg,
@@ -78,7 +95,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
   };
 
   const ref = (fn: FnId) => {
-    const t = model.tracks[primary] as Track;
+    const t = m().tracks[primary()] as Track;
     const i = slot(t, fn);
     const self = i === undefined ? 0 : (t.agg.fnSelf[i] ?? 0);
     const total = i === undefined ? 0 : (t.agg.fnTotal[i] ?? 0);
@@ -86,7 +103,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
       ...fnIdentity(fn),
       selfMs: ms(self),
       totalMs: ms(total),
-      share: share(total / primaryBusy),
+      share: share(total / primaryBusy()),
     };
   };
 
@@ -98,11 +115,11 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
   });
 
   const find = (name: string, file: string | undefined): { fn: FnId; alternatives: unknown[] } => {
-    const t = model.tracks[primary] as Track;
+    const t = m().tracks[primary()] as Track;
     const hits: Array<{ fn: FnId; total: number }> = [];
     t.fnIds.forEach((fn, i) => {
-      if (functionName(model, fn) !== name) return;
-      if (file && !str_(model.functions.file[fn] ?? 0).includes(file)) return;
+      if (functionName(m(), fn) !== name) return;
+      if (file && !str_(m().functions.file[fn] ?? 0).includes(file)) return;
       hits.push({ fn, total: t.agg.fnTotal[i] ?? 0 });
     });
     hits.sort((a, b) => b.total - a.total || a.fn - b.fn);
@@ -117,7 +134,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
 
   const origins = ORIGIN_NAMES as readonly string[];
 
-  return [
+  const tools: McpTool[] = [
     {
       name: 'summary',
       description:
@@ -155,7 +172,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
         const limit = int(args, 'limit', 8, 20);
         const origin = oneOf(args, 'origin', ORIGIN_NAMES);
         const idx = origin === undefined ? undefined : origins.indexOf(origin);
-        const paths = hotPaths(model, primary, {
+        const paths = hotPaths(m(), primary(), {
           limit,
           ...(idx === undefined ? {} : { origin: idx as never }),
         });
@@ -188,7 +205,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
         const limit = int(args, 'limit', 15, 50);
         const self = new Map<FnId, number>();
         const total = new Map<FnId, number>();
-        for (const { t } of targetTracks) {
+        for (const { t } of targetTracks()) {
           t.fnIds.forEach((fn, i) => {
             self.set(fn, (self.get(fn) ?? 0) + (t.agg.fnSelf[i] ?? 0));
             total.set(fn, (total.get(fn) ?? 0) + (t.agg.fnTotal[i] ?? 0));
@@ -196,11 +213,11 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
         }
         const rows = [...self.keys()]
           .filter((fn) => {
-            const o = ORIGIN_NAMES[model.functions.origin[fn] ?? 0];
-            const name = functionName(model, fn);
+            const o = ORIGIN_NAMES[m().functions.origin[fn] ?? 0];
+            const name = functionName(m(), fn);
             if (o === 'idle' || o === 'gc' || name === '(root)') return false;
             if (origin && o !== origin) return false;
-            return !pkg || str_(model.functions.pkg[fn] ?? 0) === pkg;
+            return !pkg || str_(m().functions.pkg[fn] ?? 0) === pkg;
           })
           .map((fn) => ({ fn, self: self.get(fn) ?? 0, total: total.get(fn) ?? 0 }))
           .filter((r) => r.self > 0 || r.total > 0)
@@ -210,7 +227,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
           ...fnIdentity(r.fn),
           selfMs: ms(r.self),
           totalMs: ms(r.total),
-          share: share((sort === 'self' ? r.self : r.total) / primaryBusy),
+          share: share((sort === 'self' ? r.self : r.total) / primaryBusy()),
         }));
       },
     },
@@ -226,12 +243,12 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
       },
       run: (args) => {
         const pkg = str(args, 'package', true) as string;
-        const rows = packageBreakdown(model, primary, pkg).slice(0, 30);
+        const rows = packageBreakdown(m(), primary(), pkg).slice(0, 30);
         return rows.map((r) => ({
           ...ref(r.fn),
           selfMs: ms(r.self),
           totalMs: ms(r.total),
-          share: share(r.total / primaryBusy),
+          share: share(r.total / primaryBusy()),
         }));
       },
     },
@@ -254,7 +271,7 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
         const depth = int(args, 'depth', 2, 4);
         return {
           function: ref(fn),
-          callers: callersOf(model, primary, fn, depth).map(callerJson),
+          callers: callersOf(m(), primary(), fn, depth).map(callerJson),
           alternatives,
         };
       },
@@ -267,4 +284,5 @@ export function buildTools(model: ExecutionModel, summary: () => AgentSummary): 
       run: () => summary().phases ?? [],
     },
   ];
+  return tools.map((t) => ({ ...t, annotations: { readOnlyHint: true } }));
 }

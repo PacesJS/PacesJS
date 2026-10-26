@@ -159,6 +159,7 @@ describe('the opening chain follows CPU time, not the clock', () => {
     resumed: false,
     summaryTasks: [],
     selfUs: selfMs * 1000,
+    deopts: 0,
   });
 
   // `waits` spans 1300 ms on the clock but only runs 5 ms; `works` is the real work.

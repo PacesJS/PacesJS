@@ -23,7 +23,13 @@ interface InfoFile {
 export function readCaptureDir(dir: string, meta: CaptureMeta): RawCapture {
   const raw = join(dir, 'raw');
   const names = existsSync(raw) ? readdirSync(raw) : [];
-  const ids = [...new Set(names.map((n) => n.slice(0, n.lastIndexOf('.'))))].sort();
+  // V8 writes the deopt trace while the program runs, the other files only at exit: a killed process
+  // leaves just the trace, which must not make a track.
+  const ids = [
+    ...new Set(
+      names.filter((n) => !n.endsWith('.deopt')).map((n) => n.slice(0, n.lastIndexOf('.'))),
+    ),
+  ].sort();
   const tracks: RawTrack[] = [];
   const sourceMaps: Record<string, string> = {};
 
@@ -54,15 +60,25 @@ export function readCaptureDir(dir: string, meta: CaptureMeta): RawCapture {
       .split('\n')
       .filter(Boolean)
       .map((line) => JSON.parse(line) as RuntimeEvent);
+    const deoptTrace = condenseDeoptTrace(read('deopt') ?? '');
     tracks.push({
       info: trackInfo,
       ...(profileText ? { cpuProfile: JSON.parse(profileText) as CdpProfile } : {}),
       scripts,
       events,
+      ...(deoptTrace ? { deoptTrace } : {}),
     });
     for (const s of scripts) resolveSourceMap(s, sourceMaps);
   }
   return { meta, tracks, sourceMaps };
+}
+
+/** The verbose trace is about 60 lines per deopt; the engine needs the header and the position. */
+function condenseDeoptTrace(text: string): string {
+  return text
+    .split('\n')
+    .filter((l) => l.startsWith('[bailout (kind:') || l.includes(';;; deoptimize at'))
+    .join('\n');
 }
 
 function resolveSourceMap(script: ScriptInfo, out: Record<string, string>): void {

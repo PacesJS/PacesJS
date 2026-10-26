@@ -24,6 +24,11 @@ export interface SourceMapResult {
   frameToFn: Uint32Array;
   /** Per track, parallel to `RawTicks.line`: 1-based original line of each tick entry. */
   tickLines: Uint32Array[];
+  /**
+   * The original line of a 1-based generated position inside a frame's script, or 0 when the map sends
+   * it to another file (no line to show). Scripts without a map keep their generated line.
+   */
+  originalLine: (frame: number, line: number, col: number) => number;
 }
 
 export interface SourceMapInput {
@@ -226,9 +231,24 @@ export function resolveSourceMaps(input: SourceMapInput, ctx: PassContext): Sour
     ctx,
     capture.meta.projectRoot,
   );
+  const strings = ctx.strings.strings;
   return {
     functions,
     frameToFn,
-    tickLines: mapTickLines(ingest, frameInfo, ctx.strings.strings),
+    tickLines: mapTickLines(ingest, frameInfo, strings),
+    originalLine: (frame, line, col) => {
+      const info = frameInfo[frame];
+      if (!info?.entry) return line;
+      const pos = info.entry.consumer.originalPositionFor({
+        line,
+        column: Math.max(0, col - 1),
+        bias: SourceMapConsumer.GREATEST_LOWER_BOUND,
+      });
+      const url = strings[ingest.frames.url[frame] ?? 0] ?? '';
+      const sameFile =
+        pos.source !== null &&
+        resolveSourcePath(pos.source, info.entry.sourceRoot, url) === info.source;
+      return pos.line !== null && sameFile ? pos.line : 0;
+    },
   };
 }

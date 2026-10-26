@@ -17,7 +17,7 @@ import { createHoverStore } from '../app/hover';
 import type { WaterfallRow } from '../data/types';
 import type { WfColumns } from '../state/prefs';
 import { fmtAxis, fmtDuration, fmtShare } from '../util/format';
-import { drawBar } from '../view/draw-bars';
+import { DEOPT_MARK_ROOM, drawBar } from '../view/draw-bars';
 import { niceTicks } from '../view/scale';
 import { MIN_BAR_PX, fitCallWidth, fitNumericWidth, gridTemplate } from '../view/waterfall-columns';
 import type { ColumnKey } from '../view/waterfall-columns';
@@ -259,12 +259,14 @@ export function Waterfall() {
           hatched: r.belowPrecision,
           critical: snap.options.critical && r.critical,
           own: r.kind === 'call' ? { selfUs: r.selfUs, totalUs: r.end - r.start } : undefined,
+          deopted: r.deopts > 0,
         });
         if (r.belowPrecision || !labelFitsBar(rect.w, col.x1 - col.x0)) return;
         // Only label a bar the text fits inside, never one it would spill out of.
         if (r.kind === 'fold' && r.fold === 'small') return;
         const label = durLabel(r, threshold);
-        if (ctx.measureText(label).width + 12 > rect.w) return;
+        const room = r.deopts > 0 ? DEOPT_MARK_ROOM : 0;
+        if (ctx.measureText(label).width + 12 + room > rect.w) return;
         ctx.fillStyle = pal.ink;
         ctx.fillText(label, rect.x + 6, y + WF.barH / 2 + 0.5);
       });
@@ -492,7 +494,7 @@ export function Waterfall() {
             document.body,
           )
         : null}
-      <WaterfallLegend threshold={threshold} />
+      <WaterfallLegend threshold={threshold} deopts={rows.some((r) => r.deopts > 0)} />
       <span className="sr-only" role="status" aria-live="polite">
         {TEXT.summary(data.taskLabel, fmtDuration(data.taskUs), data.rows.length - 1)}
       </span>

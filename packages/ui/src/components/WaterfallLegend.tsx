@@ -1,4 +1,5 @@
 import { RESUMED_TIP } from '../view/waterfall-labels';
+import { DeoptLegendItem } from './DeoptLegendItem';
 import { Legend } from './Legend';
 
 const TEXT = {
@@ -16,7 +17,14 @@ const TEXT = {
 } as const;
 
 /** The footer legend of the waterfall: origin colors, critical path, hatching, waits, resumed rows, deep calls. */
-export function WaterfallLegend({ threshold }: { threshold: string }) {
+export function WaterfallLegend({
+  threshold,
+  deopts,
+}: {
+  threshold: string;
+  /** Some row is marked as deoptimized. */
+  deopts: boolean;
+}) {
   return (
     <div className="view-footer">
       <Legend label={TEXT.originColors} />
@@ -44,6 +52,7 @@ export function WaterfallLegend({ threshold }: { threshold: string }) {
         </span>
         {TEXT.depth}
       </span>
+      {deopts ? <DeoptLegendItem /> : null}
       <span className="view-footer-end">{TEXT.keys}</span>
     </div>
   );

@@ -28,17 +28,12 @@ import { DEFAULT_GRACE_MS, waitForWindowClose } from './lifecycle.js';
 import { keysEnabled } from './keys.js';
 import { attachTerminal } from './terminal.js';
 import { serveMcp } from './mcp.js';
-import { buildTools } from './mcp-tools.js';
-import { lostTracksLines } from './lost-tracks.js';
+import { createPacesServer } from './mcp-server.js';
+import { saveSession } from './save-session.js';
 import { NoProcessesError, preloadPath, runProfile } from './profile.js';
 import { startHost } from './server.js';
 import type { HostSession } from './server.js';
-import {
-  collectSources,
-  defaultSessionPath,
-  findProjectRoot,
-  writeSessionFile,
-} from './session-files.js';
+import { defaultSessionPath, findProjectRoot, writeSessionFile } from './session-files.js';
 import { configDir } from './settings.js';
 import { formatSummary } from './summary.js';
 import { GUIDE } from './guide.js';
@@ -50,6 +45,8 @@ declare const __PACES_VERSION__: string | undefined;
 export interface Io {
   out(text: string): void;
   err(text: string): void;
+  /** The MCP client's pipes; the process's stdin and stdout when unset. */
+  mcp?: { input: NodeJS.ReadableStream; output: NodeJS.WritableStream };
 }
 
 const consoleIo: Io = {
@@ -232,6 +229,11 @@ function engineOrExplain(io: Io): Engine | undefined {
 async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Promise<number> {
   const cwd = process.cwd();
   io.err(`paces: profiling \`${p.command.join(' ')}\``);
+  if (p.flags.v8) {
+    io.err(
+      'paces: --v8 is on. V8 can print some trace lines to the program stdout, like ") (opt id 5) for deoptimization, reason: ...]".',
+    );
+  }
   const isTTY = Boolean(process.stdin.isTTY);
   const result = await runProfile({
     command: p.command,
@@ -269,28 +271,13 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
   const out = resolve(cwd, p.flags.out ?? defaultSessionPath(cwd));
   const engine = engineOrExplain(io);
   const engineVersion = engine?.engineVersion ?? '0.0.0';
-  const sources = p.flags.embedSources ? collectSources(capture) : [];
-
-  // The raw capture is the source of truth: persist it before any analysis can fail.
-  writeSessionFile(out, writeSession(capture, { engineVersion, sources }));
-  const tracks = capture.tracks.length;
-  io.err(`paces: ${tracks} track${tracks === 1 ? '' : 's'} captured, session saved to ${out}`);
-  const lost = capture.meta.lostTracks ?? [];
-  for (const line of lostTracksLines(lost, tracks + lost.length)) io.err(line);
-
-  let model: ExecutionModel | undefined;
-  if (engine) {
-    try {
-      model = engine.analyze(capture, analyzeOptions(p.flags));
-      const bytes = engine.serializeModel(model);
-      writeSessionFile(out, writeSession(capture, { engineVersion, sources, model: bytes }));
-      io.err(`paces: ${model.findings.length} finding${model.findings.length === 1 ? '' : 's'}`);
-    } catch (e) {
-      io.err(
-        `paces: analysis failed (${(e as Error).message}). The raw session is saved; reopen it after updating paces.`,
-      );
-    }
-  }
+  const model = saveSession(capture, {
+    out,
+    engine,
+    focus: p.flags.focus,
+    embedSources: p.flags.embedSources,
+    log: (l) => io.err(l),
+  });
 
   if (model && engine && p.flags.report.runMode) {
     const session = readSessionFile(out, engineVersion);
@@ -430,15 +417,52 @@ function cmdSummary(file: string, flags: Flags, io: Io): number {
   return 0;
 }
 
-async function cmdMcp(file: string, flags: Flags): Promise<number> {
+/**
+ * Serves paces over MCP on stdio. With a file, or a command to profile first, that session is already
+ * loaded when the client connects; with neither, the client's `profile` tool starts one.
+ */
+async function cmdMcp(
+  start: { file?: string; command?: string[] },
+  flags: Flags,
+  io: Io,
+): Promise<number> {
   const engine = loadEngine();
-  const { model } = modelOf(file, engine, flags);
-  const summary = engine.buildAgentSummary(model);
-  await serveMcp(
-    process.stdin,
-    process.stdout,
-    buildTools(model, () => summary),
-  );
+  const version = typeof __PACES_VERSION__ === 'string' ? __PACES_VERSION__ : undefined;
+  const server = createPacesServer({
+    engine,
+    cwd: process.cwd(),
+    preload: resolvePreload(),
+    log: (l) => io.err(l),
+  });
+  if (start.file !== undefined) {
+    requireFile(start.file);
+    server.open(start.file, flags.focus);
+  }
+  if (start.command) {
+    if (flags.v8) {
+      io.err(
+        'paces: --v8 is on. The program output goes to stderr in this mode, so it cannot corrupt the protocol.',
+      );
+    }
+    const outcome = await server.profile(
+      {
+        command: start.command,
+        interval: flags.interval,
+        duration: flags.duration,
+        v8: flags.v8,
+        async: flags.async,
+        focus: flags.focus,
+        out: flags.out,
+      },
+      { signal: new AbortController().signal },
+    );
+    io.err(`paces: serving ${outcome.session} over MCP`);
+  }
+  await serveMcp(io.mcp?.input ?? process.stdin, io.mcp?.output ?? process.stdout, server.tools, {
+    version,
+    instructions: server.instructions,
+    resources: server.resources,
+  });
   return 0;
 }
 
@@ -472,7 +496,9 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
       case 'summary':
         return cmdSummary(parsed.files[0], parsed.flags, io);
       case 'mcp':
-        return await cmdMcp(parsed.files[0], parsed.flags);
+        return await cmdMcp({ file: parsed.files[0] }, parsed.flags, io);
+      case 'mcp-run':
+        return await cmdMcp({ command: parsed.command }, parsed.flags, io);
       case 'report':
         return cmdReport(parsed.files[0], parsed.flags, io);
       case 'guide':

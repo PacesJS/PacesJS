@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
@@ -11,6 +11,7 @@ import type { ProfileControls } from '../src/profile.js';
 const preload = createRequire(import.meta.url).resolve('@pacesjs/collector-node/preload.cjs');
 const flags = (over: Partial<Flags> = {}): Flags => ({
   async: false,
+  v8: false,
   embedSources: false,
   noOpen: false,
   include: [],
@@ -34,6 +35,41 @@ describe('nodeOptionsWith', () => {
   it('sets NODE_OPTIONS when there is none', () => {
     expect(nodeOptionsWith(undefined, '/p/preload.cjs')).toBe('--require "/p/preload.cjs"');
   });
+});
+
+describe('runProfile with --v8', () => {
+  // `add` is optimized for small integers, then fed doubles and strings.
+  const deopting = `function add(a,b){return a+b}
+    let t=0;
+    for(let i=0;i<200000;i++)t+=add(i,1);
+    for(let i=0;i<200000;i++)t+=add(i,0.5);
+    for(let i=0;i<200000;i++)t+=add('a',i).length`;
+
+  it('records the V8 deoptimization trace of the process', async () => {
+    const r = await runProfile({ ...base, command: node(deopting), flags: flags({ v8: true }) });
+    expect(r.capture.tracks[0]?.deoptTrace).toContain(';;; deoptimize at');
+  }, 30_000);
+
+  it('still reports a traced process that was killed as lost, with no track of its own', async () => {
+    // Yield first: a process killed before its event loop turns never got to register with paces.
+    const child = `setTimeout(()=>{${deopting};process.kill(process.pid,'SIGKILL')},400)`;
+    const code = `require('node:child_process').spawnSync(process.execPath,['-e',${JSON.stringify(child)}],{stdio:'inherit'})`;
+    const r = await runProfile({ ...base, command: node(code), flags: flags({ v8: true }) });
+    expect(r.capture.tracks).toHaveLength(1);
+    expect(r.capture.meta.lostTracks ?? []).toHaveLength(1);
+  }, 30_000);
+
+  it('records none unless asked, whatever the caller environment says', async () => {
+    const before = process.env.PACES_V8_TRACE;
+    process.env.PACES_V8_TRACE = '1';
+    try {
+      const r = await runProfile({ ...base, command: node(deopting), flags: flags() });
+      expect(r.capture.tracks[0]).not.toHaveProperty('deoptTrace');
+    } finally {
+      if (before === undefined) delete process.env.PACES_V8_TRACE;
+      else process.env.PACES_V8_TRACE = before;
+    }
+  }, 30_000);
 });
 
 describe('runProfile and killed processes', () => {
@@ -60,6 +96,24 @@ describe('runProfile and killed processes', () => {
   it('leaves lostTracks unset when every process wrote its profile', async () => {
     const r = await runProfile({ ...base, command: node(busy), flags: flags() });
     expect(r.capture.meta.lostTracks).toBeUndefined();
+  });
+});
+
+describe('runProfile with the program output redirected', () => {
+  it('sends the program stdout to the given file descriptor, not to ours', async () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'paces-out-')), 'out.txt');
+    const fd = openSync(file, 'w');
+    try {
+      await runProfile({
+        ...base,
+        command: node(`${busy};console.log('from the program')`),
+        flags: flags(),
+        stdoutFd: fd,
+      });
+    } finally {
+      closeSync(fd);
+    }
+    expect(readFileSync(file, 'utf8')).toContain('from the program');
   });
 });
 

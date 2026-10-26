@@ -30,6 +30,7 @@ const row = (name: string, depth: number, loc = ''): WaterfallRow => ({
   resumed: false,
   summaryTasks: [],
   selfUs: 0,
+  deopts: 0,
 });
 const mono = (text: string): number => text.length * 7;
 

@@ -75,6 +75,12 @@ export interface RawTrack {
   cpuProfile?: CdpProfile;
   scripts: ScriptInfo[];
   events: RuntimeEvent[];
+  /**
+   * V8's deoptimization trace of the process (workers share their process's), reduced by the host to
+   * the line that names each deoptimized function and the line that gives its position. Absent when
+   * the process was not traced and in older sessions.
+   */
+  deoptTrace?: string;
 }
 
 export type CaptureMode = 'default' | 'fine' | 'async';

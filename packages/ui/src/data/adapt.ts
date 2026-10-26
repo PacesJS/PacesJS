@@ -124,6 +124,7 @@ function toWaterfallRow(
     resumed: r.resumed,
     summaryTasks: r.summaryTasks,
     selfUs: r.selfUs,
+    deopts: r.deopts,
   };
 }
 
@@ -197,6 +198,7 @@ export function waterfallData(
       resumed: false,
       summaryTasks: [],
       selfUs: 0,
+      deopts: 0,
     },
   ];
   for (const r of wf.rows) rows.push(toWaterfallRow(s, r, t0, 1));
@@ -316,6 +318,7 @@ export function flameData(
   const node = new Int32Array(n);
   const fn = new Uint32Array(n);
   const heat = new Float32Array(n);
+  const deopts = new Uint32Array(n);
   const delta = diff ? new Float32Array(n) : undefined;
   const names: string[] = [];
   const locs: string[] = [];
@@ -333,6 +336,7 @@ export function flameData(
       names.push(nameOrAnon(info.name));
       locs.push(info.synthetic ? '' : locationOf(info));
     }
+    deopts[i] = layout.deopts[i] ?? 0;
     if (!diff) heat[i] = layout.intensity[i] ?? 0;
     else if (delta) {
       const change = layout.change[i] ?? 0;
@@ -355,6 +359,7 @@ export function flameData(
     heat,
     totalUs: layout.total,
     selfUs: layout.self,
+    deopts,
     delta,
     names,
     locs,
@@ -676,6 +681,12 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     loc: src.file ? fileLine(src.file, src.line) : '',
     lineStatus: src.lineInfo.status,
     lineReason: src.lineInfo.reason,
+    deopts: src.deopts.map((d) => ({
+      line: d.line,
+      reason: d.reason,
+      kind: d.kind,
+      count: d.count,
+    })),
     calleeTime: calleesOf(model, s, engineFn).map((c) => {
       const fn = s.out(c.fn);
       return {

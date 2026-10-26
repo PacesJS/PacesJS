@@ -39,6 +39,14 @@ Reading the numbers
 - Line numbers are original source lines (source maps applied); code text comes from disk or the
   source map, otherwise only numbers are shown.
 
+V8 deoptimizations (opt in): add --v8 (paces --report --v8 -- node app.js). A "V8 keeps deoptimizing a
+hot function" finding names a first-party function that is hot and that V8 repeatedly threw away
+optimized code for, with the change that avoids it. Many runs have none: it only fires when the
+deopts coincide with real time. V8 may print some trace lines to the program stdout in this mode.
+
+With the paces MCP server registered (paces mcp), call its profile tool with the command as an array,
+then summary, findings, hot_paths, callers and top_functions; list_sessions and open_session switch runs.
+
 Workflow: summary -> heaviest subtree (--tree --from) -> hottest function (--lines) -> callers
 (--callers) -> change code -> profile again and compare totals (paces diff a.paces b.paces).
 `;

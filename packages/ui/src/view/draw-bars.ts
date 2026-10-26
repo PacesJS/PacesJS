@@ -55,6 +55,8 @@ export interface BarStyle {
   critical: boolean;
   /** Own and total time of the call; the own share is striped before the outline is drawn over it. */
   own?: { selfUs: number; totalUs: number };
+  /** V8 threw away optimized code of this function: mark the bar. */
+  deopted?: boolean;
 }
 
 /** One bar: dim fill for non-user origins, stripes under the sampling precision, outline for critical. */
@@ -83,4 +85,39 @@ export function drawBar(
     roundedRectPath(ctx, x + 1, y + 1, Math.max(1, w - 2), h - 2, 3);
     ctx.stroke();
   }
+  if (style.deopted) drawDeoptMark(ctx, pal, x, y, w, h);
+}
+
+/** Narrower bars have no room for the mark next to their label. */
+export const DEOPT_MIN_BAR_WIDTH = 24;
+/** Width a bar's label gives up to the mark. */
+export const DEOPT_MARK_ROOM = 14;
+
+/**
+ * A small downward triangle at the right end of a bar: V8 threw away this function's optimized code.
+ * It points down because the code dropped to a slower tier.
+ */
+export function drawDeoptMark(
+  ctx: CanvasRenderingContext2D,
+  pal: Palette,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  if (w < DEOPT_MIN_BAR_WIDTH) return;
+  const size = Math.min(9, h - 6);
+  if (size < 4) return;
+  const right = x + w - 4;
+  const top = y + (h - size * 0.85) / 2;
+  ctx.beginPath();
+  ctx.moveTo(right - size, top);
+  ctx.lineTo(right, top);
+  ctx.lineTo(right - size / 2, top + size * 0.85);
+  ctx.closePath();
+  ctx.fillStyle = pal.deopt;
+  ctx.strokeStyle = pal.deoptEdge;
+  ctx.lineWidth = 1;
+  ctx.fill();
+  ctx.stroke();
 }

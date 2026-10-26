@@ -21,6 +21,7 @@ const TEXT = {
   viewAll: (total: number) => `View all ${total}`,
   rank: (n: number) => `#${n}`,
   rule: (rule: string) => `Rule: ${rule}`,
+  fix: (hint: string) => `Fix: ${hint}`,
   opens: (what: string) => `Opens ${what}`,
   showMeLabel: (title: string) => `Show me: ${title}`,
   showingTitle: 'Showing this finding. Press again to clear it.',
@@ -89,6 +90,7 @@ export function Findings() {
                 </div>
                 <h3 className="finding-title">{f.title}</h3>
                 <p className="finding-text">{f.summary}</p>
+                {f.hint ? <p className="finding-hint">{TEXT.fix(f.hint)}</p> : null}
                 <p className="finding-rule">{TEXT.rule(f.rule.replace(/^Rule:\s*/i, ''))}</p>
                 <div className="finding-foot">
                   <span className="finding-opens">{TEXT.opens(opensLabel(f))}</span>

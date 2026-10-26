@@ -3,6 +3,7 @@ import { useApp } from '../app/context';
 import type { SourceState } from '../app/useSource';
 import { originColor } from '../theme/origin';
 import { fmtDuration } from '../util/format';
+import { deoptSourceTitle } from '../view/deopt-text';
 import {
   gutterTitle,
   gutterWidth,
@@ -36,6 +37,7 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
   const {
     lines,
     selfByLine,
+    deoptsByLine,
     rolledFrom,
     precisionUs,
     maxSelf,
@@ -84,6 +86,7 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
             const low = self > 0 && isLowConfidence(self, precisionUs);
             const isDefinition = l.n === definitionLine;
             const chip = chips.find((c) => c.lineIndex === idx);
+            const deopts = deoptsByLine.get(l.n);
             const inBand = band !== null && l.n >= band.first && l.n <= band.last;
             return (
               <li
@@ -108,6 +111,14 @@ export function SourceCode({ source, wrap, band = null }: SourceCodeProps) {
                     scopeMode === 'call' ? TEXT.perCall(acrossAll) : acrossAll,
                   )}
                 >
+                  {deopts ? (
+                    <span
+                      className="source-deopt"
+                      role="img"
+                      aria-label={deoptSourceTitle(deopts)}
+                      title={deoptSourceTitle(deopts)}
+                    />
+                  ) : null}
                   {self > 0 ? (
                     <span className={`source-val${l.n === hottest ? ' is-hottest' : ''}`}>
                       {/* Every bar has its value. One sample's milliseconds are only the sampling

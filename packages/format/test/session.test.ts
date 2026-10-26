@@ -285,3 +285,23 @@ describe('writeSession is deterministic', () => {
     }
   });
 });
+
+describe('deoptTrace', () => {
+  const trace =
+    '[bailout (kind: deopt-eager, reason: not a Smi): begin. deoptimizing 0x1 <JSFunction add (sfi = 0x2)>, 0x3 <Code TURBOFAN_JS>, opt id 2, bytecode offset 2]\n' +
+    '            ;;; deoptimize at </project/app.js:1:31>';
+
+  it('round-trips a track deopt trace through the session', () => {
+    const capture = fixture('hot-regex');
+    const first = capture.tracks[0];
+    if (!first) throw new Error('fixture has no track');
+    first.deoptTrace = trace;
+    const back = readSession(writeSession(capture, { engineVersion: '1.0.0' }));
+    expect(back.capture.tracks[0]?.deoptTrace).toBe(trace);
+  });
+
+  it('writes no extra file for a track without one, so older sessions keep their bytes', () => {
+    const { files } = captureToFiles(fixture('hot-regex'));
+    expect(Object.keys(files).filter((f) => f.endsWith('.deopt'))).toEqual([]);
+  });
+});

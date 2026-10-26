@@ -6,6 +6,7 @@ import { connect } from 'node:net';
 import { Session } from 'node:inspector';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { setFlagsFromString } from 'node:v8';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { isMainThread, threadId } from 'node:worker_threads';
 
@@ -38,6 +39,25 @@ type RuntimeEvent =
 
 const FLAG = Symbol.for('paces.preload.active');
 
+/**
+ * Opt-in (--v8): V8 prints the tail of some trace messages straight to stdout, past the redirect, so
+ * it changes the program's output. V8 refuses its logging flags in NODE_OPTIONS, but its trace flags
+ * can still be set from the preload and are read when a deopt happens. The destination is
+ * process-wide and opened on first write, so workers must not set it again: their deopts land in the
+ * file of the process that owns them.
+ */
+function traceDeopts(raw: string, track: string): void {
+  mkdirSync(raw, { recursive: true });
+  for (const flag of [
+    '--trace-deopt',
+    '--trace-deopt-verbose',
+    '--redirect-code-traces',
+    `--redirect-code-traces-to=${join(raw, `${track}.deopt`)}`,
+  ]) {
+    setFlagsFromString(flag);
+  }
+}
+
 function start(): void {
   const dir = process.env.PACES_DIR;
   const g = globalThis as Record<symbol, unknown>;
@@ -49,6 +69,7 @@ function start(): void {
   const interval = Number(process.env.PACES_INTERVAL) || 1000;
   const track = isMainThread ? `p${process.pid}` : `p${process.pid}-w${threadId}`;
   if (isMainThread) process.env.PACES_PARENT = track;
+  if (isMainThread && process.env.PACES_V8_TRACE === '1') traceDeopts(join(dir, 'raw'), track);
   const session = new Session();
   session.connect();
 

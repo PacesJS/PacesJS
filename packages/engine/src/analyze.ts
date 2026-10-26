@@ -12,6 +12,7 @@ import { stitchContinuations } from './passes/continuations.js';
 import { toCallTree } from './passes/call-tree.js';
 import { classify } from './passes/classification.js';
 import { findIssues } from './passes/findings.js';
+import { buildDeoptTable } from './passes/deopts.js';
 import { ingest } from './passes/ingest.js';
 import { foldModuleLoading } from './passes/module-loading.js';
 import { detectPlumbing } from './passes/plumbing.js';
@@ -293,6 +294,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
     packages,
     taskKinds,
     findings: [],
+    deopts: buildDeoptTable(capture, ing.frames, sm.frameToFn, ctx, sm.originalLine),
     target: {
       packages: detection.packages,
       entry: detection.entries[detection.primary] ?? '',

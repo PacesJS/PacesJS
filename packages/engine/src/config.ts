@@ -25,6 +25,10 @@ export interface Thresholds {
   syncIoMinMs: number;
   /** Late module loading: ignore fewer total milliseconds than this inside request tasks. */
   lateLoadMinMs: number;
+  /** V8 deopt: a function is flagged after this many deopts for one actionable reason. */
+  deoptMinCount: number;
+  /** V8 deopt: and only if its own time is above this share of busy time. */
+  deoptMinShare: number;
   /** Findings that need a share ignore tracks or kinds with fewer busy samples than this. */
   minSamples: number;
 }
@@ -41,6 +45,8 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   loopLagP99Ms: 100,
   syncIoMinMs: 5,
   lateLoadMinMs: 5,
+  deoptMinCount: 3,
+  deoptMinShare: 0.05,
   minSamples: 20,
 };
 

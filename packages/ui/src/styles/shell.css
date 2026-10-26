@@ -525,6 +525,11 @@
   flex: 1 1 auto;
 }
 
+.finding-hint {
+  font-size: var(--fs-13);
+  line-height: var(--lh-20);
+}
+
 .finding-rule {
   font-size: var(--fs-12);
   line-height: var(--lh-16);
@@ -1357,6 +1362,16 @@
   justify-content: flex-end;
   gap: var(--sp-4);
   padding-right: var(--sp-6);
+}
+
+/* A downward triangle, the same mark as on the bars: V8 threw away optimized code on this line. */
+.source-deopt {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid var(--c-ink);
 }
 
 .source-val {

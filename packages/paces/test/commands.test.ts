@@ -177,6 +177,28 @@ describe('paces commands', () => {
     });
   });
 
+  it('profile --v8: says up front that V8 may add lines to the program output', async () => {
+    const c = capture();
+    const done = main(
+      ['--v8', '--no-open', '--out', join(dir, 'v8.paces'), '--', 'node', join(dir, 'app.js')],
+      c.io,
+    );
+    await closeWindowWhenReady(c.err);
+    await done;
+    expect(c.err.join('\n')).toMatch(/--v8.*stdout/);
+  });
+
+  it('profile: says nothing about V8 output without --v8', async () => {
+    const c = capture();
+    const done = main(
+      ['--no-open', '--out', join(dir, 'nov8.paces'), '--', 'node', join(dir, 'app.js')],
+      c.io,
+    );
+    await closeWindowWhenReady(c.err);
+    await done;
+    expect(c.err.join('\n')).not.toMatch(/stdout/);
+  });
+
   it('reports a missing file with a way forward and exit code 2', async () => {
     const c = capture();
     expect(await main(['open', join(dir, 'missing.paces')], c.io)).toBe(2);

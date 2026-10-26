@@ -1,5 +1,6 @@
 import type { FlameData } from '../data/types';
 import type { FlameLayout } from '../state/types';
+import { DEOPT_MARK_ROOM, DEOPT_MIN_BAR_WIDTH } from './draw-bars';
 import { charBudget, fitLabel } from './truncate';
 
 export const FLAME = {
@@ -50,7 +51,8 @@ export function flameRects(
       layout === 'icicle'
         ? depth * FLAME.rowH
         : height - (depth + 1) * FLAME.rowH + (FLAME.rowH - FLAME.frameH);
-    const budget = charBudget(w, FLAME.pad, FLAME.glyph);
+    const marked = (data.deopts[i] ?? 0) > 0 && w >= DEOPT_MIN_BAR_WIDTH;
+    const budget = charBudget(marked ? w - DEOPT_MARK_ROOM : w, FLAME.pad, FLAME.glyph);
     let label = '';
     if (budget >= 5) {
       const { name, loc } = labelOf(i);

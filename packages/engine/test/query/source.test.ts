@@ -198,3 +198,19 @@ describe('what the function itself did', () => {
     expect(pkg.definitionLine).toBe(0);
   });
 });
+
+describe('deopt marks in function source info', () => {
+  const m = loadModel('deopt-loop');
+  const view = applyTransforms(m, 0, []);
+
+  it('lists where V8 threw away optimized code, with the original line', () => {
+    const info = functionSource(m, view, fnId(m, 'price'));
+    expect(info.deopts).toEqual([{ reason: 'wrong map', kind: 'eager', line: 6, count: 10 }]);
+  });
+
+  it('is empty for a function V8 never deoptimized', () => {
+    const orders = loadModel('orders-server');
+    const v = applyTransforms(orders, 0, []);
+    expect(functionSource(orders, v, fnId(orders, 'lineTotal')).deopts).toEqual([]);
+  });
+});

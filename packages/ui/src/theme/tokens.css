@@ -76,6 +76,9 @@
   --c-on-accent: #171a3a;
   --c-kbd-on-accent: #ffffff99;
   --c-self-stripe: #ffffff;
+  /* Marks a function V8 threw optimized code away from: a dark triangle with a light edge reads on every origin color. */
+  --c-deopt: var(--c-on-accent);
+  --c-deopt-edge: var(--c-self-stripe);
   --c-focus-gap: #ffffff;
   --grad-accent: linear-gradient(
     135deg,

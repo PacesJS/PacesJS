@@ -18,6 +18,7 @@ export function captureToFiles(
     if (track.cpuProfile) files[`raw/${id}.cpuprofile`] = strToU8(JSON.stringify(track.cpuProfile));
     files[`raw/${id}.scripts`] = strToU8(JSON.stringify(track.scripts));
     files[`raw/${id}.events`] = strToU8(track.events.map((e) => JSON.stringify(e)).join('\n'));
+    if (track.deoptTrace) files[`raw/${id}.deopt`] = strToU8(track.deoptTrace);
   }
   // The spec layout has no slot for host-resolved maps; they are needed to rebuild the model.
   files[SOURCE_MAPS] = strToU8(JSON.stringify(capture.sourceMaps));
@@ -60,6 +61,7 @@ export function filesToCapture(files: FileMap, manifest: Manifest): RawCapture {
   const tracks: RawTrack[] = manifest.tracks.map((info) => {
     const id = info.id;
     const profile = files[`raw/${id}.cpuprofile`];
+    const deopt = files[`raw/${id}.deopt`];
     const events = strFromU8(files[`raw/${id}.events`] ?? new Uint8Array())
       .split('\n')
       .filter(Boolean)
@@ -69,6 +71,7 @@ export function filesToCapture(files: FileMap, manifest: Manifest): RawCapture {
       ...(profile ? { cpuProfile: JSON.parse(strFromU8(profile)) as CdpProfile } : {}),
       scripts: parse<ScriptInfo[]>(files, `raw/${id}.scripts`, []),
       events,
+      ...(deopt ? { deoptTrace: strFromU8(deopt) } : {}),
     };
   });
   return {

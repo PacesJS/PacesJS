@@ -38,6 +38,8 @@ export { flameLayout, flameLayoutOfTree } from './query/flame.js';
 export { callGraph } from './query/callgraph.js';
 export { functionRows, sandwich } from './query/functions.js';
 export { functionSource } from './query/source.js';
+export { deoptCounts, deoptSites } from './query/deopts.js';
+export type { DeoptSite } from './query/deopts.js';
 export { getEmbeddedSource } from './query/embedded-source.js';
 export { timelineLane } from './query/timeline.js';
 export { describeTasks } from './query/tasks.js';

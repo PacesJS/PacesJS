@@ -18,7 +18,8 @@ export const FIXTURES = [
   'async-chain',
   'async-chain-hooks',
 ] as const;
-export type FixtureName = (typeof FIXTURES)[number];
+// Not in FIXTURES: it needs V8 tracing (--v8), so the all-fixtures goldens do not cover it.
+export type FixtureName = (typeof FIXTURES)[number] | 'deopt-loop';
 
 const captures = new Map<string, RawCapture>();
 export function loadCapture(name: FixtureName): RawCapture {

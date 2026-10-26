@@ -31,7 +31,12 @@ const apps = [
   { name: 'orders-server', entry: join(zoo, 'orders-server', 'dist', 'server.js'), build: true },
   ...readdirSync(join(zoo, 'apps'))
     .filter((f) => f.endsWith('.cjs') && !f.startsWith('_'))
-    .map((f) => ({ name: f.replace(/\.cjs$/, ''), entry: join(zoo, 'apps', f) })),
+    .map((f) => ({
+      name: f.replace(/\.cjs$/, ''),
+      entry: join(zoo, 'apps', f),
+      // V8 deopt tracing is opt-in (--v8): it writes stray lines to stdout, so only this app enables it.
+      ...(f === 'deopt-loop.cjs' ? { env: { PACES_V8_TRACE: '1' } } : {}),
+    })),
   // The same app with async hooks on: exact continuation edges.
   {
     name: 'async-chain-hooks',

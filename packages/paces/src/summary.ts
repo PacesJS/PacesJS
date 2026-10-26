@@ -11,6 +11,7 @@ interface FindingLike {
   title?: string;
   summary?: string;
   rule?: string;
+  hint?: string;
   evidence?: Loc[];
   showMe?: Loc;
 }
@@ -67,6 +68,7 @@ export function formatSummary(
       const sev = (f.severity ?? 'info').toUpperCase().padEnd(6);
       lines.push(`  ${sev} ${f.title ?? 'Finding'}: ${f.summary ?? ''}`.trimEnd());
       for (const e of (f.evidence ?? []).slice(0, 4)) lines.push(`           at ${where(e)}`);
+      if (f.hint) lines.push(`           fix: ${f.hint}`);
       if (f.rule) lines.push(`           rule: ${f.rule}`);
     }
   }

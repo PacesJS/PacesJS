@@ -60,3 +60,19 @@ describe('summarizeWarnings', () => {
     expect(summarizeWarnings(undefined)).toEqual({ total: 0, byCode: {} });
   });
 });
+
+describe('formatSummary with a fix', () => {
+  it('prints the fix under the finding that has one', () => {
+    const out = formatSummary({
+      findings: [
+        {
+          severity: 'low',
+          title: 'V8 keeps deoptimizing a hot function',
+          summary: 'price was deoptimized 10 times for "wrong map".',
+          hint: 'Create objects with the same properties in the same order.',
+        },
+      ],
+    });
+    expect(out).toContain('fix: Create objects with the same properties in the same order.');
+  });
+});

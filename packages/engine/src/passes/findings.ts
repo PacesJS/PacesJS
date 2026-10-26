@@ -26,6 +26,7 @@ const KIND_ORDER: FindingKind[] = [
   'heavy-serialization',
   'late-module-loading',
   'event-loop-lag',
+  'v8-deopt',
 ];
 const SEVERITY_RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
 
@@ -682,6 +683,79 @@ const hotPath: Rule = (m, th) => {
   ];
 };
 
+/**
+ * V8's reasons for giving up optimized code that the code itself can avoid, with the change that
+ * avoids them. Anything else (on-stack replacement, missing feedback on a cold path, dependency
+ * changes) is V8 bookkeeping, not something to act on, and is ignored.
+ */
+const DEOPT_FIXES: Record<string, string> = {
+  'wrong map':
+    'Objects of different shapes reach the same property access. Create them with the same properties in the same order (one constructor or object literal) and do not add or delete properties later.',
+  'not a Smi':
+    'A value that was a small integer here is something else now. Keep one number representation at this spot: do not mix integers, fractions and strings.',
+  'not a HeapNumber':
+    'A value that was a number here is something else now. Keep the type of the value stable at this spot.',
+  'not a Number or Oddball':
+    'A value that was a number here is a string or object now. Convert it once at the boundary instead of passing mixed types.',
+  'not a String': 'A value that was a string here is something else now. Keep its type stable.',
+  overflow:
+    'Integer arithmetic went past the small-integer range after being optimized for it. If the values grow large, keep them as doubles from the start (for example start from 0.5 and round later).',
+  'out of bounds':
+    'The code reads past the end of an array. Keep indexes inside the length, or check before reading.',
+  hole: 'The array has holes (new Array(n), delete, skipped indexes). Fill arrays densely, with push or a literal.',
+  'wrong call target':
+    'A call that always went to one function now goes to another. Avoid passing many different callbacks through one call site in a hot loop.',
+  'wrong name':
+    'A property is read with keys that change. Use a Map for dynamic keys, or fixed property names.',
+};
+
+const v8Deopt: Rule = (m, th) => {
+  if (m.deopts.length === 0) return [];
+  const busy = totalBusy(m);
+  if (busy / m.meta.precisionUs < th.minSamples) return [];
+  const self = effectiveUserSelf(m);
+  // Only eager deopts count: lazy ones are V8 reacting to something that changed elsewhere.
+  const byFn = new Map<FnId, Map<string, number>>();
+  for (let i = 0; i < m.deopts.length; i++) {
+    if (m.deopts.kind[i] !== 0) continue;
+    const fn = m.deopts.fn[i] ?? 0;
+    const reason = m.strings[m.deopts.reason[i] ?? 0] ?? '';
+    if (!(reason in DEOPT_FIXES)) continue;
+    const reasons = byFn.get(fn) ?? new Map<string, number>();
+    reasons.set(reason, (reasons.get(reason) ?? 0) + (m.deopts.count[i] ?? 0));
+    byFn.set(fn, reasons);
+  }
+  const found: Array<{ fn: FnId; share: number; reason: string; count: number; track: string }> =
+    [];
+  for (const [fn, reasons] of byFn) {
+    const own = self.get(fn);
+    if (!own || own.us / busy < th.deoptMinShare) continue;
+    const [reason, count] = [...reasons.entries()].sort(
+      (a, b) => b[1] - a[1] || compareText(a[0], b[0]),
+    )[0] ?? ['', 0];
+    const track = m.tracks[own.track]?.id;
+    if (count < th.deoptMinCount || !track) continue;
+    found.push({ fn, share: own.us / busy, reason, count, track });
+  }
+  return found
+    .sort((a, b) => b.share - a.share || a.fn - b.fn)
+    .slice(0, 3)
+    .map((f): Finding => ({
+      id: `v8-deopt:${f.fn}`,
+      kind: 'v8-deopt',
+      // V8 says it deoptimized, not what that cost, so this never outranks measured time.
+      severity: f.share >= 0.4 ? 'medium' : 'low',
+      title: 'V8 keeps deoptimizing a hot function',
+      summary: `In ${where(m, f.fn)}, V8 threw away optimized code ${f.count} times for "${f.reason}"; the function takes ${formatPercent(f.share)} of CPU time.`,
+      hint: DEOPT_FIXES[f.reason],
+      rule: `A user function above ${formatPercent(th.deoptMinShare)} of busy time that V8 deoptimized at least ${th.deoptMinCount} times for the same reason (object shape, number type, bounds and similar; on-stack replacement and one-off feedback gaps are ignored). Needs a run with --v8.`,
+      impact: Math.min(1, f.share),
+      showMe: { view: 'functions', track: f.track, fn: f.fn },
+      evidence: [f.fn],
+      track: f.track,
+    }));
+};
+
 const RULES: Rule[] = [
   eventLoopBlocked,
   syncIo,
@@ -693,6 +767,7 @@ const RULES: Rule[] = [
   heavySerialization,
   lateModuleLoading,
   eventLoopLag,
+  v8Deopt,
 ];
 
 export function findIssues(model: ExecutionModel, ctx: PassContext): Finding[] {

@@ -3,6 +3,7 @@
 import { Origin } from '../model.js';
 import type { CallTree, ExecutionModel } from '../model.js';
 import type { FlameLayout, FlameOptions, TransformedView } from './types.js';
+import { deoptCounts } from './deopts.js';
 import { childrenOf, describeFunction } from './view.js';
 
 export function flameLayout(
@@ -10,7 +11,8 @@ export function flameLayout(
   view: TransformedView,
   options: FlameOptions = {},
 ): FlameLayout {
-  return flameLayoutOfTree(model, view.tree, view.syntheticPackages, options);
+  const deopts = deoptCounts(model, view.trackIndex, view.syntheticPackages);
+  return flameLayoutOfTree(model, view.tree, view.syntheticPackages, options, deopts);
 }
 
 export function flameLayoutOfTree(
@@ -18,6 +20,7 @@ export function flameLayoutOfTree(
   tree: CallTree,
   syntheticPackages: readonly string[],
   options: FlameOptions = {},
+  deopts: Uint32Array = new Uint32Array(0),
 ): FlameLayout {
   const F = model.functions.length;
   const sort = options.sort ?? 'left-heavy';
@@ -99,6 +102,7 @@ export function flameLayoutOfTree(
     plumbing: new Uint8Array(length),
     intensity: new Float32Array(length),
     change: new Int8Array(length),
+    deopts: new Uint32Array(length),
     maxDepth: 0,
     totalUs: rootTotal,
     zoomPath,
@@ -116,6 +120,7 @@ export function flameLayoutOfTree(
     out.total[i] = tree.total[n] ?? 0;
     out.origin[i] = fn >= F ? Origin.Dependency : (model.functions.origin[fn] ?? 0);
     out.plumbing[i] = fn >= F ? 0 : (model.functions.plumbing[fn] ?? 0);
+    out.deopts[i] = deopts[fn] ?? 0;
     if (depth > maxDepth) maxDepth = depth;
     if ((tree.self[n] ?? 0) > maxSelf) maxSelf = tree.self[n] ?? 0;
     if (colorBy === 'diff' && diff && fn < diff.headChange.length) {

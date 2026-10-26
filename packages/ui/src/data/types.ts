@@ -134,6 +134,8 @@ export interface WaterfallRow {
   summaryTasks: number[];
   /** Self time in microseconds. */
   selfUs: number;
+  /** Times V8 threw away optimized code of this call's function (--v8 runs). */
+  deopts: number;
   /** Fold rows: what they hide. */
   fold?: 'small' | 'bootstrap';
   /** Fold rows: how many rows they stand for. */
@@ -180,6 +182,8 @@ export interface FlameData {
   heat: Float32Array;
   totalUs: Float64Array;
   selfUs: Float64Array;
+  /** Times V8 threw away optimized code of each bar's function (--v8 runs). */
+  deopts: Uint32Array;
   /** Differential mode: -1 (faster) to +1 (slower). */
   delta?: Float32Array;
   names: string[];
@@ -328,6 +332,8 @@ export interface SourceInfo {
   /** The engine's verdict on line-level time, with one sentence for the user. */
   lineStatus: 'self-lines' | 'no-self-time' | 'no-line-data';
   lineReason: string;
+  /** Where V8 threw away optimized code in this function (--v8 runs), most often first. */
+  deopts: Array<{ line: number; reason: string; kind: string; count: number }>;
   /** Callees of the function with the time under them. */
   calleeTime: Array<{
     fn: number;

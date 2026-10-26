@@ -82,6 +82,7 @@ function foldRow(
     resumed: false,
     summaryTasks: [],
     selfUs: 0,
+    deopts: 0,
   };
 }
 

@@ -459,3 +459,10 @@ describe('next: suggestions point somewhere useful', () => {
     expect(next).not.toContain('@humanwhocodes/retry');
   });
 });
+
+describe('the report of a run with V8 deopts', () => {
+  it('prints the fix under the finding', () => {
+    const out = render(analyze(fixture('deopt-loop')), []).text;
+    expect(out).toMatch(/\n\s+fix: Objects of different shapes reach the same property access/);
+  });
+});

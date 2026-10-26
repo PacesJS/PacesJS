@@ -31,6 +31,8 @@ export interface SourceState {
   /** The file changed on disk since the session was recorded. */
   changed: boolean;
   selfByLine: Map<number, number>;
+  /** Where V8 threw away optimized code, by line (--v8 runs). */
+  deoptsByLine: Map<number, SourceInfo['deopts']>;
   /** Lines V8 reported that were folded into the statement's first line, by that first line. */
   rolledFrom: Map<number, number[]>;
   /** Measurement precision in microseconds: a line under twice this is about one sample. */
@@ -121,6 +123,13 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
     () => new Map(rolled.filter((r) => r.from.length > 0).map((r) => [r.line, r.from])),
     [rolled],
   );
+  const deoptsByLine = useMemo(() => {
+    const byLine = new Map<number, SourceInfo['deopts']>();
+    for (const d of info?.deopts ?? []) {
+      if (d.line > 0) byLine.set(d.line, [...(byLine.get(d.line) ?? []), d]);
+    }
+    return byLine;
+  }, [info]);
   const maxSelf = Math.max(0, ...rolled.map((r) => r.selfUs));
   const hottest = rolled.reduce(
     (best, r) => (r.selfUs > (selfByLine.get(best) ?? 0) ? r.line : best),
@@ -183,6 +192,7 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
     fileTexts: allLines,
     changed: file?.exists === true && file.changedSinceProfile,
     selfByLine,
+    deoptsByLine,
     rolledFrom,
     precisionUs: summary.precisionUs,
     maxSelf,

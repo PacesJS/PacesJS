@@ -96,6 +96,27 @@ export interface FunctionTable {
   loader: Uint8Array;
 }
 
+/**
+ * What V8 reported when it threw away optimized code (--v8 runs only; empty otherwise). One row per
+ * function, reason and source position, with how often it happened.
+ */
+export interface DeoptTable {
+  length: number;
+  fn: Uint32Array;
+  /** String table index of V8's reason, e.g. "wrong map". */
+  reason: Uint32Array;
+  /** 0 eager (the code's own assumption failed), 1 lazy (something it depended on changed), 2 soft, 3 other. */
+  kind: Uint8Array;
+  /** 1-based position in the generated code, as V8 reports it. */
+  line: Uint32Array;
+  col: Uint32Array;
+  /** 1-based line in the original source, the one the source view shows; 0 when a map leads elsewhere. */
+  origLine: Uint32Array;
+  /** String table index of the id of the process track whose trace holds this row (workers share it). */
+  proc: Uint32Array;
+  count: Uint32Array;
+}
+
 /** Call tree in depth-first preorder: a node's subtree is the contiguous range [i, subtreeEnd[i]). */
 export interface CallTree {
   length: number;
@@ -291,7 +312,8 @@ export type FindingKind =
   | 'async-overhead'
   | 'heavy-serialization'
   | 'late-module-loading'
-  | 'event-loop-lag';
+  | 'event-loop-lag'
+  | 'v8-deopt';
 
 /** What the UI should select and which view proves a finding. */
 export interface ShowMe {
@@ -317,6 +339,8 @@ export interface Finding {
   title: string;
   /** One sentence with a number. */
   summary: string;
+  /** What to change, when the rule knows (V8 deopt reasons map to a concrete fix). */
+  hint?: string;
   /** Why it was flagged: the rule and thresholds, shown inside the finding. */
   rule: string;
   /** Share of track time or similar, for ranking (0..1). */
@@ -335,6 +359,7 @@ export interface ExecutionModel {
   packages: PackageTable;
   taskKinds: TaskKindStats;
   findings: Finding[];
+  deopts: DeoptTable;
   target: TargetInfo;
   /** Index into `tracks` of the program being profiled: the busiest track that is not supporting. */
   primaryTrack: number;

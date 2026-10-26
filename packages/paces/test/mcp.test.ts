@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { gunzipSync } from 'node:zlib';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
@@ -66,16 +66,16 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
 }
 
 describe('handleMcpMessage', () => {
-  it('ignores notifications and reports unknown methods as -32601', () => {
+  it('ignores notifications and reports unknown methods as -32601', async () => {
     expect(
-      handleMcpMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }, []),
+      await handleMcpMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }, []),
     ).toBeUndefined();
-    expect(handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'nope' }, [])).toMatchObject({
+    expect(await handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'nope' }, [])).toMatchObject({
       error: { code: -32601 },
     });
   });
 
-  it('turns a throwing tool into a tool error instead of crashing', () => {
+  it('turns a throwing tool into a tool error instead of crashing', async () => {
     const tool = {
       name: 't',
       description: '',
@@ -85,10 +85,228 @@ describe('handleMcpMessage', () => {
       },
     };
     expect(
-      handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 't' } }, [
-        tool,
-      ]),
+      await handleMcpMessage(
+        { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 't' } },
+        [tool],
+      ),
     ).toMatchObject({ result: { isError: true } });
+  });
+
+  it('waits for a tool that returns a promise, and turns its rejection into a tool error', async () => {
+    const ok = {
+      name: 'ok',
+      description: '',
+      inputSchema: {},
+      run: () => Promise.resolve({ a: 1 }),
+    };
+    const bad = {
+      name: 'bad',
+      description: '',
+      inputSchema: {},
+      run: () => Promise.reject(new Error('nope')),
+    };
+    const call = (name: string) =>
+      handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name } }, [
+        ok,
+        bad,
+      ]);
+    expect(await call('ok')).toMatchObject({
+      result: { content: [{ text: JSON.stringify({ a: 1 }, null, 2) }] },
+    });
+    expect(await call('bad')).toMatchObject({
+      result: { isError: true, content: [{ text: 'nope' }] },
+    });
+  });
+
+  it('lists the annotations of a tool, and reports the version it is given', async () => {
+    const tool = {
+      name: 't',
+      description: 'd',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+      run: () => 1,
+    };
+    expect(
+      await handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, [tool]),
+    ).toMatchObject({
+      result: { tools: [{ name: 't', annotations: { readOnlyHint: true } }] },
+    });
+    expect(
+      await handleMcpMessage({ jsonrpc: '2.0', id: 2, method: 'initialize' }, [], {
+        version: '1.2.3',
+      }),
+    ).toMatchObject({ result: { serverInfo: { name: 'paces', version: '1.2.3' } } });
+  });
+
+  it('gives the tool its progress reporter only when the client asked for progress', async () => {
+    const seen: unknown[] = [];
+    const tool = {
+      name: 't',
+      description: '',
+      inputSchema: {},
+      run: (_args: Record<string, unknown>, ctx: { progress?: (m: string) => void }) => {
+        ctx.progress?.('halfway');
+        return 1;
+      },
+    };
+    const send = (m: object) => void seen.push(m);
+    const params = { name: 't', _meta: { progressToken: 'p1' } };
+    await handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params }, [tool], {
+      send,
+    });
+    expect(seen).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'notifications/progress',
+        params: { progressToken: 'p1', progress: 1, message: 'halfway' },
+      },
+    ]);
+    seen.length = 0;
+    await handleMcpMessage(
+      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 't' } },
+      [tool],
+      { send },
+    );
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('resources', () => {
+  const guide = {
+    uri: 'paces://guide',
+    name: 'guide',
+    title: 'How to use paces',
+    description: 'd',
+    mimeType: 'text/markdown',
+    text: '# the guide',
+  };
+
+  it('are not advertised, listed or readable unless the server has some', async () => {
+    const init = await handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'initialize' }, []);
+    expect(init).toMatchObject({ result: { capabilities: { tools: {} } } });
+    expect((init as { result: { capabilities: object } }).result.capabilities).not.toHaveProperty(
+      'resources',
+    );
+    expect(
+      await handleMcpMessage({ jsonrpc: '2.0', id: 2, method: 'resources/list' }, []),
+    ).toMatchObject({
+      result: { resources: [] },
+    });
+  });
+
+  it('are advertised with the instructions the client may show the model', async () => {
+    const init = await handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'initialize' }, [], {
+      resources: [guide],
+      instructions: 'read paces://guide first',
+    });
+    expect(init).toMatchObject({
+      result: {
+        capabilities: { tools: {}, resources: {} },
+        instructions: 'read paces://guide first',
+      },
+    });
+  });
+
+  it('are listed without their text, and read by uri', async () => {
+    const env = { resources: [guide] };
+    const list = await handleMcpMessage(
+      { jsonrpc: '2.0', id: 1, method: 'resources/list' },
+      [],
+      env,
+    );
+    expect(list).toEqual({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        resources: [
+          {
+            uri: 'paces://guide',
+            name: 'guide',
+            title: 'How to use paces',
+            description: 'd',
+            mimeType: 'text/markdown',
+          },
+        ],
+      },
+    });
+    const read = await handleMcpMessage(
+      { jsonrpc: '2.0', id: 2, method: 'resources/read', params: { uri: 'paces://guide' } },
+      [],
+      env,
+    );
+    expect(read).toMatchObject({
+      result: {
+        contents: [{ uri: 'paces://guide', mimeType: 'text/markdown', text: '# the guide' }],
+      },
+    });
+  });
+
+  it('report an unknown uri as not found', async () => {
+    const read = await handleMcpMessage(
+      { jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'paces://nope' } },
+      [],
+      { resources: [guide] },
+    );
+    expect(read).toMatchObject({
+      error: { code: -32002, message: expect.stringContaining('paces://nope') },
+    });
+  });
+});
+
+describe('serveMcp while a tool is running', () => {
+  function pipes() {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const lines: Array<{ id?: number; result?: unknown }> = [];
+    createInterface({ input: output }).on('line', (l) => lines.push(JSON.parse(l)));
+    const send = (m: object) => void input.write(`${JSON.stringify(m)}\n`);
+    return { input, output, lines, send };
+  }
+
+  it('answers other requests before a slow call finishes', async () => {
+    const { input, output, lines, send } = pipes();
+    let finish: (v: unknown) => void = () => undefined;
+    const slow = {
+      name: 'slow',
+      description: '',
+      inputSchema: {},
+      run: () => new Promise((resolve) => (finish = resolve)),
+    };
+    const done = serveMcp(input, output, [slow]);
+    send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'slow' } });
+    send({ jsonrpc: '2.0', id: 2, method: 'ping' });
+    await vi.waitFor(() => expect(lines.map((l) => l.id)).toEqual([2]));
+    finish('done');
+    await vi.waitFor(() => expect(lines.map((l) => l.id)).toEqual([2, 1]));
+    input.end();
+    await done;
+  });
+
+  it('aborts the signal of a running tool when the client goes away, and waits for it to wind down', async () => {
+    const { input, output, send } = pipes();
+    let aborted = false;
+    let windDown: () => void = () => undefined;
+    const tool = {
+      name: 'long',
+      description: '',
+      inputSchema: {},
+      run: (_a: Record<string, unknown>, ctx: { signal: AbortSignal }) =>
+        new Promise((resolve) => {
+          ctx.signal.addEventListener('abort', () => {
+            aborted = true;
+            windDown = () => resolve('stopped');
+          });
+        }),
+    };
+    let closed = false;
+    const done = serveMcp(input, output, [tool]).then(() => (closed = true));
+    send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'long' } });
+    input.end();
+    await vi.waitFor(() => expect(aborted).toBe(true));
+    expect(closed).toBe(false);
+    windDown();
+    await done;
+    expect(closed).toBe(true);
   });
 });
 
@@ -205,5 +423,21 @@ describe('mcp tools on a real session (orders-server)', () => {
   it('closes cleanly', async () => {
     await client.close();
     await done;
+  });
+});
+
+describe('the findings tool and fixes', () => {
+  it('hands an agent the fix of a finding that has one', async () => {
+    const model = load('deopt-loop');
+    const tool = buildTools(model, () => buildAgentSummary(model)).find(
+      (t) => t.name === 'findings',
+    );
+    const found = (await tool?.run({}, { signal: new AbortController().signal })) as Array<{
+      kind: string;
+      hint?: string;
+    }>;
+    expect(found.find((f) => f.kind === 'v8-deopt')?.hint).toContain(
+      'same properties in the same order',
+    );
   });
 });

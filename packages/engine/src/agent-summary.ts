@@ -16,6 +16,8 @@ export interface AgentFinding {
   severity: Severity;
   title: string;
   summary: string;
+  /** What to change, for findings whose rule knows. */
+  hint?: string;
   rule: string;
   /** 0..1 share used for ranking. */
   impact: number;
@@ -122,6 +124,7 @@ function findingsDigest(model: ExecutionModel, where: Where): AgentFinding[] {
       severity: f.severity,
       title: f.title,
       summary: f.summary,
+      ...(f.hint ? { hint: f.hint } : {}),
       rule: f.rule,
       impact: share(f.impact),
       evidence: f.evidence.map(where),

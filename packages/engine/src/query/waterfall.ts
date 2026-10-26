@@ -6,6 +6,7 @@ import { functionName } from '../frames.js';
 import type { ExecutionModel, Samples, Track } from '../model.js';
 import { reconstructSpans } from '../passes/spans.js';
 import { formatDuration, plural } from '../util/format.js';
+import { deoptCounts } from './deopts.js';
 import { DEFAULT_TRANSFORMS } from './types.js';
 import type {
   RunWaterfallOptions,
@@ -64,7 +65,7 @@ type RowFields = Pick<
   Partial<
     Pick<
       WaterfallRow,
-      'critical' | 'hatched' | 'label' | 'resumed' | 'summaryTasks' | 'summaryRuntimeUs'
+      'critical' | 'hatched' | 'label' | 'resumed' | 'summaryTasks' | 'summaryRuntimeUs' | 'deopts'
     >
   >;
 
@@ -89,7 +90,13 @@ function makeRow(f: RowFields): WaterfallRow {
     resumed: f.resumed ?? false,
     summaryTasks: f.summaryTasks ?? [],
     summaryRuntimeUs: f.summaryRuntimeUs ?? 0,
+    deopts: f.deopts ?? 0,
   };
+}
+
+/** Puts the deopt count of its function on every call row. */
+function markDeopts(rows: WaterfallRow[], counts: Uint32Array): void {
+  for (const r of rows) if (r.kind === 'call') r.deopts = counts[r.fn] ?? 0;
 }
 
 /** Follows merges to the row that survives. */
@@ -344,6 +351,7 @@ function assemble(
   }
   const buckets = options.minimapBuckets ?? 120;
   const shaped = shapeRows(rows, main.criticalPath, options);
+  markDeopts(shaped.rows, deoptCounts(model, view.trackIndex, view.syntheticPackages));
   return {
     start,
     end: outEnd,
@@ -912,6 +920,7 @@ export function waterfallForRun(
   for (const r of ordered) r.critical = false;
   const path = markCritical(ordered);
   const shaped = shapeRows(ordered, path, options);
+  markDeopts(shaped.rows, deoptCounts(model, trackIndex, view.syntheticPackages));
   return {
     start,
     end,

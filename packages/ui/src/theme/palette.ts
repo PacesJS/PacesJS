@@ -7,6 +7,9 @@ export interface Palette {
   outline: string;
   /** Stripes marking a call's own time on its bar: light, so the origin color shows between them. */
   selfStripe: string;
+  /** The deoptimized-function mark on a bar: fill and edge. */
+  deopt: string;
+  deoptEdge: string;
   cpuLine: string;
   cpuFill: string;
   gcTick: string;
@@ -31,6 +34,8 @@ export function readPalette(el: Element = document.documentElement): Palette {
     accent: v('--c-accent'),
     outline: v('--c-outline'),
     selfStripe: v('--c-self-stripe'),
+    deopt: v('--c-deopt'),
+    deoptEdge: v('--c-deopt-edge'),
     cpuLine: v('--c-cpu-line'),
     cpuFill: v('--c-cpu-fill'),
     gcTick: v('--c-gc-tick'),

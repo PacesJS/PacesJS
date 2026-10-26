@@ -722,6 +722,7 @@ function summaryView(ctx: ReportContext, flags: Flags, ti: number): ReportOutput
     lines.push(`findings (${Math.min(3, s.findings.length)} of ${s.findings.length}):`);
     for (const f of s.findings.slice(0, 3)) {
       lines.push(`  ${f.severity.toUpperCase().padEnd(6)} ${truncate(f.summary, 150)}`);
+      if (f.hint) lines.push(`         fix: ${truncate(f.hint, 200)}`);
     }
   } else lines.push('findings: none crossed a threshold');
   lines.push('where time goes:');

@@ -190,12 +190,12 @@ describe('report golden masters', () => {
 
 describe('MCP golden masters', () => {
   for (const c of CASES) {
-    it(`${c.fixture}: every tool`, () => {
+    it(`${c.fixture}: every tool`, async () => {
       const model = load(c.fixture);
       const tools = buildTools(model, () => buildAgentSummary(model));
-      const call = (name: string, args: Record<string, unknown>): string =>
+      const call = async (name: string, args: Record<string, unknown>): Promise<string> =>
         JSON.stringify(
-          handleMcpMessage(
+          await handleMcpMessage(
             { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
             tools,
           ),
@@ -230,16 +230,18 @@ describe('MCP golden masters', () => {
         ['nope', {}],
       ];
       for (const [name, args] of calls) {
-        check(`mcp/${c.fixture}/${name}/${JSON.stringify(args)}`, call(name, args));
+        check(`mcp/${c.fixture}/${name}/${JSON.stringify(args)}`, await call(name, args));
       }
       check(
         `mcp/${c.fixture}/list`,
-        JSON.stringify(handleMcpMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, tools)),
+        JSON.stringify(
+          await handleMcpMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, tools),
+        ),
       );
       check(
         `mcp/${c.fixture}/init`,
         JSON.stringify(
-          handleMcpMessage(
+          await handleMcpMessage(
             { jsonrpc: '2.0', id: 3, method: 'initialize', params: { protocolVersion: '1' } },
             tools,
           ),
@@ -279,6 +281,7 @@ describe('runProfile environment', () => {
   const preload = createRequire(import.meta.url).resolve('@pacesjs/collector-node/preload.cjs');
   const flags = (over: Partial<Flags> = {}): Flags => ({
     async: false,
+    v8: false,
     embedSources: false,
     noOpen: false,
     include: [],
