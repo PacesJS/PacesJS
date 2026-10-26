@@ -47,6 +47,11 @@ export default tseslint.config(
     ],
     languageOptions: { globals: globals.node },
   },
+  // The injected page script runs in the browser.
+  {
+    files: ['packages/collector-browser/src/inject/**/*.ts'],
+    languageOptions: { globals: globals.browser },
+  },
   // The CLI prints to the terminal on purpose.
   { files: ['packages/paces/src/**', 'scripts/**', 'e2e/**'], rules: { 'no-console': 'off' } },
 );

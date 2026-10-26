@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>privacy</title>
+<!-- Not a planted problem: types a secret into fields so the tests can prove it is never recorded.
+     The secret is built at run time so it is not present as text in this file. -->
+<form id="login">
+  <input id="user" name="user" type="text" placeholder="user" />
+  <input id="pass" name="pass" type="password" placeholder="password" />
+  <button type="submit">Sign in</button>
+</form>
+<script>
+  const secret = ['h', 'u', 'n', 't', 'e', 'r', '2'].join('');
+  document.getElementById('login').addEventListener('submit', (e) => e.preventDefault());
+  function type(id) {
+    const field = document.getElementById(id);
+    for (const ch of secret) {
+      field.value += ch;
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+  setTimeout(() => {
+    type('user');
+    type('pass');
+    document.querySelector('button').click();
+  }, 400);
+</script>

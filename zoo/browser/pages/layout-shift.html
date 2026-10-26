@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>layout shift</title>
+<!-- Planted problem: a banner is inserted above the content after it has been painted. -->
+<h1>Headline</h1>
+<p style="font-size: 24px">Some content the reader has already started on.</p>
+<p style="font-size: 24px">More content below it, which moves when the banner arrives.</p>
+<div style="height: 420px; background: #eef">main content</div>
+<script>
+  setTimeout(() => {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'height: 300px; background: #ccd';
+    banner.textContent = 'late banner';
+    document.body.insertBefore(banner, document.body.firstChild);
+  }, 700);
+</script>

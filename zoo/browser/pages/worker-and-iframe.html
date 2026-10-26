@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>worker and iframe</title>
+<!-- Planted problem: work on the page, in a dedicated worker, and in a cross-site iframe. -->
+<p>page, worker and iframe</p>
+<iframe src="%THIRD%/frame.html" width="200" height="100"></iframe>
+<script>
+  function pageWork() {
+    let x = 0;
+    for (let i = 0; i < 6e6; i++) x += Math.sqrt(i);
+    return x;
+  }
+  pageWork();
+  const worker = new Worker('worker.js');
+  worker.postMessage('go');
+</script>
