@@ -1,8 +1,19 @@
 name: Release
 
+# Every run publishes a new patch version, so only pushes that can change the published package or
+# its tests may start one. Docs, design boards, the zoo, e2e and tooling config do not.
 on:
   push:
     branches: [main]
+    paths:
+      - 'packages/**'
+      - '!packages/**/*.md'
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - 'tsconfig.base.json'
 
 permissions:
   contents: read
