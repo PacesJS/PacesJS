@@ -75,6 +75,11 @@ The overhead figure is one micro-benchmark on one machine; it is a reason to mea
 - An isolated JavaScript world for the injected script (designed below, never run).
 - Whether `Tracing.start` with `transferMode: ReturnAsStream` and gzip is faster and lighter than `ReportEvents`.
 - Whether excluding categories alone removes most of the bloat, or a host-side name filter is also needed.
+- That `Page.addScriptToEvaluateOnNewDocument` runs under a strict Content Security Policy, and that a constructed stylesheet in `adoptedStyleSheets` is not blocked by `style-src`. The spike page had no policy.
+- That `Network.loadNetworkResource` fetches source maps with the page's cookies. The spike page had no source maps.
+- `Debugger.enable` and `getScriptSource` on workers. The spike read page and iframe sources only.
+- `Page.navigatedWithinDocument` for single-page-app route changes.
+- Discovery of tabs the user opens by hand, and of `window.open` popups.
 
 ### Gaps in the existing import
 
@@ -248,6 +253,21 @@ Unfiltered traces are the biggest practical obstacle: 28.7 MB for five seconds o
 | `BlinkScheduler_PerformMicrotaskCheckpoint`                  | 0.4 MB                 | No    |
 
 The per-name sizes and category counts come from one run of the page and the 28.7 MB and 11.2 MB totals from another run of the same page, so they differ by a few percent. Category share by event count in the first run: `toplevel` 56.8k, `disabled-by-default-devtools.timeline` 23.2k, `base,toplevel` 13.1k, `cc,benchmark,…timeline.frame` 10.4k, `toplevel,mojom` 5.4k, `devtools.timeline` 5.1k. Dropping the five largest plumbing names and the screenshots took the page trace to 11.2 MB (0.8 MB gzipped).
+
+Category membership was checked on the spike trace, which was recorded with `toplevel` enabled, so excluding `toplevel` does not remove anything the design reads:
+
+| Event                                                                   | Category in the trace                           |
+| ----------------------------------------------------------------------- | ----------------------------------------------- |
+| `RunTask`, `TracingStartedInBrowser`, `FrameCommittedInBrowser`         | `disabled-by-default-devtools.timeline`         |
+| `EventDispatch`, `Layout`, `Paint`, `FunctionCall`, `TimeStamp`         | `devtools.timeline`                             |
+| `UpdateLayoutTree`                                                      | `blink,devtools.timeline`                       |
+| `DrawFrame`, `BeginMainThreadFrame`                                     | `disabled-by-default-devtools.timeline.frame`   |
+| `firstContentfulPaint`                                                  | `loading,rail,devtools.timeline`                |
+| `Profile`, `ProfileChunk`                                               | `disabled-by-default-v8.cpu_profiler`           |
+| `Screenshot`                                                            | `disabled-by-default-devtools.screenshot`       |
+| `ThreadControllerImpl::RunTask`, `Edge_RunTask`                         | `toplevel` (the only events seen in that category) |
+
+The other events in the converter's list, such as `LayoutShift`, `Layerize` and `ParseHTML`, did not occur in the spike trace, so their categories are not confirmed; Milestone 2 checks each against the fixtures before the category list is final.
 
 **Filter layers**, applied by the host while the trace streams in, so a 129 MB trace never sits in memory:
 
@@ -702,7 +722,7 @@ Out of scope for this design, recorded because the spike tried it. Chromium-base
 
 Packaged apps are launched through their execution alias when one exists (for Claude `claude-desktop.exe`, for Spotify `Spotify.exe`), or by the exe path inside the package folder when none does (Codex). Running processes of the same app must be closed first, because a second launch hands off to the first and the flag is lost.
 
-Policy if this is ever built (`paces app <exe>`): when an app exits at once on the debugging flag, say so and stop. paces does not patch app bundles, flip Electron fuses, inject code through environment variables or otherwise defeat a refusal. The renderer of an Electron app that allows it can join the same session as its main process through the Node collector.
+Policy if this is ever built (`paces app <exe>`): when an app exits at once on the debugging flag, say so and stop. paces does not patch app bundles, flip Electron fuses, inject code through environment variables or otherwise defeat a refusal. For an Electron app that allows it, the main process (Node) would come in through the Node collector and the renderers through the browser collector, joined in one session.
 
 ## Documentation follow-ups
 
