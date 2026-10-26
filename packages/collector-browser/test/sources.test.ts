@@ -151,4 +151,46 @@ describe('collectSources', () => {
     const result = await collectSources(cdp, [script('9', 'https://a.test/gone.js')], limits);
     expect(result.sources).toEqual([]);
   });
+
+  describe('inline scripts', () => {
+    const inline = (scriptId: string, startLine: number, startColumn = 0): ScriptRecord =>
+      script(scriptId, 'https://a.test/page.html', {
+        hash: `h${scriptId}`,
+        startLine,
+        startColumn,
+        endLine: startLine + 2,
+      });
+
+    it('puts a script at its line in the document, so the lines V8 reports match the text', async () => {
+      const cdp = cdpWith({ '1': '\nfunction f() {}\nf();' });
+      const { sources } = await collectSources(cdp, [inline('1', 6)], limits);
+      const lines = sources[0]?.text.split('\n') ?? [];
+      expect(lines[6 + 1]).toBe('function f() {}');
+      expect(lines.slice(0, 6)).toEqual(['', '', '', '', '', '']);
+    });
+
+    it('keeps the first line where it was, indented to the column the script starts at', async () => {
+      const cdp = cdpWith({ '1': 'f();' });
+      const { sources } = await collectSources(cdp, [inline('1', 3, 8)], limits);
+      expect(sources[0]?.text.split('\n')[3]).toBe('        f();');
+    });
+
+    it('lays two scripts of one page into one text, so neither hides the other', async () => {
+      const cdp = cdpWith({ '1': 'a();', '2': 'b();' });
+      const { sources } = await collectSources(cdp, [inline('1', 2), inline('2', 9)], limits);
+      expect(sources).toHaveLength(1);
+      const lines = sources[0]?.text.split('\n') ?? [];
+      expect([lines[2], lines[9]]).toEqual(['a();', 'b();']);
+    });
+
+    it('leaves an external script, which starts at the top of its file, as it is', async () => {
+      const cdp = cdpWith({ '1': 'var a;' });
+      const { sources } = await collectSources(
+        cdp,
+        [script('1', 'https://a.test/app.js', { startLine: 0, startColumn: 0, endLine: 0 })],
+        limits,
+      );
+      expect(sources[0]?.text).toBe('var a;');
+    });
+  });
 });

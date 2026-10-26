@@ -12,7 +12,24 @@ import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const fixtureName = process.env['PACES_DEV_FIXTURE'] ?? 'orders-server';
 
+interface BrowserFixtureFile {
+  input: engine.BrowserRecordingInput & { sources?: Array<{ url: string; text: string }> };
+  screenshotJpegs: Array<{ id: number; base64: string }>;
+}
+
+/** `browser:<name>` serves a page recorded in a real browser (engine/test/fixtures/browser). */
+function browserFixture(name: string): BrowserFixtureFile | null {
+  if (!name.startsWith('browser:')) return null;
+  const file = resolve(
+    repoRoot,
+    `packages/engine/test/fixtures/browser/${name.slice(8)}.browser.json.gz`,
+  );
+  return JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as BrowserFixtureFile;
+}
+
 function loadModel(name: string): ExecutionModel {
+  const page = browserFixture(name);
+  if (page) return engine.analyze(engine.recordingToCapture(page.input));
   const file = resolve(repoRoot, `packages/engine/test/fixtures/${name}.capture.json.gz`);
   const raw = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as RawCapture;
   return engine.analyze(raw);
@@ -37,6 +54,12 @@ function createHost(): (req: IncomingMessage, res: ServerResponse, next: () => v
   const bytes = modelFile ? new Uint8Array(readFileSync(modelFile)) : null;
   const model = bytes ? engine.deserializeModel(bytes) : loadModel(fixtureName);
   const modelBytes = bytes ?? engine.serializeModel(model);
+  const shots = new Map(
+    (browserFixture(fixtureName)?.screenshotJpegs ?? []).map((s) => [
+      s.id,
+      Buffer.from(s.base64, 'base64'),
+    ]),
+  );
   const baselineName = process.env['PACES_DEV_BASELINE'];
   const baselineBytes = baselineName ? engine.serializeModel(loadModel(baselineName)) : null;
   let settings: Record<string, unknown> = {};
@@ -62,8 +85,20 @@ function createHost(): (req: IncomingMessage, res: ServerResponse, next: () => v
       res.setHeader('content-type', 'application/octet-stream');
       return void res.end(Buffer.from(out));
     }
+    const shot = /^screenshot\/(\d+)$/.exec(route);
+    if (shot) {
+      const bytesOfShot = shots.get(Number(shot[1]));
+      if (!bytesOfShot) return json(res, { error: 'no such frame' }, 404);
+      res.setHeader('content-type', 'image/jpeg');
+      return void res.end(bytesOfShot);
+    }
     if (route === 'source') {
       const raw = url.searchParams.get('path') ?? '';
+      const embedded = browserFixture(fixtureName)?.input.sources?.find((s) => s.url === raw);
+      if (embedded) {
+        const hash = createHash('sha1').update(embedded.text).digest('hex');
+        return json(res, { exists: true, text: embedded.text, hash, changedSinceProfile: false });
+      }
       const rel = raw.replace(/^file:\/\/\/?/, '');
       const abs = resolve(repoRoot, rel);
       if (!abs.startsWith(repoRoot + sep) || !existsSync(abs)) {

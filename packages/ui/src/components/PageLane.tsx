@@ -5,7 +5,7 @@ import { LaneRange } from './LaneRange';
 import { PausedBands } from './PausedBands';
 
 const TEXT = {
-  title: 'Page',
+  title: 'Milestones',
   meta: 'Loading and long tasks',
   milestones: 'Page milestones',
   longTasks: 'Long tasks',
@@ -62,7 +62,7 @@ export function PageLane({ data }: PageLaneProps) {
               />
             ) : (
               <span key={i} className={`page-mark is-${v.name}`} style={{ left: left(v.timeUs) }}>
-                {v.name === 'FCP' || v.name === 'LCP' || v.name === 'load' ? (
+                {v.name === 'FCP' || v.name === 'load' ? (
                   <span className="page-mark-label">{v.name}</span>
                 ) : null}
               </span>

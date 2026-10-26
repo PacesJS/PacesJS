@@ -49,7 +49,7 @@ describe('a browser session: lanes', () => {
     open(browserModel('slow-click'), 'slow-click');
     await ready();
     expect(await screen.findByRole('group', { name: 'Filmstrip' })).toBeTruthy();
-    for (const title of ['Page', 'Rendering', 'Interactions']) {
+    for (const title of ['Milestones', 'Rendering', 'Interactions']) {
       expect(screen.getAllByText(title).length).toBeGreaterThan(0);
     }
   });

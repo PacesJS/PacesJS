@@ -12,6 +12,10 @@ export interface ScriptRecord {
   /** Kind of target that parsed it (`page`, `iframe`, `worker`...) and its id, when known. For pages and out-of-process iframes the id is also the frame id. */
   targetType?: string;
   targetId?: string;
+  /** Where the script starts in its document: an inline script is only part of the page's text. */
+  startLine?: number;
+  startColumn?: number;
+  endLine?: number;
 }
 
 export interface TargetManagerDeps {
@@ -100,6 +104,9 @@ export function createTargetManager(deps: TargetManagerDeps): TargetManager {
         sourceMapURL: String(params.sourceMapURL ?? ''),
         hash: String(params.hash ?? ''),
         session: e.sessionId,
+        ...(typeof params.startLine === 'number' ? { startLine: params.startLine } : {}),
+        ...(typeof params.startColumn === 'number' ? { startColumn: params.startColumn } : {}),
+        ...(typeof params.endLine === 'number' ? { endLine: params.endLine } : {}),
         ...(targets.get(e.sessionId)
           ? {
               targetType: targets.get(e.sessionId)?.type,

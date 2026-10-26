@@ -185,4 +185,22 @@ describe('createTargetManager', () => {
     attached(cdp, 's1', 'iframe');
     await expect(manager.idle()).resolves.toBeUndefined();
   });
+
+  it('records where a script starts in its document, since an inline script is only part of it', () => {
+    const { cdp, manager } = setup();
+    cdp.emit({
+      method: 'Debugger.scriptParsed',
+      sessionId: 's1',
+      params: {
+        scriptId: '3',
+        url: 'https://a.test/page.html',
+        sourceMapURL: '',
+        hash: 'h',
+        startLine: 6,
+        startColumn: 8,
+        endLine: 20,
+      },
+    });
+    expect(manager.scripts()[0]).toMatchObject({ startLine: 6, startColumn: 8, endLine: 20 });
+  });
 });
