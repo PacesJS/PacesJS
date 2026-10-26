@@ -1,3 +1,7 @@
+export { connectCdp, discoverBrowserSocket } from './attach.js';
+export type { AttachedCdp } from './attach.js';
+export { connectWebSocket } from './ws-client.js';
+export type { WsConnection } from './ws-client.js';
 export { createCdpClient } from './cdp-pipe.js';
 export type { CdpClient, CdpClientOptions, CdpEvent } from './cdp-pipe.js';
 export {

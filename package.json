@@ -19,6 +19,7 @@
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "bench:browser": "node scripts/bench-browser.mjs",
     "fixtures:browser": "pnpm --filter @pacesjs/collector-browser build && node scripts/gen-browser-fixtures.mjs",
     "fixtures": "pnpm --filter @pacesjs/collector-node build && node scripts/gen-fixtures.mjs"
   },

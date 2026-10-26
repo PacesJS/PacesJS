@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>bench</title>
+<!-- Not a planted problem: a fixed CPU-bound workload, timed ten times, so scripts/bench-browser.mjs
+     can compare a run with no tracing against a recorded one. -->
+<p>benchmark</p>
+<script>
+  function work() {
+    let x = 0;
+    for (let i = 0; i < 3e6; i++) x += Math.sqrt(i);
+    return x;
+  }
+  window.__times = [];
+  setTimeout(() => {
+    for (let run = 0; run < 10; run++) {
+      const start = performance.now();
+      work();
+      window.__times.push(performance.now() - start);
+    }
+    window.__done = true;
+  }, 800);
+</script>

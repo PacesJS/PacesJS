@@ -1,6 +1,6 @@
 # pacesJS
 
-`paces` profiles a Node command (`npx @pacesjs/paces -- node app.js`) and opens a UI that shows what the JavaScript did in linked views. Spec: `docs/JS Execution Profiler — Technical Design.md` (written under the old name "Trailmap"). Design boards: `docs/*.png`, source `docs/Trailmap — Node profiler.html`.
+`paces` profiles a Node command (`npx @pacesjs/paces -- node app.js`) or a web page in a Chromium browser (`npx @pacesjs/paces browser <url>`) and opens a UI that shows what the JavaScript did in linked views. The browser design is `docs/browser-profiling.md`. Spec: `docs/JS Execution Profiler — Technical Design.md` (written under the old name "Trailmap"). Design boards: `docs/*.png`, source `docs/Trailmap — Node profiler.html`.
 
 **Naming: Trailmap → paces.** Org/scope `@pacesjs`, CLI `paces`, sessions `.paces` in `./.paces/`, env `PACES_SESSION` / `PACES_SOCKET`. Never write "trailmap" in code, UI copy or new docs.
 
@@ -65,6 +65,17 @@ Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bar
 - **V8 deopt tracing (`--v8`) is opt-in because it changes the program's stdout.** V8 refuses its logging flags (`--log-deopt`) in `NODE_OPTIONS` and ignores them from a preload, so the preload sets `--trace-deopt`, `--trace-deopt-verbose` and `--redirect-code-traces-to` with `v8.setFlagsFromString`. That reaches `npx` children and workers, but V8 prints the tail of each `[marking dependent code ...]` message with a plain `PrintF`, past the redirect, to stdout. A collector test pins that; do not make tracing the default. Output is one file per process (workers share it), and a deopt is joined to a function by script and source position, not by thread. The `v8-deopt` finding names only first-party functions that are hot and repeatedly deoptimized for a reason on an explicit map; on most real runs it correctly stays silent. Separately from that finding, every function V8 deoptimized is marked in the UI (a down triangle on flame and waterfall bars, one on the source line); the engine counts per process (workers share their process's trace), leaves out the two on-stack-replacement reasons, and maps the line through the source map.
 - **`paces mcp` is one generic stdio server.** The client starts it; `profile` runs a command inside the server process, so stdout is the protocol: the program's stdout is sent to stderr, it gets no stdin, and nothing else may print to our stdout. Tools run side by side (a profile must not block `ping`), `tools/list` is identical in every state, and the analysis tools read the current session on every call. A second `profile` while one runs is refused, and a client that goes away stops the running program. The model-facing text (`src/mcp-guide.ts`: the `paces://guide` resource and the connect-time `instructions`) carries the warning that `profile` runs arbitrary code; a test keeps it naming every tool, so update it with any tool change.
 - **`useAsync` drops its data on error.** Previous results are kept only while the next request loads; never show them beside a new request's error.
+
+## Browser lessons (learned against real Edge; the spike notes in the design were not enough)
+
+- **Trace on the browser, not on a page.** A trace started on a page session dies with the page, so closing the window lost the whole run. It starts at browser level, and the browser is kept alive after its last window closes (`--keep-alive-for-test`), so the trace can still be collected (about 5 s). paces closes the browser itself afterwards.
+- **A browser-level trace holds every renderer** (other tabs, extension and browser pages) and has no frame list. The capture host knows which frames it attached; the processes that run them are found from the frame ids on the trace's events, and other renderers are dropped while streaming and again in the converter.
+- **Screenshots come from a screencast** (`Page.startScreencast`), not from the trace: a browser-level trace records none. Stopping it while paused is what keeps a login out of the session.
+- **Read script text as scripts are parsed.** After the window closes the page sessions are gone. An inline script's text is only part of its document while V8 reports document lines, so scripts are laid out at their start line.
+- **`ProfileChunk` events are emitted by the profiler's thread, `Profile` by the profiled one.** Group chunks by process and profile id; the thread comes from `Profile`. Each sample's source line becomes a per-line tick.
+- **Sequence numbers join page events to the trace and restart in each document**, so they carry the document's start time.
+- **Never record what was typed.** Events are structure only; the privacy e2e types a secret into a page and fails if it appears anywhere in the unzipped session.
+- Real-browser tests are skipped unless `PACES_BROWSER` points at a Chromium executable. Measure with `node scripts/bench-browser.mjs`.
 
 ## Git
 

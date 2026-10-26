@@ -2,7 +2,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeDetached } from '@pacesjs/shared';
-import type { CdpEvent, CdpLike } from './cdp-pipe.js';
+import { connectCdp, discoverBrowserSocket } from './attach.js';
+import type { CdpClient, CdpEvent, CdpLike } from './cdp-pipe.js';
 import { buildInjectedSource } from './inject/entry.js';
 import type { Corner } from './inject/overlay-state.js';
 import { launchBrowser } from './launch.js';
@@ -25,8 +26,10 @@ export type EndedBy = 'stop' | 'sigint' | 'duration' | 'window-closed';
 
 export interface RecordOptions extends ControllerOptions {
   url: string;
-  /** Chromium executable. */
+  /** Chromium executable. Not used when joining a running browser. */
   exe: string;
+  /** Join a browser started with `--remote-debugging-port` instead of launching one. */
+  attach?: { port: number };
   overlay: boolean;
   eventMarks: boolean;
   eventText: boolean;
@@ -100,18 +103,93 @@ interface BridgeMessage {
   action?: string;
 }
 
-export async function startRecording(options: RecordOptions): Promise<BrowserRun> {
+interface Host {
+  cdp: CdpClient;
+  exited: Promise<unknown>;
+  /** True when paces started the browser, and so closes it; false for one the user started. */
+  owned: boolean;
+  dispose(): void;
+}
+
+function launchHost(options: RecordOptions): Host {
   const profileDir = mkdtempSync(join(tmpdir(), 'paces-browser-'));
   const browser: LaunchedBrowser = launchBrowser({
     exe: options.exe,
     profileDir,
     ...(options.windowSize ? { windowSize: options.windowSize } : {}),
   });
-  const { client: cdp } = browser;
-  const cleanup = (): void => {
-    browser.kill();
-    removeDetached(profileDir);
+  return {
+    cdp: browser.client,
+    exited: browser.exited,
+    owned: true,
+    dispose: () => {
+      browser.kill();
+      removeDetached(profileDir);
+    },
   };
+}
+
+/** A browser the user started with a debugging port: joined, never closed. */
+async function joinHost(port: number): Promise<Host> {
+  const cdp = await connectCdp(await discoverBrowserSocket(port));
+  return { cdp, exited: cdp.closed, owned: false, dispose: () => cdp.disconnect() };
+}
+
+/** Pages worth profiling: not the browser's own pages, DevTools or extensions. */
+const OWN_PAGE = /^(devtools|chrome|edge|chrome-extension|chrome-untrusted):/i;
+
+/** The page of a joined browser: a new tab for a URL, else the first ordinary tab the user has open. */
+async function pageToJoin(
+  cdp: CdpClient,
+  wantsUrl: boolean,
+): Promise<{ id: string; created: boolean }> {
+  await cdp.send('Target.setDiscoverTargets', { discover: true });
+  const { targetInfos } = (await cdp.send('Target.getTargets')) as {
+    targetInfos?: Array<{ type: string; targetId: string; url: string }>;
+  };
+  const usable = (targetInfos ?? []).find((t) => t.type === 'page' && !OWN_PAGE.test(t.url));
+  if (usable && !wantsUrl) return { id: usable.targetId, created: false };
+  const made = (await cdp.send('Target.createTarget', { url: 'about:blank' })) as {
+    targetId: string;
+  };
+  return { id: made.targetId, created: true };
+}
+
+/** The first page of a browser paces launched, by event rather than a single read of the target list. */
+function waitForFirstPage(cdp: CdpClient): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('The browser opened no page to profile within 20 s.')),
+      20_000,
+    );
+    const found = (id: string): void => {
+      clearTimeout(timer);
+      resolve(id);
+    };
+    cdp.onEvent((e: CdpEvent) => {
+      const info = (e.params as { targetInfo?: { type?: string; targetId?: string } } | undefined)
+        ?.targetInfo;
+      if (e.method === 'Target.targetCreated' && info?.type === 'page' && info.targetId) {
+        found(info.targetId);
+      }
+    });
+    void cdp
+      .send('Target.setDiscoverTargets', { discover: true })
+      .then(() => cdp.send('Target.getTargets'))
+      .then((r) => {
+        const first = (
+          r as { targetInfos?: Array<{ type: string; targetId: string }> }
+        ).targetInfos?.find((t) => t.type === 'page');
+        if (first) found(first.targetId);
+      })
+      .catch(reject);
+  });
+}
+
+export async function startRecording(options: RecordOptions): Promise<BrowserRun> {
+  const host = options.attach ? await joinHost(options.attach.port) : launchHost(options);
+  const { cdp } = host;
+  const cleanup = (): void => host.dispose();
 
   try {
     const version = (await cdp.send('Browser.getVersion')) as { product?: string };
@@ -211,34 +289,16 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       },
     });
 
-    // The first page: wait for it by event rather than reading the target list once.
-    const pageTarget = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('The browser opened no page to profile within 20 s.')),
-        20_000,
-      );
-      const found = (id: string): void => {
-        clearTimeout(timer);
-        resolve(id);
-      };
-      cdp.onEvent((e: CdpEvent) => {
-        const info = (e.params as { targetInfo?: { type?: string; targetId?: string } } | undefined)
-          ?.targetInfo;
-        if (e.method === 'Target.targetCreated' && info?.type === 'page' && info.targetId) {
-          found(info.targetId);
-        }
-      });
-      void cdp
-        .send('Target.setDiscoverTargets', { discover: true })
-        .then(() => cdp.send('Target.getTargets'))
-        .then((r) => {
-          const first = (
-            r as { targetInfos?: Array<{ type: string; targetId: string }> }
-          ).targetInfos?.find((t) => t.type === 'page');
-          if (first) found(first.targetId);
-        })
-        .catch(reject);
-    });
+    // The first page: a new one for a launched browser (wait for it by event rather than reading the
+    // target list once), or the user's own tab in one that was joined.
+    let createdTab: string | undefined;
+    let pageTarget: string;
+    if (host.owned) pageTarget = await waitForFirstPage(cdp);
+    else {
+      const joined = await pageToJoin(cdp, options.url !== '');
+      pageTarget = joined.id;
+      if (joined.created) createdTab = joined.id;
+    }
     const attachedPages = new Set<string>([pageTarget]);
     const { sessionId } = (await cdp.send('Target.attachToTarget', {
       targetId: pageTarget,
@@ -349,7 +409,7 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
     live.controller = controller;
     const startedAt = Date.now();
     await controller.start();
-    await cdp.send('Page.navigate', { url: options.url }, sessionId);
+    if (options.url) await cdp.send('Page.navigate', { url: options.url }, sessionId);
 
     const finish = async (by: EndedBy): Promise<BrowserRecording> => {
       // The run ends when it was asked to; collecting the trace afterwards is not part of it.
@@ -370,11 +430,27 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       }
       const { sources, sourceMaps, warnings: sourceWarnings } = await collector.finish();
       warnings.push(...sourceWarnings);
-      await cdp.send('Browser.close').catch(() => undefined);
-      await Promise.race([
-        browser.exited,
-        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-      ]);
+      if (host.owned) {
+        await cdp.send('Browser.close').catch(() => undefined);
+        await Promise.race([
+          host.exited,
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+        ]);
+      } else {
+        // The user's browser stays open, as it was: no slowdown left on the tab, no tab of ours.
+        if (options.throttle) {
+          await cdp
+            .send('Emulation.setCPUThrottlingRate', { rate: 1 }, sessionId)
+            .catch(() => undefined);
+        }
+        if (options.cacheCold) {
+          await cdp
+            .send('Network.setCacheDisabled', { cacheDisabled: false }, sessionId)
+            .catch(() => undefined);
+        }
+        if (createdTab)
+          await cdp.send('Target.closeTarget', { targetId: createdTab }).catch(() => undefined);
+      }
       cleanup();
       return {
         ...recording,

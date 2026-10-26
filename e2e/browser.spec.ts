@@ -1,4 +1,8 @@
-import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -145,6 +149,70 @@ test.describe('paces browser: a real browser', () => {
       expect(manifest.browser?.url).not.toMatch(/[?#]/);
       expect(manifest.command[1]).not.toMatch(/[?#]/);
     } finally {
+      removeDir(dir);
+    }
+  });
+
+  test('joins a browser the user started, records its open tab, and leaves it running', async () => {
+    const dir = tempDir();
+    const profile = mkdtempSync(join(tmpdir(), 'paces-e2e-profile-'));
+    const port = await new Promise<number>((resolve, reject) => {
+      const probe = createServer();
+      probe.once('error', reject);
+      probe.listen(0, '127.0.0.1', () => {
+        const address = probe.address();
+        const free = typeof address === 'object' && address ? address.port : 0;
+        probe.close(() => resolve(free));
+      });
+    });
+    const child: ChildProcess = spawn(
+      exe ?? '',
+      [
+        `--remote-debugging-port=${port}`,
+        `--user-data-dir=${profile}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        zoo.url('slow-click'),
+      ],
+      { stdio: 'ignore' },
+    );
+    try {
+      const end = Date.now() + 30_000;
+      for (;;) {
+        try {
+          if ((await fetch(`http://127.0.0.1:${port}/json/version`)).ok) break;
+        } catch {
+          // not listening yet
+        }
+        if (Date.now() > end) throw new Error('the browser did not start listening');
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const out = join(dir, 'joined.paces');
+      const run = await runPaces(
+        [
+          'browser',
+          '--attach',
+          String(port),
+          '--duration',
+          '3',
+          '--no-open',
+          '--no-keys',
+          '--out',
+          out,
+        ],
+        { onUrl: async (url) => void (await openAndClose(url)), timeoutMs: 100_000 },
+      );
+      expect(run.code, run.stderr).toBe(0);
+      expect(run.stderr).toMatch(/joined the browser on 127\.0\.0\.1/);
+      const manifest = JSON.parse(unzipped(out)['manifest.json'] ?? '{}') as { kind?: string };
+      expect(manifest.kind).toBe('browser');
+      // The user's browser is still there.
+      expect((await fetch(`http://127.0.0.1:${port}/json/version`)).ok).toBe(true);
+    } finally {
+      if (child.pid !== undefined)
+        spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      await new Promise((r) => setTimeout(r, 500));
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
       removeDir(dir);
     }
   });
