@@ -26,9 +26,14 @@ function findingFor(): Record<string, string> {
 }
 const FINDING_BY_APP = findingFor();
 
+// Servers that run until stopped by hand. `paces` prints the session URL only after the target
+// exits, and a test cannot stop one on Windows (SIGINT kills it), so these cannot be driven here.
+const INTERACTIVE = new Set(['api-server']);
+
 const apps: ZooApp[] = [
   ...readdirSync(join(ZOO, 'apps'))
     .filter((f) => f.endsWith('.cjs') && !f.startsWith('_'))
+    .filter((f) => !INTERACTIVE.has(f.replace(/\.cjs$/, '')))
     .map((f) => f.replace(/\.cjs$/, ''))
     .map((name) => ({
       name,
