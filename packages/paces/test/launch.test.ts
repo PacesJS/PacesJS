@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appModeArgs, findBrowser, isHeadless, planEditorOpen } from '../src/launch.js';
+import { appModeArgs, findBrowser, planEditorOpen } from '../src/launch.js';
 
 describe('findBrowser', () => {
   const win = { PROGRAMFILES: 'C:\\Program Files', 'ProgramFiles(x86)': 'C:\\Program Files (x86)' };
@@ -25,15 +25,6 @@ describe('findBrowser', () => {
   it('finds the macOS Edge bundle', () => {
     const edge = '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge';
     expect(findBrowser({ env: {}, platform: 'darwin', exists: (p) => p === edge })).toBe(edge);
-  });
-});
-
-describe('isHeadless', () => {
-  it('treats SSH as headless and a Linux box without a display as headless', () => {
-    expect(isHeadless({ SSH_CONNECTION: '1 2 3 4' }, 'win32')).toBe(true);
-    expect(isHeadless({}, 'linux')).toBe(true);
-    expect(isHeadless({ DISPLAY: ':0' }, 'linux')).toBe(false);
-    expect(isHeadless({}, 'win32')).toBe(false);
   });
 });
 

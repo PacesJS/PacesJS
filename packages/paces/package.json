@@ -28,6 +28,7 @@
     "@pacesjs/collector-node": "workspace:*",
     "@pacesjs/engine": "workspace:*",
     "@pacesjs/format": "workspace:*",
+    "@pacesjs/shared": "workspace:*",
     "@pacesjs/ui": "workspace:*",
     "@types/node": "^24.0.0",
     "tsup": "^9.0.0",

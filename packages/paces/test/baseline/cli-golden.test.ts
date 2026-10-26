@@ -31,7 +31,7 @@ import type { SourceResolver } from '../../src/source-resolver.js';
 import { createSourceResolver } from '../../src/source-resolver.js';
 import { globToRegExp, shouldProfile } from '../../src/glob.js';
 import { planSpawn, quoteCmdArg } from '../../src/spawn-plan.js';
-import { which } from '../../src/which.js';
+import { which } from '@pacesjs/shared';
 
 const GOLDEN = new URL('./cli-golden.json', import.meta.url);
 const WRITE = process.env['GOLDEN_WRITE'] === '1';

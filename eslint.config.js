@@ -39,7 +39,12 @@ export default tseslint.config(
     rules: { ...reactHooks.configs.recommended.rules },
   },
   {
-    files: ['packages/{paces,collector-node}/**/*.ts', 'scripts/**', 'e2e/**', '*.config.*'],
+    files: [
+      'packages/{paces,collector-node,collector-browser,shared}/**/*.ts',
+      'scripts/**',
+      'e2e/**',
+      '*.config.*',
+    ],
     languageOptions: { globals: globals.node },
   },
   // The CLI prints to the terminal on purpose.

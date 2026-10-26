@@ -1,5 +1,5 @@
 import { win32 } from 'node:path';
-import { which } from './which.js';
+import { which } from '@pacesjs/shared';
 
 export interface SpawnPlan {
   file: string;
