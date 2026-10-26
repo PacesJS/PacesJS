@@ -65,6 +65,11 @@ function busyBetween(s: TrackSignal, a: number, b: number): number {
 
 export function alignClock(capture: RawCapture): ClockAlignment {
   const { startedAt, endedAt } = capture.meta;
+  // A browser run carries its own anchor (the page's clock, read at a stamp in the trace).
+  if (capture.browser) {
+    const mono = startedAt * 1000 - capture.browser.clock.offsetUs;
+    return { monoAtStartUs: mono, lowUs: mono, highUs: mono, gcHits: 0 };
+  }
   const wallUs = Math.max(0, (endedAt - startedAt) * 1000);
   const profiled = capture.tracks.filter((t) => t.cpuProfile && t.cpuProfile.samples.length > 0);
   if (profiled.length === 0) return { monoAtStartUs: 0, lowUs: 0, highUs: 0, gcHits: 0 };

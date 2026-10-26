@@ -12,6 +12,9 @@ import { stitchContinuations } from './passes/continuations.js';
 import { toCallTree } from './passes/call-tree.js';
 import { classify } from './passes/classification.js';
 import { findIssues } from './passes/findings.js';
+import { segmentBrowserTasks } from './passes/tasks-browser.js';
+import type { ModelEvent } from './passes/tasks-browser.js';
+import { buildInputs, buildPageTimeline, buildRender } from './passes/timeline.js';
 import { buildDeoptTable } from './passes/deopts.js';
 import { ingest } from './passes/ingest.js';
 import { foldModuleLoading } from './passes/module-loading.js';
@@ -102,7 +105,10 @@ function trackLabel(
   info: { kind: string; label: string; pid?: number; threadId?: number },
   detection: TargetDetection,
   index: number,
+  browser: boolean,
 ): string {
+  // Browser tracks were named when the trace was converted: page, iframe, worker.
+  if (browser) return info.label;
   const support = detection.roles[index] === 'support';
   const suffix = support ? ' (supporting)' : '';
   if (info.kind === 'worker') {
@@ -123,13 +129,15 @@ interface TrackStage {
   detection: TargetDetection;
   rootOf: number[];
   ctx: PassContext;
+  /** Browser runs: the user's events in model time, for naming the tasks that handled them. */
+  browser?: { marks: Array<{ time: number; label: string; kind: string }> };
 }
 
 /** Passes 5-8 for one track: call tree, spans, tasks, async edges, continuations and aggregates. */
 function buildTrack(
   raw: IngestResult['tracks'][number],
   index: number,
-  { ing, sm, functions, detection, rootOf, ctx }: TrackStage,
+  { ing, sm, functions, detection, rootOf, ctx, browser }: TrackStage,
 ): { track: Track; aggregate: TrackAggregateResult } {
   const tree = toCallTree(raw.tree, sm.frameToFn);
   const spans = reconstructSpans({
@@ -138,10 +146,25 @@ function buildTrack(
     origin: functions.origin,
     gapUs: ing.precisionUs * 3,
   });
-  const tasks = segmentTasks(
-    { tree, samples: raw.samples, spans, functions, requests: raw.events.requests },
-    ctx,
-  );
+  const taskInput = { tree, samples: raw.samples, spans, functions, requests: raw.events.requests };
+  const tasks =
+    browser && raw.timeline
+      ? segmentBrowserTasks(
+          {
+            ...taskInput,
+            marks: browser.marks,
+            timeline: raw.timeline
+              .map((e): ModelEvent => ({
+                name: e.name,
+                start: e.ts - ing.monoAtStartUs,
+                dur: e.dur,
+                ...(e.arg ? { arg: e.arg } : {}),
+              }))
+              .sort((a, b) => a.start - b.start || b.dur - a.dur),
+          },
+          ctx,
+        )
+      : segmentTasks(taskInput, ctx);
   const asyncEdges = stitchAsync({ records: raw.async, tasks: tasks.table });
   const continuations = stitchContinuations({
     spans,
@@ -171,7 +194,7 @@ function buildTrack(
   const track: Track = {
     id: raw.info.id,
     kind: raw.info.kind,
-    label: trackLabel(raw.info, detection, index),
+    label: trackLabel(raw.info, detection, index, browser !== undefined),
     role: detection.roles[index] ?? 'target',
     entry: detection.entries[index] ?? '',
     rootFn: rootOf[index] ?? 0,
@@ -257,9 +280,49 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
   const { functions, rootOf } = withEntryFunctions(base, detection, ctx, rootFns);
 
   // 5-8: per-track passes.
-  const stage: TrackStage = { ing, sm, functions, detection, rootOf, ctx };
+  const startedAt = capture.meta.startedAt;
+  const marks = (capture.meta.marks ?? []).map((m) => ({
+    time: (m.at - startedAt) * 1000,
+    label: m.label,
+    kind: m.kind ?? 'manual',
+  }));
+  const stage: TrackStage = {
+    ing,
+    sm,
+    functions,
+    detection,
+    rootOf,
+    ctx,
+    ...(capture.browser ? { browser: { marks } } : {}),
+  };
   const built = ing.tracks.map((raw, index) => buildTrack(raw, index, stage));
   const tracks = built.map((x) => x.track);
+  // Browser pages also have exact rendering work and user input, beside the samples.
+  let page: ExecutionModel['page'];
+  if (capture.browser) {
+    ing.tracks.forEach((raw, i) => {
+      const track = tracks[i];
+      const isMain =
+        track?.kind === 'page' || track?.kind === 'frame' || track?.kind === 'extension';
+      if (!track || !raw.timeline || !isMain) return;
+      track.render = buildRender(raw.timeline, ing.monoAtStartUs);
+      if (i === detection.primary) {
+        track.inputs = buildInputs(
+          capture.meta.marks ?? [],
+          startedAt,
+          raw.timeline,
+          ing.monoAtStartUs,
+          track.tasks,
+          ctx,
+        );
+      }
+    });
+    page = buildPageTimeline(
+      capture.browser,
+      capture.tracks[detection.primary]?.info.pid,
+      ing.monoAtStartUs,
+    );
+  }
   const aggregates = built.map((x) => x.aggregate);
 
   const { packages, taskKinds } = mergePackages(aggregates, ctx.strings.strings);
@@ -270,6 +333,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
   });
   const runKind = runKindOf({
     override: options.runKind,
+    browser: capture.browser !== undefined,
     hasRequests: ing.tracks.some(
       (t, i) => detection.roles[i] === 'target' && t.events.requests.time.length > 0,
     ),
@@ -287,6 +351,30 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
       engineVersion: ENGINE_VERSION,
       warnings: [],
       runKind,
+      ...(capture.browser
+        ? {
+            browser: {
+              product: capture.browser.product,
+              url: capture.browser.url,
+              clockErrorUs: capture.browser.clock.errorUs,
+              anchored: capture.browser.clock.anchored,
+              offsetUs: capture.browser.clock.offsetUs,
+              ...(capture.browser.throttle ? { throttle: capture.browser.throttle } : {}),
+              ...(capture.browser.cacheCold ? { cacheCold: true } : {}),
+              segments: capture.browser.segments.length,
+              ...(capture.browser.traceFilter
+                ? {
+                    traceFilter: {
+                      version: capture.browser.traceFilter.version,
+                      excludedCategories: capture.browser.traceFilter.excludedCategories,
+                      keptEvents: capture.browser.traceFilter.keptEvents,
+                      droppedEvents: capture.browser.traceFilter.droppedEvents,
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
     },
     strings: ctx.strings.strings,
     functions,
@@ -301,6 +389,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
       kind: runKind,
     },
     primaryTrack: detection.primary,
+    ...(page ? { page } : {}),
   };
   // 9: findings read the finished model.
   model.findings = findIssues(model, ctx);

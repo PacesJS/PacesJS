@@ -2,7 +2,7 @@
 
 import type { AnalyzeOptions, Thresholds } from '../config.js';
 import type { Samples, EventTable } from '../model.js';
-import type { ScriptInfo, TrackInfo } from '../raw.js';
+import type { ScriptInfo, TimelineEvent, TrackInfo } from '../raw.js';
 import type { StringTable } from '../util/strings.js';
 
 /** One occurrence of something worth a warning; `analyze` folds drafts into one `ModelWarning` per kind. */
@@ -19,6 +19,8 @@ export interface TargetSpec {
   packages: Set<string>;
   /** Path globs (as regular expressions) tested against the stored file path. */
   globs: RegExp[];
+  /** Browser runs: code is first-party when it comes from the site the run started on. */
+  browser?: { launchedUrl: string; firstParty: string[] };
 }
 
 export interface PassContext {
@@ -79,6 +81,8 @@ export interface IngestedTrack {
   events: EventTable;
   async: AsyncRecords;
   scripts: ScriptInfo[];
+  /** Browser traces: exact events of this thread, on the trace clock. */
+  timeline?: TimelineEvent[];
 }
 
 export interface IngestResult {
@@ -87,4 +91,6 @@ export interface IngestResult {
   /** Measured sampling interval (microseconds): the larger of the configured and the median gap. */
   precisionUs: number;
   durationUs: number;
+  /** The monotonic clock reading that corresponds to `meta.startedAt`. */
+  monoAtStartUs: number;
 }

@@ -98,9 +98,12 @@ export function displayPath(path: string): string {
   return at < 0 ? path : path.slice(at + marker.length);
 }
 
-/** paces' own preload scripts, as installed (paces, @pacesjs/collector-node) or built in the monorepo. */
+/**
+ * paces' own instrumentation: the Node preload scripts, as installed (paces, @pacesjs/collector-node)
+ * or built in the monorepo, and the script injected into browser pages.
+ */
 const INSTRUMENTATION =
-  /(^|\/)(paces|collector-node|@pacesjs\/collector-node)\/dist\/preload\.cjs$/;
+  /(^|\/)(paces|collector-node|@pacesjs\/collector-node)\/dist\/preload\.cjs$|^paces:\/\/instrumentation\//;
 
 export function isPacesInstrumentation(path: string): boolean {
   return INSTRUMENTATION.test(path);

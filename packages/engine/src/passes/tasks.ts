@@ -76,14 +76,14 @@ function basename(path: string): string {
   return i < 0 ? path : path.slice(i + 1);
 }
 
-interface Names {
+export interface Names {
   nameOf: (fn: number) => string;
   fileOf: (fn: number) => string;
   /** The name, or `(anonymous in <file>)` for an anonymous function. */
   display: (fn: number) => string;
 }
 
-function namesOf(functions: TaskFunctions, strings: string[]): Names {
+export function namesOf(functions: TaskFunctions, strings: string[]): Names {
   const nameOf = (fn: number): string => strings[functions.name[fn] ?? 0] ?? '';
   const fileOf = (fn: number): string => strings[functions.file[fn] ?? 0] ?? '';
   const display = (fn: number): string => {
@@ -207,7 +207,7 @@ function kindOfTask(
  * First meaningful frame of a task: the shallowest user frame that is not plumbing, else the shallowest
  * non-plumbing dependency frame, else the entry frame itself.
  */
-function subjectOf(input: TaskInput, a: number, b: number, entry: number): number {
+export function subjectOf(input: TaskInput, a: number, b: number, entry: number): number {
   const { tree, samples, functions } = input;
   let meaningful = -1;
   let fallback = -1;

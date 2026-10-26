@@ -64,11 +64,64 @@ export function isLauncherEntry(absEntry: string): boolean {
   return LAUNCHER_FILE.test(basenameOf(absEntry).replace(/\.(c|m)?js$/, ''));
 }
 
+/**
+ * A browser has no launcher process: every thread is part of the page being profiled, the primary
+ * track is the busiest page, and first-party code is whatever the launched site served.
+ */
+function detectBrowserTarget(
+  capture: RawCapture,
+  ingest: IngestResult,
+  ctx: PassContext,
+): TargetDetection {
+  const strings = ctx.strings.strings;
+  const n = capture.tracks.length;
+  const busy = new Float64Array(n);
+  ingest.tracks.forEach((ing, i) => {
+    let total = 0;
+    for (let node = 0; node < ing.tree.length; node++) {
+      const name = strings[ingest.frames.name[ing.tree.frame[node] ?? 0] ?? 0];
+      if (name !== '(idle)') total += ing.tree.self[node] ?? 0;
+    }
+    busy[i] = total;
+  });
+  let primary = -1;
+  capture.tracks.forEach((t, i) => {
+    if (t.info.kind !== 'page') return;
+    if (primary < 0 || (busy[i] ?? 0) > (busy[primary] ?? 0)) primary = i;
+  });
+  if (primary < 0) {
+    busy.forEach((b, i) => {
+      if (primary < 0 || b > (busy[primary] ?? 0)) primary = i;
+    });
+  }
+  if (primary < 0) primary = 0;
+  const urls = capture.tracks.map((t) => t.info.url ?? '');
+  const browser = capture.browser;
+  const spec: TargetSpec = {
+    packages: new Set(),
+    globs: [],
+    browser: {
+      launchedUrl: browser?.url || urls[primary] || '',
+      firstParty: browser?.firstParty ?? [],
+    },
+  };
+  return {
+    entryAbs: urls,
+    entries: urls,
+    roles: capture.tracks.map(() => 'target' as const),
+    primary,
+    spec,
+    packages: [],
+    commandLike: false,
+  };
+}
+
 export function detectTarget(
   capture: RawCapture,
   ingest: IngestResult,
   ctx: PassContext,
 ): TargetDetection {
+  if (capture.browser) return detectBrowserTarget(capture, ingest, ctx);
   const root = capture.meta.projectRoot;
   const strings = ctx.strings.strings;
   const n = capture.tracks.length;
@@ -191,11 +244,13 @@ export function processName(absEntry: string, support: boolean): string {
 
 export function runKindOf(input: {
   override: RunKind | undefined;
+  browser?: boolean;
   hasRequests: boolean;
   listening: boolean;
   commandLike: boolean;
 }): RunKind {
   if (input.override) return input.override;
+  if (input.browser) return 'page';
   if (input.hasRequests || input.listening) return 'server';
   return input.commandLike ? 'cli' : 'script';
 }

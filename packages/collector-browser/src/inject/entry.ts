@@ -51,7 +51,9 @@ export function injectedMain(config: InjectConfig, helpers: InjectHelpers): void
   };
   const epochNow = (): number => performance.timeOrigin + performance.now();
 
-  let seq = 0;
+  // Unique across documents: a navigation restarts the counter, and the trace stamp is the join key.
+  const docTag = Math.floor(performance.timeOrigin).toString(36);
+  let count = 0;
   let overlayHost: Element | null = null;
 
   const coalescer = helpers.createCoalescer({
@@ -60,7 +62,8 @@ export function injectedMain(config: InjectConfig, helpers: InjectHelpers): void
     clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
     emit: (kind, label) => {
       if (!config.eventMarks) return;
-      seq++;
+      count++;
+      const seq = docTag + '.' + count;
       stamp('paces:' + seq);
       bridge({ t: 'event', seq, at: epochNow(), kind, label, frame });
     },
