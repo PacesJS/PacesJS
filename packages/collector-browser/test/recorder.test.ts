@@ -106,4 +106,18 @@ describe.runIf(exe)('startRecording (real browser)', () => {
     expect(second?.startUs).toBeGreaterThan(first?.endUs ?? Infinity);
     expect(recording.marks.map((m) => m.label)).toContain('while paused');
   }, 60_000);
+
+  it('stops by itself shortly after the page has loaded when asked to wait for load', async () => {
+    const started = Date.now();
+    const recording = await record('slow-click', { durationMs: undefined, until: 'load' });
+    expect(recording.endedBy).toBe('duration');
+    expect(Date.now() - started).toBeLessThan(30_000);
+    expect(recording.events.some((e) => e.name === 'loadEventEnd')).toBe(true);
+  }, 60_000);
+
+  it('stops after the network goes quiet when asked to wait for idle', async () => {
+    const recording = await record('slow-click', { durationMs: undefined, until: 'idle' });
+    expect(recording.endedBy).toBe('duration');
+    expect(recording.events.some((e) => e.name === 'loadEventEnd')).toBe(true);
+  }, 60_000);
 });

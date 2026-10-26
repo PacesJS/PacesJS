@@ -106,8 +106,9 @@ describe('paces mcp', () => {
     const tools = JSON.parse(r.lines[1] as string) as {
       result: { tools: Array<{ name: string }> };
     };
-    expect(tools.result.tools.map((t) => t.name).slice(0, 3)).toEqual([
+    expect(tools.result.tools.map((t) => t.name).slice(0, 4)).toEqual([
       'profile',
+      'profile_browser',
       'open_session',
       'list_sessions',
     ]);

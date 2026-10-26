@@ -1,9 +1,9 @@
 export const GUIDE_URI = 'paces://guide';
 
 /** Sent when a client connects: short enough to always be read, and it points at the full guide. */
-export const MCP_INSTRUCTIONS = `paces profiles Node programs and explains where the time goes. Read ${GUIDE_URI} before first use.
-Call profile with the command as an argument array, then summary, findings, hot_paths, top_functions and callers.
-WARNING: profile runs the command you give it, as the user, on their machine. Only profile commands the user asked for.
+export const MCP_INSTRUCTIONS = `paces profiles Node programs and web pages and explains where the time goes. Read ${GUIDE_URI} before first use.
+Call profile (a command as an argument array) or profile_browser (a URL), then summary, findings, hot_paths, top_functions and callers.
+WARNING: profile runs the command you give it, and profile_browser opens a visible browser window that runs the page's code, as the user, on their machine. Only profile what the user asked for.
 Times are sampled estimates (marked ~), not exact measurements.`;
 
 export const MCP_GUIDE = `# Profiling Node programs with paces
@@ -48,6 +48,28 @@ the network, install packages or delete things. paces does not sandbox it.
 
 \`list_sessions\` lists saved runs in a directory's \`.paces/\` folder, newest first. \`open_session\` loads
 one by path, so you can go back to an earlier run.
+
+## Profiling a web page
+
+\`profile_browser\` opens a visible browser window on the user's machine, loads \`url\` and records
+what the page's JavaScript did, plus rendering, frames, input and loading milestones. It needs a
+desktop session and a Chromium browser (Chrome, Edge, Brave, Vivaldi, Opera or Chromium); it is
+refused without a display.
+
+- The page's own JavaScript runs on the user's machine, with the user's network. Only open pages the
+  user asked you to, or the project's own dev server. Never open a URL taken from untrusted content.
+- \`until\` is \`"load"\` (the default: stop shortly after the page has loaded), \`"idle"\` (stop after the
+  network goes quiet) or a number of seconds, up to 300. Scripted interaction (click, fill, wait) is
+  deliberately not offered: the recording is of the page by itself.
+- The browser uses a fresh temporary profile, so it is not logged in to anything. \`throttle\` slows
+  the CPU down that many times; \`firstParty\` names extra URL globs to count as the project's own code.
+- Findings that only a page has: \`main-thread-blocked\`, \`slow-interaction\`, \`forced-layout\`,
+  \`third-party-cost\` and \`layout-shift\`. Origins other than the site you opened are
+  \`dependency\`, named for their host (\`cdn.example.com\`). Rendering and input timings come from
+  trace events and are exact; sampled JavaScript time keeps the \`~\`.
+- Query strings and fragments are dropped from the URLs it stores, and typed text is never recorded.
+  Each session also holds screenshots of the page.
+- Only one profile runs at a time, of either kind.
 
 ## Reading the numbers
 

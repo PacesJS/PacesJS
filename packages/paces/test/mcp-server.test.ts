@@ -94,7 +94,13 @@ describe('the generic paces MCP server', () => {
     const before = (await client.listTools()).tools.map((t) => t.name);
     await call(client, 'profile', { command: node(BUSY) });
     const after = (await client.listTools()).tools.map((t) => t.name);
-    expect(before).toEqual(['profile', 'open_session', 'list_sessions', ...ANALYSIS]);
+    expect(before).toEqual([
+      'profile',
+      'profile_browser',
+      'open_session',
+      'list_sessions',
+      ...ANALYSIS,
+    ]);
     expect(after).toEqual(before);
     await stop();
   });
