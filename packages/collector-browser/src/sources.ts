@@ -32,6 +32,29 @@ export interface CollectedSources {
 
 const MAX_DETAILS = 20;
 
+interface InlinePiece {
+  startLine: number;
+  startColumn: number;
+  text: string;
+}
+
+/**
+ * V8 reports positions relative to the whole document, but the debugger hands back only the text of
+ * an inline script. Laying each script at its own line (and column) makes the lines in a profile
+ * match the lines of the text, and joins the scripts of one page into one document.
+ */
+function layOut(pieces: InlinePiece[]): string {
+  const lines: string[] = [];
+  for (const piece of [...pieces].sort((a, b) => a.startLine - b.startLine)) {
+    piece.text.split('\n').forEach((line, i) => {
+      const at = piece.startLine + i;
+      while (lines.length <= at) lines.push('');
+      lines[at] = (i === 0 ? ' '.repeat(piece.startColumn) : '') + line;
+    });
+  }
+  return lines.join('\n');
+}
+
 export async function collectSources(
   cdp: CdpLike,
   scripts: ScriptRecord[],
@@ -99,6 +122,7 @@ export async function collectSources(
   };
 
   const done = new Set<string>();
+  const inline = new Map<string, { source: CollectedSource; pieces: InlinePiece[] }>();
   let total = 0;
   let overBudget = false;
   for (const script of scripts) {
@@ -132,9 +156,23 @@ export async function collectSources(
       continue;
     }
     total += text.length;
-    sources.push({ url: script.url, hash: script.hash, text });
+    if ((script.startLine ?? 0) > 0 || (script.startColumn ?? 0) > 0) {
+      const piece = {
+        startLine: script.startLine ?? 0,
+        startColumn: script.startColumn ?? 0,
+        text,
+      };
+      const held = inline.get(script.url);
+      if (held) held.pieces.push(piece);
+      else {
+        const source = { url: script.url, hash: script.hash, text };
+        sources.push(source);
+        inline.set(script.url, { source, pieces: [piece] });
+      }
+    } else sources.push({ url: script.url, hash: script.hash, text });
     await fetchMap(script);
   }
+  for (const { source, pieces } of inline.values()) source.text = layOut(pieces);
   return {
     sources,
     sourceMaps,

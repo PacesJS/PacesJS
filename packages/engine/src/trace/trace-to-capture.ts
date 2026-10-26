@@ -63,6 +63,8 @@ interface ProfileSegment {
   nodes: Array<{ id: number; parent?: number; callFrame: Record<string, unknown> }>;
   samples: number[];
   deltas: number[];
+  /** Source line (1-based) of each sample, 0 when V8 gave none; aligned with `samples`. */
+  lines: number[];
   firstTs: number;
 }
 
@@ -117,6 +119,7 @@ function mergeProfile(
   let idleId = 0;
   const samples: number[] = [];
   const deltas: number[] = [];
+  const ticks = new Map<number, Map<number, number>>();
   const startTime = segments[0]?.startTime ?? 0;
   let clock = startTime;
   const interval = median(segments.flatMap((s) => s.deltas.filter((d) => d > 0))) || 1000;
@@ -185,11 +188,27 @@ function mergeProfile(
     let t = seg.startTime;
     seg.samples.forEach((sample, i) => {
       t += seg.deltas[i] ?? 0;
-      samples.push(byKey.get(`${seg.id}:${sample}`) ?? rootId);
+      const node = byKey.get(`${seg.id}:${sample}`) ?? rootId;
+      samples.push(node);
       deltas.push(t - clock);
       clock = t;
+      const line = seg.lines[i] ?? 0;
+      if (line > 0) {
+        const perLine = ticks.get(node) ?? new Map<number, number>();
+        perLine.set(line, (perLine.get(line) ?? 0) + 1);
+        ticks.set(node, perLine);
+      }
     });
   });
+  // The trace names a line for every sample; the engine reads them as V8's per-line ticks.
+  for (const node of nodes) {
+    const perLine = ticks.get(node.id);
+    if (perLine) {
+      node.positionTicks = [...perLine]
+        .sort((a, b) => a[0] - b[0])
+        .map(([line, n]) => ({ line, ticks: n }));
+    }
+  }
   return { nodes, startTime, endTime: clock, samples, timeDeltas: deltas };
 }
 
@@ -247,6 +266,7 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
         nodes: [],
         samples: [],
         deltas: [],
+        lines: [],
         firstTs: e.ts,
       };
       segmentsByProfile.set(sid, seg);
@@ -258,7 +278,11 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
       const cpu = data.cpuProfile as
         { nodes?: ProfileSegment['nodes']; samples?: number[] } | undefined;
       if (cpu?.nodes) seg.nodes.push(...cpu.nodes);
-      if (cpu?.samples) seg.samples.push(...cpu.samples);
+      if (cpu?.samples) {
+        seg.samples.push(...cpu.samples);
+        const lines = Array.isArray(data.lines) ? (data.lines as number[]) : [];
+        for (let i = 0; i < cpu.samples.length; i++) seg.lines.push(lines[i] ?? 0);
+      }
       if (Array.isArray(data.timeDeltas)) seg.deltas.push(...(data.timeDeltas as number[]));
     } else if (e.name === 'TimeStamp') {
       const message = typeof data.message === 'string' ? data.message : '';
