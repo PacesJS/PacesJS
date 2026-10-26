@@ -87,10 +87,28 @@ function scrubValue(value: unknown, depth: number): unknown {
   return record;
 }
 
+/** The frame an event is about, wherever the browser put it. */
+function frameOf(e: TraceEvent): string | undefined {
+  const a = e.args as
+    | {
+        frame?: unknown;
+        data?: { frame?: unknown; beginData?: { frame?: unknown } };
+        beginData?: { frame?: unknown };
+      }
+    | undefined;
+  const frame = a?.frame ?? a?.data?.frame ?? a?.beginData?.frame ?? a?.data?.beginData?.frame;
+  return typeof frame === 'string' ? frame : undefined;
+}
+
 export interface TraceFilterOptions {
   keepQuery: boolean;
   /** Keep everything: no category knowledge, no name list, no process rule. */
   full: boolean;
+  /**
+   * Ids of the frames that were recorded. A trace started on the browser holds every renderer in it
+   * (other tabs, extensions); once the process running these frames is known, the rest are dropped.
+   */
+  ownFrames?: () => ReadonlySet<string>;
 }
 
 export interface TraceFilter {
@@ -101,6 +119,7 @@ export interface TraceFilter {
 
 export function createTraceFilter(options: TraceFilterOptions): TraceFilter {
   const renderer = new Map<number, boolean>();
+  const ownPids = new Set<number>();
   const droppedByName: Record<string, number> = {};
   let kept = 0;
   let dropped = 0;
@@ -123,7 +142,13 @@ export function createTraceFilter(options: TraceFilterOptions): TraceFilter {
           out.push(e);
           continue;
         }
+        const frame = options.ownFrames ? frameOf(e) : undefined;
+        if (frame !== undefined && options.ownFrames?.().has(frame)) ownPids.add(e.pid);
         if (!options.full) {
+          if (renderer.get(e.pid) === true && ownPids.size > 0 && !ownPids.has(e.pid)) {
+            drop(e.name);
+            continue;
+          }
           if (isNoise(e.name) || (e.name === 'RunTask' && (e.dur ?? 0) < MIN_RUN_TASK_US)) {
             drop(e.name);
             continue;

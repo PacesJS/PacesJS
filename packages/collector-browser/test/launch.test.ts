@@ -13,6 +13,10 @@ describe('browserArgs', () => {
     expect(args.filter((a) => a === 'about:blank')).toHaveLength(1);
   });
 
+  it('keeps the browser alive after the last window closes, so the trace can still be collected', () => {
+    expect(browserArgs('/tmp/p')).toContain('--keep-alive-for-test');
+  });
+
   it('never opens a TCP debugging port', () => {
     expect(browserArgs('/tmp/p').some((a) => a.startsWith('--remote-debugging-port'))).toBe(false);
   });
@@ -44,7 +48,7 @@ describe.runIf(exe)('launchBrowser (real browser)', () => {
     expect(version.product).toMatch(/Chrome|Edg|Brave|Chromium/);
   });
 
-  it('ends the pipe and exits once every page target is closed', async () => {
+  it('stays alive after its last page is closed, and exits when asked to', async () => {
     const b = start();
     const { targetInfos } = (await b.client.send('Target.getTargets')) as {
       targetInfos: { targetId: string; type: string }[];
@@ -54,6 +58,10 @@ describe.runIf(exe)('launchBrowser (real browser)', () => {
     await Promise.all(
       pages.map((p) => b.client.send('Target.closeTarget', { targetId: p.targetId })),
     );
+    // Still answering: the trace of a closed window can still be collected.
+    const version = (await b.client.send('Browser.getVersion')) as { product: string };
+    expect(version.product).toMatch(/Chrome|Edg|Brave|Chromium/);
+    await b.client.send('Browser.close');
     await b.client.closed;
     await expect(b.exited).resolves.toBeDefined();
   });

@@ -177,6 +177,22 @@ describe('recordingToCapture: meta', () => {
     expect(capture('slow-click').browser?.traceFilter?.version).toBe(1);
   });
 
+  it('places a screenshot taken at a wall-clock time on the trace clock', () => {
+    const input = cloneInput('slow-click');
+    const at = input.startedAt + 1000;
+    const c = recordingToCapture({ ...input, screenshots: [{ id: 0, epochMs: at }] });
+    const shot = c.browser?.screenshots[0];
+    expect(((shot?.tsUs ?? 0) + (c.browser?.clock.offsetUs ?? 0)) / 1000).toBeCloseTo(at, 3);
+  });
+
+  it('keeps a screenshot that already has a time on the trace clock', () => {
+    const c = recordingToCapture({
+      ...cloneInput('slow-click'),
+      screenshots: [{ id: 3, tsUs: 123_456 }],
+    });
+    expect(c.browser?.screenshots).toEqual([{ id: 3, tsUs: 123_456 }]);
+  });
+
   it('records the screenshot index without the bytes', () => {
     const shots = capture('slow-click').browser?.screenshots ?? [];
     expect(shots.length).toBeGreaterThan(0);
@@ -187,12 +203,39 @@ describe('recordingToCapture: meta', () => {
 describe('traceToCapture: files exported from DevTools or Node', () => {
   const options = { name: 'trace.json', cwd: '/proj', mtimeMs: 5_000_000 };
 
-  it('reads a browser trace like a live one, with the page and iframe named', () => {
-    const events = cloneInput('worker-and-iframe').events;
-    const labels = traceToCapture(events, options)
+  it('reads the frame list a DevTools trace carries, naming the page, its iframe and its worker', () => {
+    // A DevTools export lists its frames in TracingStartedInBrowser. The recorded trace has the
+    // same frames and processes, so the list is built from them, not invented.
+    const input = cloneInput('worker-and-iframe');
+    const pidOf = new Map<string, number>();
+    for (const e of input.events) {
+      const a = e.args as { frame?: string; data?: { frame?: string } } | undefined;
+      const frame = a?.frame ?? a?.data?.frame;
+      if (frame && e.name === 'TimeStamp') pidOf.set(frame, e.pid);
+    }
+    const frames = (input.targets ?? []).map((t, i) => ({
+      frame: t.id,
+      url: t.url,
+      processId: pidOf.get(t.id),
+      isInPrimaryMainFrame: t.type === 'page',
+      ...(t.type === 'page' ? {} : { parent: input.targets?.[0]?.id }),
+      order: i,
+    }));
+    const events = [
+      ...input.events,
+      {
+        name: 'TracingStartedInBrowser',
+        ph: 'I',
+        ts: 1,
+        pid: 1,
+        tid: 1,
+        args: { data: { frames } },
+      },
+    ];
+    const kinds = traceToCapture(events, options)
       .tracks.map((t) => t.info.kind)
       .sort();
-    expect(labels).toEqual(['frame', 'page', 'worker']);
+    expect(kinds).toEqual(['frame', 'page', 'worker']);
   });
 
   it('says its clock is a guess, since a trace file has no wall-clock anchor', () => {

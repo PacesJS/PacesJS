@@ -118,4 +118,53 @@ describe('createTraceFilter', () => {
       filter.push([ev('V8.BytecodeBudgetInterrupt'), meta(2, 'GPU Process'), ev('Layout', 2)]),
     ).toHaveLength(3);
   });
+
+  describe('with the frames that were recorded', () => {
+    const own = new Set(['F-OURS']);
+    const framed = (pid: number, frame: string, name = 'Layout'): TraceEvent =>
+      ev(name, pid, { args: { data: { frame } } });
+
+    it('drops the events of a renderer that runs none of them, once it knows which one does', () => {
+      const filter = createTraceFilter({ keepQuery: false, full: false, ownFrames: () => own });
+      const kept = filter.push([
+        meta(1, 'Renderer'),
+        meta(2, 'Extension Renderer'),
+        framed(1, 'F-OURS'),
+        framed(2, 'F-OTHER'),
+        ev('Paint', 2),
+        ev('Paint', 1),
+      ]);
+      expect(kept.filter((e) => e.ph !== 'M').map((e) => `${e.pid}:${e.name}`)).toEqual([
+        '1:Layout',
+        '1:Paint',
+      ]);
+    });
+
+    it('counts what it dropped by name', () => {
+      const filter = createTraceFilter({ keepQuery: false, full: false, ownFrames: () => own });
+      filter.push([meta(1, 'Renderer'), meta(2, 'Renderer'), framed(1, 'F-OURS'), ev('Paint', 2)]);
+      expect(filter.stats().droppedByName).toEqual({ Paint: 1 });
+    });
+
+    it('keeps every renderer while it does not yet know which one runs the frames', () => {
+      const filter = createTraceFilter({ keepQuery: false, full: false, ownFrames: () => own });
+      const kept = filter.push([meta(2, 'Renderer'), ev('Paint', 2)]);
+      expect(kept.map((e) => e.name)).toEqual(['process_name', 'Paint']);
+    });
+
+    it('learns a renderer that gets one of the frames later, such as a new tab', () => {
+      const frames = new Set(['F-OURS']);
+      const filter = createTraceFilter({ keepQuery: false, full: false, ownFrames: () => frames });
+      filter.push([meta(1, 'Renderer'), meta(3, 'Renderer'), framed(1, 'F-OURS')]);
+      frames.add('F-TAB');
+      const kept = filter.push([framed(3, 'F-TAB'), ev('Paint', 3)]);
+      expect(kept.map((e) => e.name)).toEqual(['Layout', 'Paint']);
+    });
+
+    it('keeps everything in full-trace mode', () => {
+      const filter = createTraceFilter({ keepQuery: true, full: true, ownFrames: () => own });
+      const kept = filter.push([meta(2, 'Renderer'), framed(1, 'F-OURS'), ev('Paint', 2)]);
+      expect(kept).toHaveLength(3);
+    });
+  });
 });

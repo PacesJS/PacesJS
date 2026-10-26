@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "tsup && vitest run"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@pacesjs/shared": "workspace:*",

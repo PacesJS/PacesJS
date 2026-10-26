@@ -245,6 +245,15 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
     }
   };
 
+  // A trace started on the browser has no frame list; the frames its events name tell which process
+  // runs each one.
+  const noteFramePid = (frame: unknown, pid: number): void => {
+    if (typeof frame !== 'string' || frame === '') return;
+    const pids = known.framePids.get(frame) ?? new Set<number>();
+    pids.add(pid);
+    known.framePids.set(frame, pids);
+  };
+
   for (const e of events) {
     const data = dataOf(e);
     if (e.ph === 'M') {
@@ -252,6 +261,16 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
       if (e.name === 'process_name') procName.set(e.pid, name);
       else if (e.name === 'thread_name') threadName.set(`${e.pid}:${e.tid}`, name);
       continue;
+    }
+    {
+      const a = e.args as { frame?: unknown; beginData?: { frame?: unknown } } | undefined;
+      noteFramePid(
+        a?.frame ??
+          data.frame ??
+          a?.beginData?.frame ??
+          (data.beginData as { frame?: unknown } | undefined)?.frame,
+        e.pid,
+      );
     }
     if (e.name === 'TracingStartedInBrowser') {
       const frames = data.frames;
@@ -372,8 +391,23 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
       return s.targetId !== undefined && (known.framePids.get(s.targetId)?.has(pid) ?? false);
     });
 
+  // The recorded targets name the frames; the processes that ran them are the page's own.
+  for (const target of input.targets ?? []) {
+    known.frames.set(target.id, {
+      url: target.url,
+      parent: target.type === 'page' ? undefined : 'target',
+      primary: target.type === 'page',
+    });
+  }
+  const ownPids = new Set<number>();
+  for (const target of input.targets ?? []) {
+    for (const pid of known.framePids.get(target.id) ?? []) ownPids.add(pid);
+  }
+
   const tracks: RawTrack[] = [];
   for (const thread of profiles.values()) {
+    // Another tab, an extension, a browser page: in the trace, but not what was profiled.
+    if (ownPids.size > 0 && !ownPids.has(thread.pid)) continue;
     const name = threadName.get(`${thread.pid}:${thread.tid}`) ?? '';
     const isWorker = /worker/i.test(name);
     const isMain = name === 'CrRendererMain';
@@ -502,7 +536,10 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
     page: pageEvents
       .filter((e) => pagePids.has(e.pid))
       .sort((a, b) => a.ts - b.ts || a.name.localeCompare(b.name)),
-    screenshots: (input.screenshots ?? []).map((s) => ({ id: s.id, tsUs: s.tsUs })),
+    screenshots: (input.screenshots ?? []).map((s) => ({
+      id: s.id,
+      tsUs: s.tsUs ?? (s.epochMs ?? 0) * 1000 - clock.offsetUs,
+    })),
     ...(input.filter ? { traceFilter: input.filter } : {}),
   };
   return { meta, ...(isBrowser ? { browser } : {}), tracks, sourceMaps: input.sourceMaps ?? {} };

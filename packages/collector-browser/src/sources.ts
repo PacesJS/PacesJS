@@ -55,11 +55,15 @@ function layOut(pieces: InlinePiece[]): string {
   return lines.join('\n');
 }
 
-export async function collectSources(
-  cdp: CdpLike,
-  scripts: ScriptRecord[],
-  limits: SourceLimits,
-): Promise<CollectedSources> {
+/** Reads scripts as they are handed over, so a page that closes later takes nothing with it. */
+export interface SourceCollector {
+  /** Queues a script: its text (and source map) are read in the order scripts are added. */
+  add(script: ScriptRecord): void;
+  /** Waits for everything queued, and returns what was read. */
+  finish(): Promise<CollectedSources>;
+}
+
+export function createSourceCollector(cdp: CdpLike, limits: SourceLimits): SourceCollector {
   const sources: CollectedSource[] = [];
   const sourceMaps: Record<string, string> = {};
   const warned = new Map<string, string[]>();
@@ -125,13 +129,14 @@ export async function collectSources(
   const inline = new Map<string, { source: CollectedSource; pieces: InlinePiece[] }>();
   let total = 0;
   let overBudget = false;
-  for (const script of scripts) {
+
+  const read = async (script: ScriptRecord): Promise<void> => {
     const key = `${script.url}\0${script.hash}`;
-    if (done.has(key)) continue;
+    if (done.has(key)) return;
     done.add(key);
     if (overBudget) {
       warn('sources-over-budget', script.url);
-      continue;
+      return;
     }
     let text: string;
     try {
@@ -144,16 +149,16 @@ export async function collectSources(
       };
       text = result.scriptSource ?? '';
     } catch {
-      continue;
+      return;
     }
     if (text.length > limits.perSource) {
       warn('source-too-large', script.url);
-      continue;
+      return;
     }
     if (total + text.length > limits.perSession) {
       overBudget = true;
       warn('sources-over-budget', script.url);
-      continue;
+      return;
     }
     total += text.length;
     if ((script.startLine ?? 0) > 0 || (script.startColumn ?? 0) > 0) {
@@ -171,15 +176,36 @@ export async function collectSources(
       }
     } else sources.push({ url: script.url, hash: script.hash, text });
     await fetchMap(script);
-  }
-  for (const { source, pieces } of inline.values()) source.text = layOut(pieces);
-  return {
-    sources,
-    sourceMaps,
-    warnings: [...warned].map(([kind, details]) => ({
-      kind,
-      count: details.length,
-      details: details.slice(0, MAX_DETAILS),
-    })),
   };
+
+  let queue: Promise<void> = Promise.resolve();
+  return {
+    add(script) {
+      queue = queue.then(() => read(script)).catch(() => undefined);
+    },
+    async finish() {
+      await queue;
+      for (const { source, pieces } of inline.values()) source.text = layOut(pieces);
+      return {
+        sources,
+        sourceMaps,
+        warnings: [...warned].map(([kind, details]) => ({
+          kind,
+          count: details.length,
+          details: details.slice(0, MAX_DETAILS),
+        })),
+      };
+    },
+  };
+}
+
+/** Reads a list of scripts in one go. */
+export async function collectSources(
+  cdp: CdpLike,
+  scripts: ScriptRecord[],
+  limits: SourceLimits,
+): Promise<CollectedSources> {
+  const collector = createSourceCollector(cdp, limits);
+  for (const script of scripts) collector.add(script);
+  return collector.finish();
 }

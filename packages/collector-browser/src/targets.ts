@@ -23,6 +23,8 @@ export interface TargetManagerDeps {
   injectSource: string;
   keepQuery: boolean;
   onBridge: (message: unknown, session: string) => void;
+  /** Called for each script as it is parsed, so its text can be read before its page goes away. */
+  onScript?: (script: ScriptRecord) => void;
 }
 
 export interface TargetManager {
@@ -98,7 +100,7 @@ export function createTargetManager(deps: TargetManagerDeps): TargetManager {
       const key = `${e.sessionId}:${String(params.scriptId)}`;
       if (seen.has(key)) return;
       seen.add(key);
-      parsed.push({
+      const record: ScriptRecord = {
         scriptId: String(params.scriptId),
         url: deps.keepQuery ? url : scrubUrl(url),
         sourceMapURL: String(params.sourceMapURL ?? ''),
@@ -115,7 +117,9 @@ export function createTargetManager(deps: TargetManagerDeps): TargetManager {
                 : {}),
             }
           : {}),
-      });
+      };
+      parsed.push(record);
+      deps.onScript?.(record);
     } else if (e.method === 'Runtime.bindingCalled' && params.name === BRIDGE_NAME) {
       try {
         deps.onBridge(JSON.parse(String(params.payload)), e.sessionId ?? '');

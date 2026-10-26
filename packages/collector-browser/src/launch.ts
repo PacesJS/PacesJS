@@ -31,6 +31,8 @@ export function browserArgs(profileDir: string, windowSize = '1440,900'): string
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-sync',
+    // Closing the last window must not end the browser: the trace is still being handed over.
+    '--keep-alive-for-test',
     `--window-size=${windowSize}`,
     'about:blank',
   ];

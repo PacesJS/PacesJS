@@ -9,6 +9,7 @@ export type {
   BrowserRecordingInput,
   RecordedScript,
   RecordedSegment,
+  RecordedTarget,
   TraceEventIn,
 } from './trace/types.js';
 export { ensureCaptureWarnings } from './passes/warnings.js';

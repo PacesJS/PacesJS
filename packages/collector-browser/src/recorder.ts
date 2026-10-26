@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeDetached } from '@pacesjs/shared';
-import type { CdpEvent } from './cdp-pipe.js';
+import type { CdpEvent, CdpLike } from './cdp-pipe.js';
 import { buildInjectedSource } from './inject/entry.js';
 import type { Corner } from './inject/overlay-state.js';
 import { launchBrowser } from './launch.js';
@@ -14,7 +14,8 @@ import type {
   Recording,
   SessionController,
 } from './session-controller.js';
-import { DEFAULT_SOURCE_LIMITS, collectSources } from './sources.js';
+import { createScreencast } from './screencast.js';
+import { DEFAULT_SOURCE_LIMITS, createSourceCollector } from './sources.js';
 import type { CollectedSource, SourceWarning } from './sources.js';
 import { createTargetManager } from './targets.js';
 import type { ScriptRecord } from './targets.js';
@@ -45,6 +46,8 @@ export interface BrowserRecording extends Recording {
   product: string;
   url: string;
   scripts: ScriptRecord[];
+  /** The pages and out-of-process iframes that were recorded (their ids are frame ids). */
+  targets: Array<{ id: string; type: string; url: string }>;
   sources: CollectedSource[];
   sourceMaps: Record<string, string>;
   warnings: SourceWarning[];
@@ -57,6 +60,8 @@ export interface BrowserRecording extends Recording {
 
 export interface BrowserRun {
   controller: SessionController;
+  /** The browser's debugging pipe, for tests that need to do what a user does (close the window). */
+  cdp: CdpLike;
   /** Ends the run as the user asked; resolves with the recording once the browser is closed. */
   stop(by?: EndedBy): Promise<BrowserRecording>;
   done: Promise<BrowserRecording>;
@@ -143,10 +148,42 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       }
     };
 
+    // Scripts are read as they are parsed: when the user closes the window, their pages are gone.
+    const collector = createSourceCollector(cdp, DEFAULT_SOURCE_LIMITS);
+    const pageSessions = new Set<string>();
+    // What was recorded: the frames whose processes are kept when the trace is cut down.
+    const targets = new Map<string, { type: string; url: string }>();
+    const ownFrames = new Set<string>();
+    const noteTarget = (
+      info: { targetId?: string; type?: string; url?: string } | undefined,
+    ): void => {
+      if (!info?.targetId || (info.type !== 'page' && info.type !== 'iframe')) return;
+      targets.set(info.targetId, { type: info.type, url: info.url ?? '' });
+      ownFrames.add(info.targetId);
+    };
+    cdp.onEvent((e: CdpEvent) => {
+      const info = (
+        e.params as { targetInfo?: { targetId?: string; type?: string; url?: string } } | undefined
+      )?.targetInfo;
+      if (e.method === 'Target.attachedToTarget') noteTarget(info);
+      else if (
+        e.method === 'Target.targetInfoChanged' &&
+        info?.targetId &&
+        targets.has(info.targetId)
+      ) {
+        noteTarget(info);
+      }
+    });
+    const screencast = createScreencast({
+      cdp,
+      addScreenshot: (epochMs, bytes) => live.controller?.addScreenshot(epochMs, bytes),
+    });
+
     const manager = createTargetManager({
       cdp,
       injectSource,
       keepQuery: options.keepQuery,
+      onScript: (script) => collector.add(script),
       onBridge: (raw, session) => {
         const m = raw as BridgeMessage;
         if (m.t === 'hello') {
@@ -208,6 +245,8 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       flatten: true,
     })) as { sessionId: string };
     topSessions.add(sessionId);
+    pageSessions.add(sessionId);
+    noteTarget({ targetId: pageTarget, type: 'page', url: '' });
     await manager.configure(sessionId, 'page', false, pageTarget);
     await manager.idle();
 
@@ -222,14 +261,13 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
           livePages++;
           void cdp
             .send('Target.attachToTarget', { targetId: info.targetId, flatten: true })
-            .then((r) =>
-              manager.configure(
-                (r as { sessionId: string }).sessionId,
-                'page',
-                false,
-                info.targetId,
-              ),
-            )
+            .then(async (r) => {
+              const session = (r as { sessionId: string }).sessionId;
+              pageSessions.add(session);
+              noteTarget({ targetId: info.targetId, type: 'page', url: '' });
+              await manager.configure(session, 'page', false, info.targetId);
+              await screencast.add(session);
+            })
             .catch(() => undefined);
         }
       } else if (e.method === 'Target.targetDestroyed') {
@@ -280,10 +318,11 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       await cdp.send('Network.setCacheDisabled', { cacheDisabled: true }, sessionId);
     }
 
+    let capturing = false;
     const controller = createSessionController({
       cdp,
-      session: sessionId,
       options,
+      ownFrames: () => ownFrames,
       syncClock: async (n) => {
         const r = (await cdp.send(
           'Runtime.evaluate',
@@ -295,6 +334,16 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       onChange: (state) => {
         options.onState?.(state);
         pushState();
+        // Frames are taken only while recording: a pause stops them, so a login is never captured.
+        if (!options.screenshots) return;
+        const recordingNow = state.phase === 'recording';
+        if (recordingNow && !capturing) {
+          capturing = true;
+          void screencast.start([...pageSessions]);
+        } else if (!recordingNow && capturing) {
+          capturing = false;
+          void screencast.stop();
+        }
       },
     });
     live.controller = controller;
@@ -315,21 +364,13 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
           kind: 'trace-incomplete',
           count: 1,
           details: [
-            by === 'window-closed'
-              ? 'The window was closed while recording, so the last stretch could not be collected. Use Stop in the overlay or press s in the terminal to end a run.'
-              : 'The browser did not hand over its last trace segment.',
+            'The browser did not hand over its last trace segment: it was closed or crashed.',
           ],
         });
       }
-      let sources: CollectedSource[] = [];
-      let sourceMaps: Record<string, string> = {};
-      if (by !== 'window-closed') {
-        const collected = await collectSources(cdp, manager.scripts(), DEFAULT_SOURCE_LIMITS);
-        sources = collected.sources;
-        sourceMaps = collected.sourceMaps;
-        warnings.push(...collected.warnings);
-        await cdp.send('Browser.close').catch(() => undefined);
-      }
+      const { sources, sourceMaps, warnings: sourceWarnings } = await collector.finish();
+      warnings.push(...sourceWarnings);
+      await cdp.send('Browser.close').catch(() => undefined);
       await Promise.race([
         browser.exited,
         new Promise<void>((resolve) => setTimeout(resolve, 5000)),
@@ -340,6 +381,11 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
         product,
         url: scrubUrl(options.url),
         scripts: manager.scripts(),
+        targets: [...targets].map(([id, t]) => ({
+          id,
+          type: t.type,
+          url: options.keepQuery ? t.url : scrubUrl(t.url),
+        })),
         sources,
         sourceMaps,
         warnings,
@@ -372,7 +418,7 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
     });
     const limit = options.durationMs ?? (options.until ? UNTIL_LIMIT_MS : undefined);
     if (limit !== undefined) setTimeout(() => stopRequested('duration'), limit).unref();
-    return { controller, stop, done, kill: cleanup };
+    return { controller, cdp, stop, done, kill: cleanup };
   } catch (error) {
     cleanup();
     throw error;
