@@ -52,4 +52,19 @@ describe('runMarks', () => {
     expect(runMarks([], startedAt, 1_000_000)).toEqual([]);
     expect(runMarks(undefined, startedAt, 1_000_000)).toEqual([]);
   });
+
+  it('keeps only the marks the user added, not the page events a browser run records', () => {
+    expect(
+      runMarks(
+        [
+          { at: startedAt + 1000, label: 'after login', kind: 'manual' },
+          { at: startedAt + 2000, label: 'button#save "Save"', kind: 'click' },
+          { at: startedAt + 3000, label: 'Mark 2' },
+          { at: startedAt + 4000, label: 'http://x.test/', kind: 'navigate' },
+        ],
+        startedAt,
+        10_000_000,
+      ).map((m) => m.label),
+    ).toEqual(['after login', 'Mark 2']);
+  });
 });

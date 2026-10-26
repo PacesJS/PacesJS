@@ -129,6 +129,15 @@
   --c-diff-slower: #ff8a1f;
 
   --c-hatch-gap: transparent;
+
+  /* Browser lanes: phases reuse the origin palette (never red or amber, which mean severity). */
+  --c-render-style: var(--c-origin-dependency);
+  --c-render-layout: var(--c-origin-framework);
+  --c-render-paint: var(--c-origin-native);
+  --c-render-composite: var(--c-origin-node);
+  --c-render-parse: var(--c-origin-gc);
+  --c-render-script: var(--c-wait);
+  --c-paused-hatch: color-mix(in srgb, var(--c-border-strong) 35%, transparent);
   --c-grid: #e8eaf1;
   --c-cpu-line: #ff8a1f;
   --c-cpu-fill: rgba(255, 138, 31, 0.28);

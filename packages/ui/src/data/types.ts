@@ -59,6 +59,22 @@ export interface ModelSummary {
   hasBaseline: boolean;
   /** Moments the user flagged while profiling, in time order. */
   marks: RunMark[];
+  /** Browser runs: what the header says about the page. */
+  browser?: BrowserSummary;
+}
+
+export interface BrowserSummary {
+  product: string;
+  url: string;
+  /** CPU slowdown factor, null when none. */
+  throttle: number | null;
+  cacheCold: boolean;
+  /** Frames in the filmstrip. */
+  screenshots: number;
+  /** Times recording was paused. */
+  pauses: number;
+  anchored: boolean;
+  clockErrorUs: number;
 }
 
 export interface TaskInfo {

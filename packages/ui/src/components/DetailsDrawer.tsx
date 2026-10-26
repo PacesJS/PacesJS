@@ -1,4 +1,5 @@
 import { useApp } from '../app/context';
+import { isWebScript } from '../view/source-reason';
 import { useAsync } from '../app/hooks';
 import { showInView } from '../state/show-in';
 import { originColor, originInfo } from '../theme/origin';
@@ -160,14 +161,16 @@ export function DetailsDrawer() {
           >
             {TEXT.showCallers}
           </button>
-          <button
-            type="button"
-            className="btn btn-soft"
-            disabled={!src?.path}
-            onClick={() => src && void host.openInEditor(src.path, src.startLine || 1)}
-          >
-            {TEXT.openInEditor}
-          </button>
+          {src && isWebScript(src.path) ? null : (
+            <button
+              type="button"
+              className="btn btn-soft"
+              disabled={!src?.path}
+              onClick={() => src && void host.openInEditor(src.path, src.startLine || 1)}
+            >
+              {TEXT.openInEditor}
+            </button>
+          )}
         </div>
       </div>
       {call ? (

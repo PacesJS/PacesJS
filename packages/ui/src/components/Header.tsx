@@ -18,11 +18,23 @@ const TEXT = {
     duration: 'Duration limit',
     stop: 'Stop key',
     crash: 'Crash',
+    'window-closed': 'Window closed',
   } as Record<string, string>,
   brand: 'paces',
   back: 'Back (Alt+Left)',
   forward: 'Forward (Alt+Right)',
   commandPrefix: '$ paces --',
+  browserPrefix: '$ paces',
+  throttle: (n: number) => `${n}× CPU throttle`,
+  coldCache: 'Cold cache',
+  screenshots: 'Contains screenshots',
+  screenshotsTitle:
+    'The session holds screenshots of the page; they can show anything that was on screen. Record with --no-screenshots to leave them out.',
+  pauses: (n: number) => `Paused ${n}×`,
+  pausesTitle: 'Recording was paused: nothing was captured during the gaps',
+  clockGuess: 'Start time is a guess',
+  clockGuessTitle:
+    'This trace has no wall-clock anchor, so its start time comes from the file date',
   duration: 'Duration',
   samples: 'Samples',
   perTrack: ' / track',
@@ -85,7 +97,9 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
           </button>
         </div>
         <div className="cmd-chip" title={command}>
-          <span className="cmd-chip-prefix">{TEXT.commandPrefix}</span>
+          <span className="cmd-chip-prefix">
+            {summary.browser ? TEXT.browserPrefix : TEXT.commandPrefix}
+          </span>
           <span className="cmd-chip-cmd">{command}</span>
         </div>
         <dl className="header-stats">
@@ -117,6 +131,29 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
           <Icon name="clock" size={14} />
           {TEXT.sampled(fmtMsPlain(intervalMs), fmtMsPlain(precisionMs))}
         </span>
+        {summary.browser ? (
+          <ul className="header-chips" aria-label="Recording options">
+            {summary.browser.throttle ? (
+              <li className="chip">{TEXT.throttle(summary.browser.throttle)}</li>
+            ) : null}
+            {summary.browser.cacheCold ? <li className="chip">{TEXT.coldCache}</li> : null}
+            {summary.browser.screenshots > 0 ? (
+              <li className="chip" title={TEXT.screenshotsTitle}>
+                {TEXT.screenshots}
+              </li>
+            ) : null}
+            {summary.browser.pauses > 0 ? (
+              <li className="chip" title={TEXT.pausesTitle}>
+                {TEXT.pauses(summary.browser.pauses)}
+              </li>
+            ) : null}
+            {summary.browser.anchored ? null : (
+              <li className="chip" title={TEXT.clockGuessTitle}>
+                {TEXT.clockGuess}
+              </li>
+            )}
+          </ul>
+        ) : null}
         <NotesChip />
         <div className="header-spacer" />
         <div className="field">

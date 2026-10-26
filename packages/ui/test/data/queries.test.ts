@@ -3,7 +3,7 @@ import { createQueries } from '../../src/data/queries';
 import { DEFAULT_TRANSFORMS } from '../../src/state/types';
 import type { Transform } from '../../src/state/types';
 import { nodeElk } from '../helpers/node-elk';
-import { fixtureModel, ordersModel } from '../helpers/real-model';
+import { browserModel, fixtureModel, ordersModel } from '../helpers/real-model';
 
 const model = ordersModel();
 const q = createQueries(model, null, nodeElk);
@@ -536,5 +536,40 @@ describe('deopt marks', () => {
     expect(dq.source(dscope, price)?.deopts).toEqual([
       { line: 6, reason: 'wrong map', kind: 'eager', count: 10 },
     ]);
+  });
+});
+
+describe('browser sessions', () => {
+  const page = browserModel('slow-click');
+  const pq = createQueries(page, null, nodeElk);
+
+  it('has no browser data for a Node run', () => {
+    expect(q.browser()).toBeNull();
+    expect(q.summary().browser).toBeUndefined();
+  });
+
+  it('describes the page run in the summary, for the header', () => {
+    const s = pq.summary();
+    expect(s.target.kind).toBe('page');
+    expect(s.browser).toMatchObject({ screenshots: expect.any(Number), pauses: 0, throttle: null });
+    expect(s.browser?.product).toMatch(/^Edg\/|^Chrome\//);
+  });
+
+  it('counts the pauses of a paused run', () => {
+    expect(
+      createQueries(browserModel('paused-resume'), null, nodeElk).summary().browser?.pauses,
+    ).toBe(1);
+  });
+
+  it('keeps the page events out of the marks, which are only the ones the user added', () => {
+    expect(pq.summary().marks).toEqual([]);
+    const paused = createQueries(browserModel('paused-resume'), null, nodeElk).summary().marks;
+    expect(paused.map((m) => m.label)).toEqual(['after login']);
+  });
+
+  it('answers the browser lanes with the click and the milestones', () => {
+    const t = pq.browser();
+    expect(t?.inputs.some((i) => i.kind === 'click')).toBe(true);
+    expect(t?.vitals.some((v) => v.name === 'FCP')).toBe(true);
   });
 });

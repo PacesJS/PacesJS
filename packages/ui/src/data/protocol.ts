@@ -22,6 +22,7 @@ export type WorkerResponse =
 export const QUERY_NAMES: readonly QueryName[] = [
   'summary',
   'overview',
+  'browser',
   'tasks',
   'waterfall',
   'flame',

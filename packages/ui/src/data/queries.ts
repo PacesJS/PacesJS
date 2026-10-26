@@ -1,5 +1,5 @@
-import { diffModels } from '@pacesjs/engine';
-import type { ExecutionModel, ModelDiff } from '@pacesjs/engine';
+import { browserTimeline, diffModels } from '@pacesjs/engine';
+import type { BrowserTimeline, ExecutionModel, ModelDiff } from '@pacesjs/engine';
 import type { Selection } from '../state/types';
 import type { FunctionFilter } from './adapt';
 import {
@@ -92,6 +92,8 @@ export interface GraphResult {
 export interface Queries {
   summary(): ModelSummary;
   overview(): OverviewData;
+  /** The filmstrip, milestones, rendering, input and pauses of a browser run; null for Node. */
+  browser(): BrowserTimeline | null;
   tasks(scope: Scope): TaskOption[];
   waterfall(scope: Scope, task: number, shape: WaterfallShape): WaterfallData | null;
   flame(scope: Scope, opts: FlameOptions): FlameData;
@@ -124,6 +126,7 @@ export function createQueries(
   const layouts = new Map<string, GraphLayout>();
   let diff: ModelDiff | null = null;
   let overviewCache: OverviewData | null = null;
+  let browserCache: BrowserTimeline | null | undefined;
 
   /** The scoped view for the aggregate views: stack plus time range. */
   function scoped(scope: Scope, expanded: readonly string[] = [], withRange = true): Scoped {
@@ -193,11 +196,29 @@ export function createQueries(
         packages: ctx.pkgs,
         hasBaseline: baseline !== null,
         marks: runMarks(model.meta.marks, model.meta.startedAt, model.meta.durationUs),
+        ...(model.meta.browser && model.page
+          ? {
+              browser: {
+                product: model.meta.browser.product,
+                url: model.meta.browser.url,
+                throttle: model.meta.browser.throttle ?? null,
+                cacheCold: model.meta.browser.cacheCold === true,
+                screenshots: model.page.screenshots.length,
+                pauses: model.page.paused.length,
+                anchored: model.meta.browser.anchored,
+                clockErrorUs: model.meta.browser.clockErrorUs,
+              },
+            }
+          : {}),
       };
     },
     overview() {
       overviewCache ??= overviewData(model);
       return overviewCache;
+    },
+    browser() {
+      browserCache ??= browserTimeline(model);
+      return browserCache;
     },
     tasks(scope) {
       return taskOptions(model, trackIndexOf(model, scope.track));

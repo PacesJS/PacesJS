@@ -20,6 +20,8 @@ export interface HostAdapter {
   /** Binary `serializeModel` bytes. */
   loadModel(which?: 'baseline'): Promise<Uint8Array>;
   readSource(path: string): Promise<SourceResult>;
+  /** Browser sessions: the JPEG of one filmstrip frame, by the id the model lists. */
+  readScreenshot(id: number): Promise<Uint8Array>;
   openInEditor(file: string, line: number): Promise<void>;
   loadSettings(): Promise<Settings>;
   saveSettings(settings: Settings): Promise<void>;
