@@ -29,6 +29,7 @@ function fakeControls() {
     mark: vi.fn(() => ({ at: 1, label: 'Mark 1' })),
     stop: vi.fn(),
     interrupt: vi.fn(),
+    togglePause: vi.fn(),
     state: () => ({ processes: 1, marks: 0 }),
     stdinUsed: () => used,
     onStdinUsed: (l) => {
@@ -72,6 +73,18 @@ describe('attachTerminal', () => {
     const { input, log } = setup(true);
     expect(input.raw).toEqual([true]);
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/m.*mark.*s.*stop/i));
+  });
+
+  it('sends p to pause or resume a run that can be paused', () => {
+    const { input, controls } = setup(undefined);
+    input.press('p');
+    expect(controls.togglePause).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores p for a run that cannot be paused', () => {
+    const { input, controls } = setup(undefined);
+    delete (controls as { togglePause?: unknown }).togglePause;
+    expect(() => input.press('p')).not.toThrow();
   });
 
   it('sends m to mark, s to stop and Ctrl+C to interrupt', () => {

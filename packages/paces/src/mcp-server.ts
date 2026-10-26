@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { ExecutionModel } from '@pacesjs/engine';
 import { loadModel, readSession } from '@pacesjs/format';
-import { defaultReportFlags } from './args.js';
+import { defaultBrowserFlags, defaultReportFlags } from './args.js';
 import type { Flags } from './args.js';
 import type { AgentSummary, Engine } from './engine.js';
 import type { McpResource, McpTool, McpToolContext } from './mcp.js';
@@ -148,6 +148,7 @@ export function createPacesServer(options: PacesServerOptions): PacesServer {
         ...(request.interval === undefined ? {} : { interval: request.interval }),
         embedSources: false,
         noOpen: true,
+        browser: defaultBrowserFlags(),
         include: [],
         exclude: [],
         json: false,

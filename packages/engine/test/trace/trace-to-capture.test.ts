@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recordingToCapture } from '../../src/trace/trace-to-capture.js';
+import { recordingToCapture, traceToCapture } from '../../src/trace/trace-to-capture.js';
 import { cloneInput } from '../helpers/browser-fixtures.js';
 
 const capture = (name: Parameters<typeof cloneInput>[0]) => recordingToCapture(cloneInput(name));
@@ -181,5 +181,38 @@ describe('recordingToCapture: meta', () => {
     const shots = capture('slow-click').browser?.screenshots ?? [];
     expect(shots.length).toBeGreaterThan(0);
     expect(Object.keys(shots[0] ?? {}).sort()).toEqual(['id', 'tsUs']);
+  });
+});
+
+describe('traceToCapture: files exported from DevTools or Node', () => {
+  const options = { name: 'trace.json', cwd: '/proj', mtimeMs: 5_000_000 };
+
+  it('reads a browser trace like a live one, with the page and iframe named', () => {
+    const events = cloneInput('worker-and-iframe').events;
+    const labels = traceToCapture(events, options)
+      .tracks.map((t) => t.info.kind)
+      .sort();
+    expect(labels).toEqual(['frame', 'page', 'worker']);
+  });
+
+  it('says its clock is a guess, since a trace file has no wall-clock anchor', () => {
+    const capture = traceToCapture(cloneInput('slow-click').events, options);
+    expect(capture.browser?.clock.anchored).toBe(false);
+  });
+
+  it('ends at the age of the file and starts a run earlier', () => {
+    const capture = traceToCapture(cloneInput('slow-click').events, options);
+    expect(capture.meta.endedAt).toBe(5_000_000);
+    expect(capture.meta.startedAt).toBeLessThan(5_000_000);
+  });
+
+  it('treats a trace with only CPU profile events as a plain profile, not a browser run', () => {
+    const profileOnly = cloneInput('slow-click').events.filter(
+      (e) => e.name === 'Profile' || e.name === 'ProfileChunk',
+    );
+    const capture = traceToCapture(profileOnly, options);
+    expect(capture.browser).toBeUndefined();
+    expect(capture.tracks[0]?.info.kind).toBe('process');
+    expect(capture.tracks[0]?.info.label).toMatch(/^trace\.json · pid \d+ tid \d+$/);
   });
 });

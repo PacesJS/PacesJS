@@ -58,6 +58,7 @@ export function attachTerminal({
         log(TEXT.stopping);
         controls.stop();
       },
+      pause: () => controls.togglePause?.(),
       interrupt: controls.interrupt,
     });
     log(TEXT.keysOn);
@@ -71,6 +72,8 @@ export function attachTerminal({
 
   const liveState = (): ProgressState => ({
     ...controls.state(),
+    ...(controls.togglePause ? { canPause: true } : {}),
+    ...(controls.browserState ? controls.browserState() : {}),
     keys: keysOn(),
     stdinUsed: controls.stdinUsed(),
   });

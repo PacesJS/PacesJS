@@ -9,6 +9,8 @@ describe('keyActions', () => {
     ['M', ['mark']],
     ['s', ['stop']],
     ['S', ['stop']],
+    ['p', ['pause']],
+    ['P', ['pause']],
     ['\u0003', ['interrupt']],
     ['x', []],
     ['\r', []],
@@ -52,7 +54,7 @@ class FakeInput extends EventEmitter implements KeyInput {
 describe('startKeys', () => {
   it('reads single keys without Enter and hands each action to its handler', () => {
     const input = new FakeInput();
-    const handlers = { mark: vi.fn(), stop: vi.fn(), interrupt: vi.fn() };
+    const handlers = { mark: vi.fn(), stop: vi.fn(), pause: vi.fn(), interrupt: vi.fn() };
     startKeys(input, handlers);
     expect(input.raw).toEqual([true]);
     expect(input.paused).toBe(false);
@@ -66,7 +68,7 @@ describe('startKeys', () => {
 
   it('gives the terminal back when stopped, and ignores keys after that', () => {
     const input = new FakeInput();
-    const handlers = { mark: vi.fn(), stop: vi.fn(), interrupt: vi.fn() };
+    const handlers = { mark: vi.fn(), stop: vi.fn(), pause: vi.fn(), interrupt: vi.fn() };
     const stop = startKeys(input, handlers);
     stop();
     expect(input.raw).toEqual([true, false]);
@@ -80,7 +82,12 @@ describe('startKeys', () => {
   it('does nothing on input that is not a terminal', () => {
     const input = new FakeInput();
     input.isTTY = false;
-    const stop = startKeys(input, { mark: vi.fn(), stop: vi.fn(), interrupt: vi.fn() });
+    const stop = startKeys(input, {
+      mark: vi.fn(),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      interrupt: vi.fn(),
+    });
     expect(input.raw).toEqual([]);
     expect(input.paused).toBe(true);
     expect(() => stop()).not.toThrow();

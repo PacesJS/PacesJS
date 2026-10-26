@@ -21,6 +21,10 @@ export interface HostSession {
   scriptUrls?: string[];
   /** Source maps by script URL; their `sourcesContent` backs original files that are not on disk. */
   sourceMaps?: Record<string, string>;
+  /** Browser runs: filmstrip JPEGs by frame id. */
+  screenshots?: Map<number, Uint8Array>;
+  /** Browser runs: script text by URL (query and fragment dropped). */
+  urlSources?: Map<string, Uint8Array>;
   /** Headline facts for the UI header, from the model. */
   info?: { target?: unknown; primaryTrack?: unknown; warningsSummary?: unknown };
 }
@@ -187,6 +191,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
     scriptUrls: session.scriptUrls ?? [],
     sourceMaps: session.sourceMaps ?? {},
     ...(session.embedded ? { embedded: session.embedded } : {}),
+    ...(session.urlSources ? { urlSources: session.urlSources } : {}),
     startedAt: session.manifest.startedAt,
   });
 
@@ -300,6 +305,18 @@ export async function startHost(options: HostOptions): Promise<Host> {
         return streamBytes(res, session.baseline.modelBytes);
       }
       return streamBytes(res, session.modelBytes);
+    }
+    const shot = /^\/api\/screenshot\/(\d+)$/.exec(p);
+    if (shot && method === 'GET') {
+      const bytes = session.screenshots?.get(Number(shot[1]));
+      if (!bytes) return json(res, 404, { error: 'no such frame' });
+      res.writeHead(200, {
+        'content-type': 'image/jpeg',
+        'content-length': String(bytes.length),
+        'cache-control': 'no-store',
+      });
+      res.end(bytes);
+      return;
     }
     if (p === '/api/source' && method === 'GET') return sourceApi(url, res);
     if (p === '/api/open-in-editor' && method === 'POST') return openInEditorApi(req, res);

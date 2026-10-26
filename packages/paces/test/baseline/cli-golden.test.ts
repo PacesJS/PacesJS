@@ -20,7 +20,7 @@ import { gunzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { analyze, buildAgentSummary } from '@pacesjs/engine';
 import type { ExecutionModel, RawCapture } from '@pacesjs/engine';
-import { defaultReportFlags, parseArgs } from '../../src/args.js';
+import { defaultBrowserFlags, defaultReportFlags, parseArgs } from '../../src/args.js';
 import type { Flags } from '../../src/args.js';
 import { main } from '../../src/commands.js';
 import { handleMcpMessage } from '../../src/mcp.js';
@@ -283,6 +283,7 @@ describe('runProfile environment', () => {
     async: false,
     v8: false,
     embedSources: false,
+    browser: defaultBrowserFlags(),
     noOpen: false,
     include: [],
     exclude: [],

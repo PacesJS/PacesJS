@@ -11,6 +11,15 @@ export interface SaveOptions {
   focus: string[];
   embedSources: boolean;
   log: (line: string) => void;
+  /** Browser runs: the page's script text and the filmstrip, which are written beside the capture. */
+  browser?: {
+    sources: Array<{ path: string; content: Uint8Array }>;
+    screenshots: {
+      frames: Array<{ id: number; bytes: Uint8Array }>;
+      deduplicated: number;
+      cap: number;
+    };
+  };
 }
 
 /**
@@ -20,8 +29,10 @@ export interface SaveOptions {
  */
 export function saveSession(capture: RawCapture, o: SaveOptions): ExecutionModel | undefined {
   const engineVersion = o.engine?.engineVersion ?? '0.0.0';
-  const sources = o.embedSources ? collectSources(capture) : [];
-  writeSessionFile(o.out, writeSession(capture, { engineVersion, sources }));
+  const sources = o.browser ? o.browser.sources : o.embedSources ? collectSources(capture) : [];
+  const screenshots = o.browser?.screenshots;
+  const extras = { sources, ...(screenshots ? { screenshots } : {}) };
+  writeSessionFile(o.out, writeSession(capture, { engineVersion, ...extras }));
   const tracks = capture.tracks.length;
   o.log(`paces: ${tracks} track${tracks === 1 ? '' : 's'} captured, session saved to ${o.out}`);
   const lost = capture.meta.lostTracks ?? [];
@@ -30,7 +41,7 @@ export function saveSession(capture: RawCapture, o: SaveOptions): ExecutionModel
   try {
     const model = o.engine.analyze(capture, o.focus.length > 0 ? { focus: o.focus } : undefined);
     const bytes = o.engine.serializeModel(model);
-    writeSessionFile(o.out, writeSession(capture, { engineVersion, sources, model: bytes }));
+    writeSessionFile(o.out, writeSession(capture, { engineVersion, ...extras, model: bytes }));
     o.log(`paces: ${model.findings.length} finding${model.findings.length === 1 ? '' : 's'}`);
     return model;
   } catch (e) {

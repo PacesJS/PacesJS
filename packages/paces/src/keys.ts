@@ -1,4 +1,4 @@
-export type KeyAction = 'mark' | 'stop' | 'interrupt';
+export type KeyAction = 'mark' | 'stop' | 'pause' | 'interrupt';
 
 /** What each key press means while profiling. Raw mode turns Ctrl+C into a plain `\u0003`. */
 export function keyActions(chunk: string): KeyAction[] {
@@ -6,6 +6,7 @@ export function keyActions(chunk: string): KeyAction[] {
   for (const ch of chunk) {
     if (ch === 'm' || ch === 'M') out.push('mark');
     else if (ch === 's' || ch === 'S') out.push('stop');
+    else if (ch === 'p' || ch === 'P') out.push('pause');
     else if (ch === '\u0003') out.push('interrupt');
   }
   return out;

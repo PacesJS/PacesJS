@@ -376,7 +376,9 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
     const primary = frames.filter((f) => f.primary).pop();
     const sub = frames.filter((f) => f.parent !== undefined).pop();
     let kind: TrackKind = 'process';
-    let label = name || `thread ${thread.tid}`;
+    let label = input.name
+      ? `${input.name} · pid ${thread.pid} tid ${thread.tid}`
+      : name || `thread ${thread.tid}`;
     let url = '';
     let frameId: string | undefined;
     if (isWorker) {
@@ -463,6 +465,8 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
     ...(marks.length > 0 ? { marks } : {}),
   };
 
+  // A trace with no browser in it (a Node profile saved as a trace) is a plain profile.
+  const isBrowser = known.frames.size > 0 || [...threadName.values()].includes('CrRendererMain');
   const browser: BrowserInfo = {
     product: input.product,
     url: input.url,
@@ -477,7 +481,7 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
     screenshots: (input.screenshots ?? []).map((s) => ({ id: s.id, tsUs: s.tsUs })),
     ...(input.filter ? { traceFilter: input.filter } : {}),
   };
-  return { meta, browser, tracks, sourceMaps: input.sourceMaps ?? {} };
+  return { meta, ...(isBrowser ? { browser } : {}), tracks, sourceMaps: input.sourceMaps ?? {} };
 }
 
 /**
@@ -501,6 +505,7 @@ export function traceToCapture(
     events,
     segments: [{ startUs: first, endUs: last, hostStartMs: 0, syncs: [] }],
     cwd: options.cwd,
+    name: options.name,
     ...(options.platform ? { platform: options.platform } : {}),
     unanchored: true,
   });
