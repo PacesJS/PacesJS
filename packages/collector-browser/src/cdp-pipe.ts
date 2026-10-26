@@ -7,6 +7,9 @@ export interface CdpEvent {
   sessionId?: string;
 }
 
+/** The part of a client the session code needs; tests stand in for the browser here. */
+export type CdpLike = Pick<CdpClient, 'send' | 'onEvent' | 'closed'>;
+
 export interface CdpClient {
   send(method: string, params?: object, sessionId?: string): Promise<unknown>;
   onEvent(handler: (event: CdpEvent) => void): void;

@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>slow click</title>
+<!-- Planted problem: a click handler that takes about 200 ms before the page can paint a result. -->
+<button id="save">Save</button>
+<p id="result"></p>
+<script>
+  function busy(ms) {
+    const end = performance.now() + ms;
+    let x = 0;
+    while (performance.now() < end) x += Math.sqrt(x + 1);
+    return x;
+  }
+  document.getElementById('save').addEventListener('click', () => {
+    busy(220);
+    document.getElementById('result').textContent = 'saved';
+  });
+  setTimeout(() => document.getElementById('save').click(), 500);
+</script>

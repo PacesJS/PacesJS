@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>forced layout</title>
+<!-- Planted problem: a loop that writes a style and then reads layout, so every pass recalculates layout. -->
+<div id="list"></div>
+<script>
+  const list = document.getElementById('list');
+  for (let i = 0; i < 400; i++) {
+    const row = document.createElement('div');
+    row.textContent = 'row ' + i;
+    list.appendChild(row);
+  }
+  function thrash() {
+    const rows = list.children;
+    let total = 0;
+    for (let i = 0; i < rows.length; i++) {
+      rows[i].style.width = 100 + (i % 7) + 'px';
+      total += rows[i].offsetWidth;
+    }
+    return total;
+  }
+  setTimeout(() => {
+    for (let n = 0; n < 12; n++) thrash();
+  }, 400);
+</script>

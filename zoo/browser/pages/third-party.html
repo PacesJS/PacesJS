@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>third party</title>
+<!-- Planted problem: a script from a second origin uses most of the main thread. -->
+<p>page with a heavy third-party script</p>
+<script src="%THIRD%/tracker.js"></script>
+<script>
+  function ownWork() {
+    let x = 0;
+    for (let i = 0; i < 2e6; i++) x += i % 3;
+    return x;
+  }
+  ownWork();
+</script>
