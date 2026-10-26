@@ -1,7 +1,7 @@
-import type { CaptureMeta, TrackInfo } from '@pacesjs/engine';
+import type { BrowserInfo, CaptureMeta, TrackInfo } from '@pacesjs/engine';
 
 /** Semver of the file layout. Bump the minor for additive changes, the major for breaking ones. */
-export const FORMAT_VERSION = '1.0.0';
+export const FORMAT_VERSION = '1.1.0';
 
 export interface SourceEntry {
   /** Project-relative path with forward slashes. */
@@ -31,6 +31,23 @@ export interface Manifest {
   marks?: NonNullable<CaptureMeta['marks']>;
   /** Model cache entry, if one was written. */
   model?: string;
+  /** 1.1: set for sessions recorded in a browser. A 1.0 reader shows these as CPU-only. */
+  kind?: 'browser';
+  browser?: {
+    product: string;
+    url: string;
+    firstParty?: string[];
+    cacheCold?: boolean;
+  };
+  /** `epoch µs = trace µs + offsetUs`; `anchored` is false for a DevTools export. */
+  clock?: BrowserInfo['clock'];
+  /** Stretches that were recorded, on the trace clock; the gaps were paused. */
+  segments?: BrowserInfo['segments'];
+  /** What the capture-time filter kept and dropped. */
+  traceFilter?: BrowserInfo['traceFilter'];
+  /** The filmstrip: how many frames the session holds. */
+  screenshots?: { count: number; bytes: number; deduplicated: number; cap: number };
+  throttle?: { cpu: number };
 }
 
 export class FormatVersionError extends Error {

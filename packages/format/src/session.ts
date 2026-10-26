@@ -12,6 +12,12 @@ export interface WriteOptions {
   model?: Uint8Array;
   /** Source files to embed (`--embed-sources`), stored by content hash. */
   sources?: Array<{ path: string; content: Uint8Array }>;
+  /** Browser runs: the filmstrip. JPEGs are stored as they are, not deflated again. */
+  screenshots?: {
+    frames: Array<{ id: number; bytes: Uint8Array }>;
+    deduplicated: number;
+    cap: number;
+  };
 }
 
 export interface ReadOptions {
@@ -26,6 +32,8 @@ export interface Session {
   model?: Uint8Array;
   /** Embedded sources by content hash. */
   sources: Record<string, Uint8Array>;
+  /** Browser runs: the filmstrip JPEGs by frame id. */
+  screenshots: Map<number, Uint8Array>;
 }
 
 // Fixed timestamp: identical input gives identical bytes. fflate reads the date back in local time,
@@ -40,6 +48,17 @@ export function writeSession(capture: RawCapture, options: WriteOptions): Uint8A
   const { manifest, files } = captureToFiles(capture, options.engineVersion);
   const zip: Record<string, [Uint8Array, ZipOptions]> = {};
   for (const [name, data] of Object.entries(files)) zip[name] = entry(data);
+  const shots = options.screenshots;
+  if (shots) {
+    for (const frame of shots.frames)
+      zip[`raw/screenshots/${frame.id}.jpg`] = entry(frame.bytes, 0);
+    manifest.screenshots = {
+      count: shots.frames.length,
+      bytes: shots.frames.reduce((n, f) => n + f.bytes.length, 0),
+      deduplicated: shots.deduplicated,
+      cap: shots.cap,
+    };
+  }
   for (const s of options.sources ?? []) {
     const hash = contentHash(s.content);
     zip[`sources/${hash}`] = entry(s.content);
@@ -89,10 +108,16 @@ export function readSession(bytes: Uint8Array, options: ReadOptions = {}): Sessi
   const modelName =
     options.engineVersion !== undefined ? `model/${options.engineVersion}.bin` : undefined;
   const model = modelName ? files[modelName] : undefined;
+  const screenshots = new Map<number, Uint8Array>();
+  for (const [name, data] of Object.entries(files)) {
+    const match = /^raw\/screenshots\/(\d+)\.jpg$/.exec(name);
+    if (match) screenshots.set(Number(match[1]), data);
+  }
   return {
     manifest,
     capture: filesToCapture(files, manifest),
     ...(model ? { model } : {}),
     sources,
+    screenshots,
   };
 }

@@ -4,6 +4,13 @@ export * from './config.js';
 export * from './query/types.js';
 
 export { analyze } from './analyze.js';
+export { recordingToCapture, traceToCapture } from './trace/trace-to-capture.js';
+export type {
+  BrowserRecordingInput,
+  RecordedScript,
+  RecordedSegment,
+  TraceEventIn,
+} from './trace/types.js';
 export { ensureCaptureWarnings } from './passes/warnings.js';
 export { buildAgentSummary } from './agent-summary.js';
 export { ms, share } from './util/format.js';
