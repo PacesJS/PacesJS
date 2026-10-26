@@ -48,8 +48,8 @@ describe('baseline: priceWithTax', () => {
   it.each([
     [100, 'US', 108.25],
     [0, 'US', 0],
-    [-5, 'US', -5.41],          // current behavior: negative prices allowed
-    [100, 'XX', 100],           // unknown region: no tax
+    [-5, 'US', -5.41], // current behavior: negative prices allowed
+    [100, 'XX', 100], // unknown region: no tax
   ])('priceWithTax(%s, %s) = %s', (amount, region, expected) => {
     expect(priceWithTax(amount, region)).toBe(expected);
   });

@@ -3,6 +3,7 @@
 Each entry: **Signals** (how to spot it), **Fix** (the refactoring), **Leave it when** (legitimate reasons not to act), **Behavior traps** (ways the "obvious" fix silently changes behavior). The thresholds are defaults; when the project's lint config sets its own, use those.
 
 ## Contents
+
 1. Dead code
 2. Impure functions where pure ones are possible
 3. Duplicated code
@@ -42,6 +43,7 @@ Each entry: **Signals** (how to spot it), **Fix** (the refactoring), **Leave it 
 **Leave it when:** the function is a one-line I/O wrapper; the extraction would split logic that only makes sense together; the project's architecture deliberately keeps it there (e.g. active-record models).
 
 **Behavior traps:**
+
 - **Argument mutation that callers rely on.** If a function mutates its input and also returns it, some callers may use the mutated object and ignore the return value. Before switching to "return a new value", check every call site for aliasing. If any rely on the mutation, keep it or update those call sites in the same finding.
 - **Evaluation order.** Extracting a pure part must not reorder side effects that remain (e.g. a log line that used to come before a thrown error).
 - **Laziness.** Hoisting a computation out of a branch makes it run even when the branch isn't taken, which matters if it can throw or is expensive.
@@ -79,6 +81,7 @@ Each entry: **Signals** (how to spot it), **Fix** (the refactoring), **Leave it 
 **Leave it when:** the function is a thin, conventional wrapper (e.g. mirrors a platform API); it's a hot path where object allocation measurably matters; it's exported API (ask first; consider keeping the old signature as an overload).
 
 **Behavior traps:**
+
 - **Default semantics.** `function f(a, b = 5)` applies the default only for `undefined`. A destructured `{ b = 5 }` behaves the same, but `opts.b || 5` also replaces `0`, `''`, and `false`, and `opts.b ?? 5` also replaces `null`. Keep the exact original semantics.
 - `arguments.length` checks and rest parameters inside the function.
 - Callers that spread arrays into the positional list (`f(...args)`).
@@ -111,37 +114,37 @@ Comments should explain **why** or illuminate genuinely complicated code. Commen
 
 Many textbook modernizations are **not** behavior-preserving. Only apply these when you've proven equivalence for every value that can reach the expression:
 
-| Rewrite | When it changes behavior |
-| --- | --- |
-| `==` → `===` | `null == undefined` is true; `'1' == 1` is true. Safe only when both sides are provably the same type. |
-| `a && a.b` → `a?.b` | When `a` is `0`, `''`, `false`, or `NaN`: the old code returns `a`, the new returns `undefined`. |
-| `x \|\| d` → `x ?? d` | When `x` is `0`, `''`, `false`, `NaN`: old returns `d`, new returns `x`. |
-| `var` → `let`/`const` | Hoisting and function scoping; closures in loops capture per-iteration bindings with `let`. |
-| `.then()` chain → `async/await` | Synchronous throws before the first `await` now reject instead of throwing; microtask timing shifts. |
-| `for...in` → `Object.keys` | `for...in` includes inherited enumerable properties. |
-| `arr.forEach` → `for...of` | Sparse arrays: `forEach` skips holes, `for...of` visits them as `undefined`. |
-| `function` → arrow function | `this`, `arguments`, `new`-ability, and hoisting differ. |
-| `parseInt(x)` → `Number(x)` | `parseInt('12px')` is 12, `Number('12px')` is `NaN`. |
-| Sorting helper swap | Stability, comparator semantics, locale-aware vs code-point comparison. |
-| Python `dict` → dataclass, mutable default fix | Identity and shared-state semantics callers may rely on. |
+| Rewrite                                        | When it changes behavior                                                                               |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `==` → `===`                                   | `null == undefined` is true; `'1' == 1` is true. Safe only when both sides are provably the same type. |
+| `a && a.b` → `a?.b`                            | When `a` is `0`, `''`, `false`, or `NaN`: the old code returns `a`, the new returns `undefined`.       |
+| `x \|\| d` → `x ?? d`                          | When `x` is `0`, `''`, `false`, `NaN`: old returns `d`, new returns `x`.                               |
+| `var` → `let`/`const`                          | Hoisting and function scoping; closures in loops capture per-iteration bindings with `let`.            |
+| `.then()` chain → `async/await`                | Synchronous throws before the first `await` now reject instead of throwing; microtask timing shifts.   |
+| `for...in` → `Object.keys`                     | `for...in` includes inherited enumerable properties.                                                   |
+| `arr.forEach` → `for...of`                     | Sparse arrays: `forEach` skips holes, `for...of` visits them as `undefined`.                           |
+| `function` → arrow function                    | `this`, `arguments`, `new`-ability, and hoisting differ.                                               |
+| `parseInt(x)` → `Number(x)`                    | `parseInt('12px')` is 12, `Number('12px')` is `NaN`.                                                   |
+| Sorting helper swap                            | Stability, comparator semantics, locale-aware vs code-point comparison.                                |
+| Python `dict` → dataclass, mutable default fix | Identity and shared-state semantics callers may rely on.                                               |
 
 These are often worth doing, but each one needs a baseline test that exercises the edge values, or it's logged as a potential bug rather than "cleaned up".
 
 ## 9. Other smells (quick table)
 
-| Smell | Signal | Usual refactoring |
-| --- | --- | --- |
-| Feature envy | Method uses another object's data more than its own | Move method to where the data lives |
-| Data clumps | Same 3+ fields passed together | Introduce value object |
-| Primitive obsession | Strings/numbers standing in for domain concepts (IDs, money, units) | Value types, branded types, enums |
-| Shotgun surgery | One change requires edits in many files | Gather the scattered logic into one module |
-| Divergent change | One module changes for many unrelated reasons | Split by reason to change |
-| Message chains | `a.getB().getC().getD()` | Hide delegate / introduce a query method |
-| Middle man | Class that only forwards | Remove it; call the target directly |
-| Repeated switch on type | Same discriminator switched in 2+ places | Lookup table or polymorphism (see architecture.md) |
-| Magic numbers/strings | Unexplained literals, repeated | Named constants |
-| Flag arguments | Boolean that selects behavior | Separate functions |
-| Temporal coupling | Methods must be called in a hidden order | Make the order explicit (builder, constructor args, single entry point) |
+| Smell                       | Signal                                                                      | Usual refactoring                                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Feature envy                | Method uses another object's data more than its own                         | Move method to where the data lives                                                                                |
+| Data clumps                 | Same 3+ fields passed together                                              | Introduce value object                                                                                             |
+| Primitive obsession         | Strings/numbers standing in for domain concepts (IDs, money, units)         | Value types, branded types, enums                                                                                  |
+| Shotgun surgery             | One change requires edits in many files                                     | Gather the scattered logic into one module                                                                         |
+| Divergent change            | One module changes for many unrelated reasons                               | Split by reason to change                                                                                          |
+| Message chains              | `a.getB().getC().getD()`                                                    | Hide delegate / introduce a query method                                                                           |
+| Middle man                  | Class that only forwards                                                    | Remove it; call the target directly                                                                                |
+| Repeated switch on type     | Same discriminator switched in 2+ places                                    | Lookup table or polymorphism (see architecture.md)                                                                 |
+| Magic numbers/strings       | Unexplained literals, repeated                                              | Named constants                                                                                                    |
+| Flag arguments              | Boolean that selects behavior                                               | Separate functions                                                                                                 |
+| Temporal coupling           | Methods must be called in a hidden order                                    | Make the order explicit (builder, constructor args, single entry point)                                            |
 | Inconsistent error handling | Mix of throw, return null, return error object for the same kind of failure | Pick the project's dominant convention (only where callers already handle both — otherwise it's a behavior change) |
-| Mutable shared state | Module-level mutable variables mutated from several places | Encapsulate behind a module API |
-| Boolean soup | `isLoading`, `isError`, `isSuccess` flags | Discriminated union / state machine (see architecture.md for the trap) |
+| Mutable shared state        | Module-level mutable variables mutated from several places                  | Encapsulate behind a module API                                                                                    |
+| Boolean soup                | `isLoading`, `isError`, `isSuccess` flags                                   | Discriminated union / state machine (see architecture.md for the trap)                                             |
