@@ -7,7 +7,12 @@ const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '
 const FORBIDDEN_IMPORT =
   /from\s+['"](node:[^'"]+|fs|path|os|child_process|worker_threads|net|http|https|zlib|inspector|perf_hooks|async_hooks)['"]/;
 const FORBIDDEN_GLOBAL = /\b(document|window|localStorage|self\.postMessage|process\.|Buffer\b)/;
+// collector-browser and shared ship zero runtime dependencies: only relative, node: and
+// @pacesjs/shared imports (shared is bundled into its consumers).
+const EXTERNAL_IMPORT = /from\s+['"](?!\.{1,2}\/|node:|@pacesjs\/shared['"])[^'"]+['"]/;
 const RULES = [
+  { dir: 'packages/collector-browser/src', external: true },
+  { dir: 'packages/shared/src', external: true },
   { dir: 'packages/engine/src', imports: true, globals: true },
   { dir: 'packages/format/src', imports: true, globals: true },
 ];
@@ -35,9 +40,10 @@ for (const rule of RULES) {
       const code = line.replace(/\/\/.*$/, '');
       if (
         (rule.imports && FORBIDDEN_IMPORT.test(code)) ||
-        (rule.globals && FORBIDDEN_GLOBAL.test(code))
+        (rule.globals && FORBIDDEN_GLOBAL.test(code)) ||
+        (rule.external && EXTERNAL_IMPORT.test(code))
       ) {
-        console.error(`${file}:${i + 1}: forbidden Node/DOM reference: ${line.trim()}`);
+        console.error(`${file}:${i + 1}: forbidden import or global: ${line.trim()}`);
         failures++;
       }
     });

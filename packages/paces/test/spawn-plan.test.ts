@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { planSpawn } from '../src/spawn-plan.js';
-import { which } from '../src/which.js';
+import { which } from '@pacesjs/shared';
 
 describe('planSpawn', () => {
   const env = { PATH: 'C:\\bin;C:\\nodejs', PATHEXT: '.COM;.EXE;.BAT;.CMD', ComSpec: 'cmd.exe' };

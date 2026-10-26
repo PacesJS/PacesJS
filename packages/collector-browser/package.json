@@ -1,0 +1,28 @@
+{
+  "name": "@pacesjs/collector-browser",
+  "version": "0.0.0",
+  "description": "paces browser collector: default-browser detection, launch, CDP over a pipe. Node built-ins only.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "tsup && vitest run"
+  },
+  "devDependencies": {
+    "@pacesjs/shared": "workspace:*",
+    "@types/node": "^24.0.0",
+    "tsup": "^9.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

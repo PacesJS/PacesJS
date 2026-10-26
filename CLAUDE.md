@@ -8,17 +8,19 @@
 
 pnpm workspace + Turborepo, TypeScript, ESM everywhere.
 
-| Path                      | Role                                                | Constraints                                                      |
-| ------------------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
-| `packages/engine`         | Passes, execution model, query/transform layer      | No Node, no DOM. `lib: ES2022`, `types: []`                      |
-| `packages/format`         | `.paces` read/write (zip via fflate)                | No Node built-ins; takes/returns `Uint8Array`                    |
-| `packages/collector-node` | Preload scripts, socket client, flush               | Node built-ins only, zero deps                                   |
-| `packages/ui`             | React 19 + Vite view bundle, `HostAdapter`          | Talks to the host only through `HostAdapter`                     |
-| `packages/paces`          | Published CLI; bundles everything via tsup          | Runtime deps must be pure JS; no native binaries, no postinstall |
-| `zoo/`                    | Bottleneck zoo: tiny apps, one planted problem each | Deliberately naive code; excluded from lint                      |
-| `e2e/`                    | Playwright + CLI end-to-end tests                   |                                                                  |
+| Path                         | Role                                                                  | Constraints                                                      |
+| ---------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `packages/engine`            | Passes, execution model, query/transform layer                        | No Node, no DOM. `lib: ES2022`, `types: []`                      |
+| `packages/format`            | `.paces` read/write (zip via fflate)                                  | No Node built-ins; takes/returns `Uint8Array`                    |
+| `packages/collector-node`    | Preload scripts, socket client, flush                                 | Node built-ins only, zero deps                                   |
+| `packages/collector-browser` | Default-browser detection, launch, CDP over a pipe                    | Node built-ins only; bundles `shared`, zero runtime deps         |
+| `packages/shared`            | Process, PATH and display helpers used by the CLI and every collector | Node built-ins only, zero deps; no engine or format imports      |
+| `packages/ui`                | React 19 + Vite view bundle, `HostAdapter`                            | Talks to the host only through `HostAdapter`                     |
+| `packages/paces`             | Published CLI; bundles everything via tsup                            | Runtime deps must be pure JS; no native binaries, no postinstall |
+| `zoo/`                       | Bottleneck zoo: tiny apps, one planted problem each                   | Deliberately naive code; excluded from lint                      |
+| `e2e/`                       | Playwright + CLI end-to-end tests                                     |                                                                  |
 
-Data flows one way: raw chunks (target) → finished model (CLI) → queries (UI worker). Packages depend downward only; import another package only through its public entry.
+Data flows one way: raw chunks (target) → finished model (CLI) → queries (UI worker). Packages depend downward only; import another package only through its public entry. Code needed by more than one package (CLI, Node, browser, future Electron) goes in `packages/shared`, never copied.
 
 ## Commands
 

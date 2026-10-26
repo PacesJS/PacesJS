@@ -14,16 +14,8 @@ import { USAGE, UsageError, parseArgs } from './args.js';
 import type { Engine } from './engine.js';
 import { loadEngine } from './engine.js';
 import { importProfile } from './import-profile.js';
-import {
-  appModeArgs,
-  findBrowser,
-  isHeadless,
-  killTree,
-  osOpen,
-  planEditorOpen,
-  removeDetached,
-  run,
-} from './launch.js';
+import { appModeArgs, findBrowser, osOpen, planEditorOpen, run } from './launch.js';
+import { isHeadless, killTree, removeDetached } from '@pacesjs/shared';
 import { DEFAULT_GRACE_MS, waitForWindowClose } from './lifecycle.js';
 import { keysEnabled } from './keys.js';
 import { attachTerminal } from './terminal.js';

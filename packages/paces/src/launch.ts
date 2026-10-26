@@ -1,9 +1,9 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { which } from './which.js';
+import { which } from '@pacesjs/shared';
 
 type Env = Record<string, string | undefined>;
 
@@ -102,13 +102,6 @@ export function findBrowser(opts: BrowserLookup = {}): string | undefined {
   return candidates.find((c) => exists(c));
 }
 
-/** True when there is no display to open a window on, or we are inside an SSH session. */
-export function isHeadless(env: Env = process.env, platform: string = process.platform): boolean {
-  if (env.SSH_CONNECTION || env.SSH_TTY) return true;
-  if (platform === 'linux') return !env.DISPLAY && !env.WAYLAND_DISPLAY;
-  return false;
-}
-
 export function appModeArgs(url: string, profileDir: string): string[] {
   return [
     `--app=${url}`,
@@ -121,42 +114,4 @@ export function appModeArgs(url: string, profileDir: string): string[] {
     '--disable-features=msImplicitSignin',
     '--window-size=1440,900',
   ];
-}
-
-/** Ends a process and everything it started. On Windows `child.kill()` only ends the root. */
-export function killTree(child: ChildProcess): void {
-  if (child.pid === undefined) return;
-  if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-  } else child.kill('SIGKILL');
-}
-
-/**
- * Removes a directory in a separate process so the CLI can exit at once. The browser's helper
- * processes may hold files for a second or more after the window closes, and waiting on them is
- * what made `paces` linger.
- */
-export function removeDetached(dir: string): void {
-  const script =
-    "require('node:fs').rmSync(process.argv[1],{recursive:true,force:true,maxRetries:10,retryDelay:300})";
-  try {
-    const child = spawn(process.execPath, ['-e', script, dir], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    child.once('error', () => removeQuietly(dir));
-    child.unref();
-  } catch {
-    removeQuietly(dir);
-  }
-}
-
-/** Removes a directory a browser may still be releasing; never throws. */
-export function removeQuietly(dir: string): void {
-  try {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-  } catch {
-    // A leftover temp profile is harmless; a crash on exit is not.
-  }
 }

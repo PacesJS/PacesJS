@@ -13,7 +13,7 @@ import type { Flags } from './args.js';
 import { UsageError } from './args.js';
 import { shouldProfile } from './glob.js';
 import { after, createInterruptHandler } from './interrupt.js';
-import { killTree } from './launch.js';
+import { killTree } from '@pacesjs/shared';
 import { detectLostTracks } from './lost-tracks.js';
 import type { RegisteredTrack } from './lost-tracks.js';
 import { formatElapsed } from './progress.js';
