@@ -3,6 +3,7 @@
 Goal: components that are isolated (understandable and testable on their own), reusable (no hidden dependencies on where they're rendered), and pure in render.
 
 ## Contents
+
 1. Non-isolated, non-reusable components
 2. Impure render and effect misuse
 3. Oversized components and prop explosion
@@ -15,6 +16,7 @@ Goal: components that are isolated (understandable and testable on their own), r
 ## 1. Non-isolated, non-reusable components
 
 **Signals**
+
 - Presentational components that reach outward: read a global store, router, `window`, `localStorage`, feature flags, or a specific context directly when the data could arrive as props.
 - Data fetching inside leaf UI components.
 - Hard-coded copy, IDs, URLs, dimensions, colors, or z-index inside a component that's used in more than one place.
@@ -23,16 +25,18 @@ Goal: components that are isolated (understandable and testable on their own), r
 - A component file that can't be rendered in a test or story without mocking half the app.
 
 **Fixes**
+
 - Container/presentational split: a thin container connects to store/router/data; the presentational component takes plain props. Prefer extracting the logic into a custom hook (`useOrderSummary`) over a wrapper component when the project uses hooks.
 - Composition over configuration: `children` and slot props (`header`, `footer`, `renderItem`) instead of boolean props that toggle sub-parts.
 - Let the parent own outer spacing; the component styles only its own box.
 - Context for genuinely cross-cutting values (theme, locale, current user) instead of drilling. Not for frequently changing values that many consumers don't need — that causes re-renders.
 
-**Leave it when:** the component is a page/route-level container whose job *is* to connect to the app; it's used exactly once and isolation would add a layer with no reader benefit; the project's established pattern is connected components and it's applied consistently.
+**Leave it when:** the component is a page/route-level container whose job _is_ to connect to the app; it's used exactly once and isolation would add a layer with no reader benefit; the project's established pattern is connected components and it's applied consistently.
 
 ## 2. Impure render and effect misuse
 
 **Signals**
+
 - Side effects in the render body: mutating variables outside the component, mutating props or state objects, subscriptions, `console.log` that something consumes, reading `Date.now()`/`Math.random()` to produce output.
 - Derived state stored in state and synced with `useEffect` (`useEffect(() => setFullName(first + ' ' + last), [first, last])`).
 - State that duplicates a prop and is "kept in sync" by an effect.
@@ -47,20 +51,20 @@ Goal: components that are isolated (understandable and testable on their own), r
 
 **Signals:** components over ~200 lines; more than ~8–10 props; several boolean props that combine into variants (`primary`, `small`, `outline`, `danger`); props passed through unchanged to a child; multiple unrelated `useState` groups in one component; JSX with deeply nested ternaries.
 
-**Fixes:** split by responsibility into subcomponents; replace boolean combinations with a single `variant`/`size` prop *only when the combinations are mutually exclusive in practice* (verify all call sites); compound components (`<Tabs><Tabs.List/>...`) for components with many sub-parts; extract custom hooks for each state group; early returns or small subcomponents instead of nested ternaries.
+**Fixes:** split by responsibility into subcomponents; replace boolean combinations with a single `variant`/`size` prop _only when the combinations are mutually exclusive in practice_ (verify all call sites); compound components (`<Tabs><Tabs.List/>...`) for components with many sub-parts; extract custom hooks for each state group; early returns or small subcomponents instead of nested ternaries.
 
 **Behavior traps:** a variant prop can make previously reachable combinations impossible. If any call site passes `primary` and `danger` together, the new API must still render exactly what that produced, or the finding becomes an API change needing approval.
 
 ## 4. Hooks smells
 
-| Smell | Note |
-| --- | --- |
+| Smell                                                         | Note                                                                                                                                                                                                  |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `useCallback`/`useMemo` everywhere without memoized consumers | Speculative; removal is behavior-neutral unless an effect depends on referential identity. Check effect deps downstream. If the project uses React Compiler, manual memoization is usually redundant. |
-| Missing effect dependencies | **Not a refactor.** Adding deps changes when the effect runs. Log as a potential bug. |
-| `eslint-disable react-hooks/exhaustive-deps` | Same: log, don't "fix". |
-| Custom hook that only wraps one built-in call | Speculative generality; inline it unless it's an established naming convention in the repo. |
-| Logic duplicated across components | Extract a custom hook (same gate as duplication: three copies or one shared rule). |
-| `useRef` used to stash values that should be state | Changing to state adds re-renders: behavior change. Log. |
+| Missing effect dependencies                                   | **Not a refactor.** Adding deps changes when the effect runs. Log as a potential bug.                                                                                                                 |
+| `eslint-disable react-hooks/exhaustive-deps`                  | Same: log, don't "fix".                                                                                                                                                                               |
+| Custom hook that only wraps one built-in call                 | Speculative generality; inline it unless it's an established naming convention in the repo.                                                                                                           |
+| Logic duplicated across components                            | Extract a custom hook (same gate as duplication: three copies or one shared rule).                                                                                                                    |
+| `useRef` used to stash values that should be state            | Changing to state adds re-renders: behavior change. Log.                                                                                                                                              |
 
 ## 5. Things that look like refactors but change behavior
 

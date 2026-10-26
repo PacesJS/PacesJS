@@ -3,6 +3,7 @@
 CSS behavior is what the user sees. Every change here needs visual-equivalence evidence (see "Verifying CSS changes" at the end). Applies to plain CSS, SCSS/Less, CSS Modules, and CSS-in-JS (styled-components, Emotion, style objects).
 
 ## Contents
+
 1. Excessive absolute positioning
 2. Excessive z-index
 3. `!important`
@@ -15,6 +16,7 @@ CSS behavior is what the user sees. Every change here needs visual-equivalence e
 ## 1. Excessive absolute positioning
 
 **Signals**
+
 - Several siblings with `position: absolute` and hand-tuned `top`/`left` laying out what is really a row, column, or grid of normal content.
 - Absolute elements with fixed pixel widths/heights paired with magic offsets (`top: 37px`).
 - `position: absolute` used to escape overflow or to "fix" alignment.
@@ -33,8 +35,9 @@ z-index should be rare: a handful of named layers for the whole app.
 **Signals:** many distinct values (`scan_css.py` lists them); escalation values (`999`, `9999`, `2147483647`); several z-index declarations per component; z-index on elements that aren't positioned and aren't flex/grid items (no effect); z-index used to fix problems that a stacking context (`isolation: isolate`) or DOM order would solve.
 
 **Fix**
+
 - Remove z-index where elements never overlap, or where DOM order already gives the same stacking.
-- Remove z-index that has no effect: the element is `position: static` **and** is not a flex or grid item. (Flex and grid items *do* honor z-index without positioning — don't remove those as dead.)
+- Remove z-index that has no effect: the element is `position: static` **and** is not a flex or grid item. (Flex and grid items _do_ honor z-index without positioning — don't remove those as dead.)
 - Use `isolation: isolate` on a component root to contain its internal stacking instead of competing globally.
 - Consolidate the rest into one named scale (tokens such as `--z-dropdown`, `--z-sticky`, `--z-modal`, `--z-toast`), using the project's token mechanism.
 - Render overlays through a portal at the end of `body` when the project has a portal convention.
@@ -56,11 +59,13 @@ Should be extremely rare.
 Hard-coded values for font-size, line-height, font-weight, margin, padding, gap, border width/style/color, border-radius, colors, shadows, transition durations, and breakpoints, repeated across files, should come from design tokens.
 
 **Process**
+
 1. **Find existing tokens first:** CSS custom properties (`--space-4: 16px`), SCSS/Less variables, a Tailwind theme, a JS theme object, a tokens JSON. `detect_project.py` lists likely token files, and `scan_css.py` reports literals that equal an existing token's value — the cheapest, highest-value fixes.
 2. **Only then introduce new tokens**, following the repo's naming convention (scale-based like `--space-2`, or semantic like `--radius-card`). Add them where the existing tokens live.
 3. **Replace exact matches only.** `16px` may be replaced by a token that resolves to exactly `16px`. Never snap near-misses (`15px` → `16px`, `#333` → `#323232`); that's a visual change. List near-misses in the report as a design-cleanup decision for a human.
 
 **Behavior traps**
+
 - Don't convert units: `1rem` equals `16px` only at the default root font size, and users can change it.
 - Custom properties don't work inside media query conditions. Breakpoints need preprocessor variables or stay literal.
 - `var(--x)` resolves at computed-value time and inherits; a token redefined in a nested scope could change the value for some elements. Check that the token isn't overridden anywhere the replaced literal lives.
@@ -69,17 +74,17 @@ Hard-coded values for font-size, line-height, font-weight, margin, padding, gap,
 
 ## 5. Other CSS smells
 
-| Smell | Signal | Fix | Note |
-| --- | --- | --- | --- |
-| Deep nesting | Selectors deeper than 3 levels (SCSS nesting makes this easy) | Flatten, use a class on the target | Specificity changes: verify |
-| ID selectors for styling | `#header .nav` | Classes | Specificity drops: verify |
-| Overqualified selectors | `div.button`, `ul.list li.item` | Drop the type | Specificity drops: verify |
-| Duplicate rule blocks | Same declarations under different selectors | Shared class or mixin | Exact duplicates only |
-| Duplicate properties in one block | Second declaration silently wins | Remove the overridden one | Keep intentional fallbacks (`display: flex; display: grid` for old browsers) |
-| Unused selectors | Class never referenced | Delete | Search for dynamically built class names first |
-| Inline static styles in JSX | `style={{ marginTop: 8 }}` everywhere | Class or styled component | Inline styles beat stylesheet rules: verify |
-| Manual vendor prefixes | `-webkit-` everywhere | Rely on Autoprefixer if the build has it | Confirm the build runs it and browserslist covers the targets |
-| `px` font sizes | Accessibility concern | **Report only** | Changing units changes behavior |
+| Smell                             | Signal                                                        | Fix                                      | Note                                                                         |
+| --------------------------------- | ------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------- |
+| Deep nesting                      | Selectors deeper than 3 levels (SCSS nesting makes this easy) | Flatten, use a class on the target       | Specificity changes: verify                                                  |
+| ID selectors for styling          | `#header .nav`                                                | Classes                                  | Specificity drops: verify                                                    |
+| Overqualified selectors           | `div.button`, `ul.list li.item`                               | Drop the type                            | Specificity drops: verify                                                    |
+| Duplicate rule blocks             | Same declarations under different selectors                   | Shared class or mixin                    | Exact duplicates only                                                        |
+| Duplicate properties in one block | Second declaration silently wins                              | Remove the overridden one                | Keep intentional fallbacks (`display: flex; display: grid` for old browsers) |
+| Unused selectors                  | Class never referenced                                        | Delete                                   | Search for dynamically built class names first                               |
+| Inline static styles in JSX       | `style={{ marginTop: 8 }}` everywhere                         | Class or styled component                | Inline styles beat stylesheet rules: verify                                  |
+| Manual vendor prefixes            | `-webkit-` everywhere                                         | Rely on Autoprefixer if the build has it | Confirm the build runs it and browserslist covers the targets                |
+| `px` font sizes                   | Accessibility concern                                         | **Report only**                          | Changing units changes behavior                                              |
 
 ## 6. Verifying CSS changes
 

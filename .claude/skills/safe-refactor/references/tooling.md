@@ -4,16 +4,16 @@ Run these read-only, with output in `.refactor/`. Use `npx --yes` / `pipx run` s
 
 ## JavaScript / TypeScript
 
-| Purpose | Command |
-| --- | --- |
-| Unused files, exports, dependencies | `npx --yes knip --reporter json > .refactor/knip.json` (respects an existing `knip.json`; otherwise uses defaults that understand most frameworks) |
-| Unused dependencies (fallback) | `npx --yes depcheck --json > .refactor/depcheck.json` |
-| Duplication | `npx --yes jscpd <scope> --min-lines 6 --min-tokens 60 --reporters json --output .refactor/jscpd --ignore "**/*.test.*,**/dist/**,**/node_modules/**"` |
-| Circular dependencies | `npx --yes madge --circular --extensions ts,tsx,js,jsx <src-dir>` |
-| Dependency rules / layering | `npx --yes dependency-cruiser <src-dir> --config .refactor/depcruise.cjs --output-type err` (write the temporary config into `.refactor/`) |
+| Purpose                             | Command                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unused files, exports, dependencies | `npx --yes knip --reporter json > .refactor/knip.json` (respects an existing `knip.json`; otherwise uses defaults that understand most frameworks)                                                                                                                                                                                     |
+| Unused dependencies (fallback)      | `npx --yes depcheck --json > .refactor/depcheck.json`                                                                                                                                                                                                                                                                                  |
+| Duplication                         | `npx --yes jscpd <scope> --min-lines 6 --min-tokens 60 --reporters json --output .refactor/jscpd --ignore "**/*.test.*,**/dist/**,**/node_modules/**"`                                                                                                                                                                                 |
+| Circular dependencies               | `npx --yes madge --circular --extensions ts,tsx,js,jsx <src-dir>`                                                                                                                                                                                                                                                                      |
+| Dependency rules / layering         | `npx --yes dependency-cruiser <src-dir> --config .refactor/depcruise.cjs --output-type err` (write the temporary config into `.refactor/`)                                                                                                                                                                                             |
 | Complexity, length, params, nesting | Reuse the project's ESLint config and add rules from the CLI: `npx eslint <scope> --rule '{"complexity":["warn",15]}' --rule '{"max-params":["warn",4]}' --rule '{"max-lines-per-function":["warn",{"max":80,"skipBlankLines":true,"skipComments":true}]}' --rule '{"max-depth":["warn",4]}' -f json -o .refactor/eslint-metrics.json` |
-| Type-aware unused code | `npx tsc --noEmit --noUnusedLocals --noUnusedParameters -p .` (read the errors as leads; don't change tsconfig) |
-| Bundle composition | The project's analyzer if configured (`vite-bundle-visualizer`, `webpack-bundle-analyzer`, `source-map-explorer` on built sourcemaps) |
+| Type-aware unused code              | `npx tsc --noEmit --noUnusedLocals --noUnusedParameters -p .` (read the errors as leads; don't change tsconfig)                                                                                                                                                                                                                        |
+| Bundle composition                  | The project's analyzer if configured (`vite-bundle-visualizer`, `webpack-bundle-analyzer`, `source-map-explorer` on built sourcemaps)                                                                                                                                                                                                  |
 
 ## Public API check for published packages
 
@@ -40,7 +40,10 @@ Write a temporary config to `.refactor/stylelint.json`:
     "declaration-no-important": true,
     "selector-max-id": 0,
     "selector-max-compound-selectors": 3,
-    "declaration-block-no-duplicate-properties": [true, { "ignore": ["consecutive-duplicates-with-different-values"] }],
+    "declaration-block-no-duplicate-properties": [
+      true,
+      { "ignore": ["consecutive-duplicates-with-different-values"] }
+    ],
     "no-duplicate-selectors": true
   }
 }
@@ -50,13 +53,13 @@ Run `npx --yes stylelint "<scope>/**/*.{css,scss,less}" --config .refactor/style
 
 ## Python
 
-| Purpose | Command |
-| --- | --- |
-| Dead code | `pipx run vulture <pkg> --min-confidence 80` |
-| Complexity / maintainability | `pipx run radon cc <pkg> -s -n C` and `pipx run radon mi <pkg> -s` |
-| Lints for complexity/params | `pipx run ruff check <pkg> --select C901,PLR0911,PLR0912,PLR0913,PLR0915,ERA001 --output-format json` (ERA001 = commented-out code) |
-| Duplication | `npx --yes jscpd <pkg> --format python ...` or `pipx run pylint <pkg> --disable=all --enable=duplicate-code` |
-| Import layering | `import-linter` if the project already configures contracts |
+| Purpose                      | Command                                                                                                                             |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Dead code                    | `pipx run vulture <pkg> --min-confidence 80`                                                                                        |
+| Complexity / maintainability | `pipx run radon cc <pkg> -s -n C` and `pipx run radon mi <pkg> -s`                                                                  |
+| Lints for complexity/params  | `pipx run ruff check <pkg> --select C901,PLR0911,PLR0912,PLR0913,PLR0915,ERA001 --output-format json` (ERA001 = commented-out code) |
+| Duplication                  | `npx --yes jscpd <pkg> --format python ...` or `pipx run pylint <pkg> --disable=all --enable=duplicate-code`                        |
+| Import layering              | `import-linter` if the project already configures contracts                                                                         |
 
 ## Other ecosystems
 
