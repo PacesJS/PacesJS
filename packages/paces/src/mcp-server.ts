@@ -1,8 +1,18 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { startRecording } from '@pacesjs/collector-browser';
+import type { BrowserRun, RecordOptions } from '@pacesjs/collector-browser';
 import type { ExecutionModel } from '@pacesjs/engine';
 import { loadModel, readSession } from '@pacesjs/format';
 import { defaultBrowserFlags, defaultReportFlags } from './args.js';
+import {
+  chooseBrowser,
+  realBrowserDeps,
+  recordOptionsFor,
+  recordingToRawCapture,
+  sessionExtras,
+} from './browser-command.js';
+import type { ChosenBrowser } from './browser-command.js';
 import type { Flags } from './args.js';
 import type { AgentSummary, Engine } from './engine.js';
 import type { McpResource, McpTool, McpToolContext } from './mcp.js';
@@ -26,7 +36,25 @@ export interface PacesServerOptions {
   preload: string;
   /** Receives plain progress lines (stderr in the CLI). */
   log?: (line: string) => void;
+  /** How a page is recorded; the real browser unless a test stands in. */
+  browser?: BrowserHooks;
 }
+
+export interface BrowserHooks {
+  choose(): Promise<ChosenBrowser>;
+  record(options: RecordOptions): Promise<BrowserRun>;
+}
+
+export interface BrowserProfileRequest {
+  url: string;
+  /** `load`, `idle`, or seconds. Default `load`. */
+  until?: 'load' | 'idle' | number;
+  throttle?: number;
+  firstParty?: string[];
+  cwd?: string;
+}
+
+const MAX_UNTIL_S = 300;
 
 export interface ProfileRequest {
   command: string[];
@@ -55,6 +83,7 @@ export interface PacesServer {
   resources: McpResource[];
   instructions: string;
   profile(request: ProfileRequest, ctx: McpToolContext): Promise<ProfileOutcome>;
+  profileBrowser(request: BrowserProfileRequest, ctx: McpToolContext): Promise<ProfileOutcome>;
   open(file: string, focus?: string[]): string;
 }
 
@@ -62,6 +91,22 @@ interface Loaded {
   file: string;
   model: ExecutionModel;
   summary: () => AgentSummary;
+}
+
+/** The flags a page recording takes from an MCP request: a visible window, no terminal. */
+function mcpFlags(browser: Partial<Flags['browser']>): Flags {
+  return {
+    async: false,
+    v8: false,
+    embedSources: false,
+    noOpen: true,
+    browser: { ...defaultBrowserFlags(), ...browser },
+    include: [],
+    exclude: [],
+    json: false,
+    focus: [],
+    report: defaultReportFlags(),
+  };
 }
 
 function field<T>(
@@ -110,12 +155,42 @@ function parseProfileArgs(args: Record<string, unknown>): ProfileRequest {
   };
 }
 
+function parseBrowserArgs(args: Record<string, unknown>): BrowserProfileRequest {
+  const url = args.url;
+  if (url === undefined) {
+    throw new Error('url is required: the page to open, like http://localhost:3000.');
+  }
+  if (!isString(url)) throw new Error('url must be a non-empty string.');
+  const until = args.until;
+  if (
+    until !== undefined &&
+    until !== 'load' &&
+    until !== 'idle' &&
+    !(typeof until === 'number' && until > 0 && until <= MAX_UNTIL_S)
+  ) {
+    throw new Error(
+      `until must be "load", "idle" or a number of seconds above 0 and up to ${MAX_UNTIL_S}.`,
+    );
+  }
+  return {
+    url,
+    ...(until === undefined ? {} : { until }),
+    throttle: field(args, 'throttle', positive(20), 'a CPU slowdown like 4, up to 20'),
+    firstParty: field(args, 'firstParty', isStrings, 'an array of URL globs'),
+    cwd: field(args, 'cwd', isString, 'a directory path'),
+  };
+}
+
 /**
  * One MCP server for any number of investigations: `profile` runs a command and loads its session,
  * `open_session` loads a saved one, and the analysis tools answer about whichever is loaded.
  */
 export function createPacesServer(options: PacesServerOptions): PacesServer {
   const { engine, cwd: serverCwd, preload } = options;
+  const browserHooks: BrowserHooks = options.browser ?? {
+    choose: () => chooseBrowser(mcpFlags({}), realBrowserDeps),
+    record: (o) => startRecording(o),
+  };
   const log = options.log ?? (() => undefined);
   let current: Loaded | undefined;
   let running = false;
@@ -210,6 +285,74 @@ export function createPacesServer(options: PacesServerOptions): PacesServer {
     }
   }
 
+  /** Opens a visible browser on a page, records it, and loads the session like `profile` does. */
+  async function profileBrowser(
+    request: BrowserProfileRequest,
+    ctx: McpToolContext,
+  ): Promise<ProfileOutcome> {
+    if (running) {
+      throw new Error(
+        'paces is already profiling. Wait for it to finish, then call profile_browser again.',
+      );
+    }
+    running = true;
+    try {
+      const cwd = dirOf(request.cwd);
+      const chosen = await browserHooks.choose();
+      if ('exitCode' in chosen) throw new Error(chosen.message);
+      const flags = mcpFlags({
+        firstParty: request.firstParty ?? [],
+        ...(request.throttle ? { throttle: request.throttle } : {}),
+      });
+      const until = request.until ?? 'load';
+      const base = recordOptionsFor(flags, request.url, chosen.exe);
+      const record: RecordOptions =
+        typeof until === 'number' ? { ...base, durationMs: until * 1000 } : { ...base, until };
+      const line = (l: string): void => {
+        log(l);
+        ctx.progress?.(l);
+      };
+      line(`paces: recording ${request.url} in ${chosen.name}`);
+      const run = await browserHooks.record(record);
+      const stop = (): void => void run.stop('stop').catch(() => undefined);
+      if (ctx.signal.aborted) stop();
+      else ctx.signal.addEventListener('abort', stop, { once: true });
+      try {
+        const recording = await run.done;
+        const capture = recordingToRawCapture(recording, flags, {
+          cwd: findProjectRoot(cwd),
+          platform: process.platform,
+        });
+        const out = resolve(cwd, defaultSessionPath(cwd));
+        const model = saveSession(capture, {
+          out,
+          engine,
+          focus: [],
+          embedSources: false,
+          log: line,
+          browser: sessionExtras(recording),
+        });
+        if (!model) {
+          throw new Error(
+            `The session is saved to ${out} but could not be analyzed; update paces and call open_session on it.`,
+          );
+        }
+        current = load(out, model);
+        return {
+          session: out,
+          exitCode: 0,
+          endedBy: capture.meta.endedBy,
+          tracks: capture.tracks.length,
+          summary: current.summary(),
+        };
+      } finally {
+        ctx.signal.removeEventListener('abort', stop);
+      }
+    } finally {
+      running = false;
+    }
+  }
+
   function open(file: string, focus: string[] = []): string {
     const path = resolve(serverCwd, file);
     if (!existsSync(path)) throw new Error(`No such file: ${path}`);
@@ -283,6 +426,43 @@ export function createPacesServer(options: PacesServerOptions): PacesServer {
       run: (args, ctx) => profile(parseProfileArgs(args), ctx),
     },
     {
+      name: 'profile_browser',
+      description:
+        'Open a visible browser window on the user\'s machine, load a web page and record what its JavaScript did, plus rendering, frames, input and loading milestones; the result is loaded for the other tools. WARNING: the page\'s own JavaScript runs on the user\'s machine, so only open pages the user asked for or the project\'s own dev server. Needs a desktop session and a Chromium browser (Chrome, Edge, Brave, Vivaldi, Opera, Chromium); refused without a display. until is "load" (default: stop shortly after the page loads), "idle" (stop when the network goes quiet) or seconds up to 300. A fresh temporary browser profile is used, so nothing is logged in. Returns the session path and the same digest as summary. One profile runs at a time, of either kind.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The page to open, like http://localhost:3000.' },
+          until: {
+            description: 'When to stop: "load", "idle", or a number of seconds (up to 300).',
+            oneOf: [
+              { type: 'string', enum: ['load', 'idle'] },
+              { type: 'number', minimum: 1, maximum: MAX_UNTIL_S },
+            ],
+          },
+          throttle: {
+            type: 'number',
+            minimum: 1,
+            maximum: 20,
+            description: 'Slow the CPU down this many times, like 4.',
+          },
+          firstParty: {
+            type: 'array',
+            items: { type: 'string' },
+            description: "Extra URL globs to count as the project's own code.",
+          },
+          cwd: {
+            type: 'string',
+            description: 'Where the session is saved (.paces/). Default: the server directory.',
+          },
+        },
+        required: ['url'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      run: async (args, ctx) => profileBrowser(parseBrowserArgs(args), ctx),
+    },
+    {
       name: 'open_session',
       description:
         'Load a saved .paces session so the analysis tools answer about it. Use list_sessions to find one.',
@@ -327,5 +507,5 @@ export function createPacesServer(options: PacesServerOptions): PacesServer {
     },
   ];
 
-  return { tools, resources, instructions: MCP_INSTRUCTIONS, profile, open };
+  return { tools, resources, instructions: MCP_INSTRUCTIONS, profile, profileBrowser, open };
 }

@@ -31,6 +31,8 @@ export interface RecordOptions extends ControllerOptions {
   eventText: boolean;
   /** Stop after this many milliseconds. */
   durationMs?: number;
+  /** Stop shortly after the page has loaded, or after the network has gone quiet. */
+  until?: 'load' | 'idle';
   /** CPU slowdown factor, e.g. 4. */
   throttle?: number;
   /** Disable the HTTP cache for the run. */
@@ -70,6 +72,11 @@ export class BrowserNotSupportedError extends Error {
     this.name = 'BrowserNotSupportedError';
   }
 }
+
+/** After the load event, a moment for the last work to show up in the trace. */
+const SETTLE_MS = 500;
+/** A page that never loads or never goes quiet must not hold the run open for ever. */
+const UNTIL_LIMIT_MS = 60_000;
 
 const CHROMIUM_PRODUCT = /Chrome|Edg|Brave|Chromium|OPR|Opera|Vivaldi/i;
 
@@ -241,6 +248,19 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
         if (frame && !frame.parentId && frame.url && !frame.url.startsWith('about:')) {
           live.controller.mark(scrubUrl(frame.url), 'navigate');
         }
+      } else if (
+        options.until === 'load' &&
+        e.method === 'Page.loadEventFired' &&
+        e.sessionId === sessionId
+      ) {
+        setTimeout(() => stopRequested('duration'), SETTLE_MS).unref();
+      } else if (
+        options.until === 'idle' &&
+        e.method === 'Page.lifecycleEvent' &&
+        e.sessionId === sessionId &&
+        (e.params as { name?: string } | undefined)?.name === 'networkIdle'
+      ) {
+        setTimeout(() => stopRequested('duration'), SETTLE_MS).unref();
       } else if (e.method === 'Page.navigatedWithinDocument' && options.eventMarks) {
         const url = (e.params as { url?: string } | undefined)?.url;
         if (url && live.controller?.state().phase === 'recording') {
@@ -249,6 +269,9 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       }
     });
 
+    if (options.until === 'idle') {
+      await cdp.send('Page.setLifecycleEventsEnabled', { enabled: true }, sessionId);
+    }
     if (options.throttle && options.throttle > 1) {
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: options.throttle }, sessionId);
     }
@@ -347,9 +370,8 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
     void cdp.closed.then(() => {
       if (!ended) stopRequested('window-closed');
     });
-    if (options.durationMs !== undefined) {
-      setTimeout(() => stopRequested('duration'), options.durationMs).unref();
-    }
+    const limit = options.durationMs ?? (options.until ? UNTIL_LIMIT_MS : undefined);
+    if (limit !== undefined) setTimeout(() => stopRequested('duration'), limit).unref();
     return { controller, stop, done, kill: cleanup };
   } catch (error) {
     cleanup();
