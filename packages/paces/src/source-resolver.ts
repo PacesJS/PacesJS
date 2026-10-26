@@ -25,6 +25,8 @@ export interface ResolverInput {
   sourceMaps: Record<string, string>;
   /** `--embed-sources` copies by project-relative path. */
   embedded?: Map<string, Uint8Array>;
+  /** Browser runs: script text by URL; scripts are never read from disk. */
+  urlSources?: Map<string, Uint8Array>;
   /** Epoch ms the profile started, for the "changed since profiling" check. */
   startedAt: number;
 }
@@ -98,6 +100,11 @@ function indexSourceMaps(maps: Record<string, string>): Map<string, Embedded> {
   return out;
 }
 
+/** A script a browser fetched over the network or from a protocol of its own; never a file we may read. */
+const isWebUrl = (raw: string): boolean =>
+  /^(https?|wss?|chrome-extension|app|blob):\/\//i.test(raw);
+const stripQuery = (raw: string): string => raw.replace(/[?#].*$/, '');
+
 /** Loaders add cache-busting queries (`eslint.config.js?mtime=...`); the file has no such name. */
 function withoutQuery(raw: string): string {
   return raw.startsWith('file:') ? raw : raw.replace(/[?#].*$/, '');
@@ -118,6 +125,8 @@ export function createSourceResolver(input: ResolverInput): SourceResolver {
     }
   }
   const maps = indexSourceMaps(input.sourceMaps);
+  const urlCopies = new Map<string, Uint8Array>();
+  for (const [u, bytes] of input.urlSources ?? []) urlCopies.set(pathKey(stripQuery(u)), bytes);
   const copies = new Map<string, Uint8Array>();
   for (const [rel, bytes] of input.embedded ?? []) copies.set(pathKey(`${rootKey}/${rel}`), bytes);
 
@@ -164,12 +173,28 @@ export function createSourceResolver(input: ResolverInput): SourceResolver {
 
   return {
     diskPath(raw) {
+      if (isWebUrl(raw)) return undefined;
       const requested = withoutQuery(raw);
       const keys = keysFor(requested);
       const file = allowedDisk(requested, keys);
       return file && readDisk(file) ? file : undefined;
     },
     resolve(raw) {
+      if (isWebUrl(raw)) {
+        const bytes = urlCopies.get(pathKey(stripQuery(raw)));
+        if (bytes) {
+          return build('ok', '', {
+            exists: true,
+            text: decoder.decode(bytes),
+            hash: contentHash(bytes),
+            origin: 'embedded',
+          });
+        }
+        return build(
+          'no-embedded-source',
+          'This script was not saved with the session: it was too large, empty, or evaluated without a URL. The source of a page script is only available from the session.',
+        );
+      }
       const requested = withoutQuery(raw);
       if (!requested || requested.startsWith('node:')) {
         return build('missing', 'Built into Node.js, so there is no source file to show.');

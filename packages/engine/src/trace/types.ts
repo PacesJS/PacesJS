@@ -60,6 +60,8 @@ export interface BrowserRecordingInput {
   firstParty?: string[];
   platform?: string;
   cwd?: string;
+  /** Names the file in the label of a thread that is not a page, iframe or worker. */
+  name?: string;
   /** The trace has no wall-clock anchor (a DevTools export): `startedAt` is a guess. */
   unanchored?: boolean;
 }

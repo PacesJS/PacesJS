@@ -13,6 +13,16 @@ import type { Flags, Parsed } from './args.js';
 import { USAGE, UsageError, parseArgs } from './args.js';
 import type { Engine } from './engine.js';
 import { loadEngine } from './engine.js';
+import { startRecording } from '@pacesjs/collector-browser';
+import {
+  browserControls,
+  chooseBrowser,
+  normalizeTarget,
+  realBrowserDeps,
+  recordOptionsFor,
+  recordingToRawCapture,
+  sessionExtras,
+} from './browser-command.js';
 import { importProfile } from './import-profile.js';
 import { appModeArgs, findBrowser, osOpen, planEditorOpen, run } from './launch.js';
 import { isHeadless, killTree, removeDetached } from '@pacesjs/shared';
@@ -120,16 +130,21 @@ export function summarizeWarnings(warnings: unknown): {
 /** What the source resolver may serve for a session: embedded copies and every script V8 parsed. */
 function sessionSourceInputs(session: Session): {
   embedded: Map<string, Uint8Array>;
+  urlSources: Map<string, Uint8Array>;
   scriptUrls: Set<string>;
 } {
   const embedded = new Map<string, Uint8Array>();
+  // A browser run embeds the script text under its URL; those are never project files.
+  const urlSources = new Map<string, Uint8Array>();
   for (const s of session.manifest.sources) {
     const bytes = session.sources[s.hash];
-    if (bytes) embedded.set(s.path, bytes);
+    if (!bytes) continue;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s.path)) urlSources.set(s.path, bytes);
+    else embedded.set(s.path, bytes);
   }
   const scriptUrls = new Set<string>();
   for (const t of session.capture.tracks) for (const sc of t.scripts) scriptUrls.add(sc.url);
-  return { embedded, scriptUrls };
+  return { embedded, urlSources, scriptUrls };
 }
 
 function toHostSession(
@@ -138,7 +153,7 @@ function toHostSession(
   model: ExecutionModel,
   engine: Engine,
 ): HostSession {
-  const { embedded, scriptUrls } = sessionSourceInputs(session);
+  const { embedded, urlSources, scriptUrls } = sessionSourceInputs(session);
   const m = model as unknown as {
     target?: unknown;
     primaryTrack?: unknown;
@@ -149,6 +164,8 @@ function toHostSession(
     manifest: session.manifest,
     modelBytes: engine.serializeModel(model),
     embedded,
+    ...(urlSources.size > 0 ? { urlSources } : {}),
+    ...(session.screenshots.size > 0 ? { screenshots: session.screenshots } : {}),
     scriptUrls: [...scriptUrls],
     sourceMaps: session.capture.sourceMaps,
     info: {
@@ -285,6 +302,105 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
   return result.exitCode;
 }
 
+/** Records a page in a Chromium browser, then saves the session and opens it like any other. */
+async function cmdBrowser(p: Extract<Parsed, { kind: 'browser' }>, io: Io): Promise<number> {
+  const cwd = process.cwd();
+  const flags = p.flags;
+  if (flags.browser.attach !== undefined) {
+    io.err(
+      'paces: --attach is not available yet. Start a browser with paces instead: paces browser <url>.',
+    );
+    return 2;
+  }
+  const chosen = await chooseBrowser(flags, realBrowserDeps);
+  if ('exitCode' in chosen) {
+    io.err(chosen.message);
+    return chosen.exitCode;
+  }
+  const url = normalizeTarget(p.target ?? '', existsSync);
+  const root = resolve(cwd, flags.browser.root ?? '.');
+  io.err(`paces: recording ${url} in ${chosen.name}`);
+  io.err(
+    flags.browser.paused
+      ? 'paces: recording starts paused. Press Start in the page overlay, or p here.'
+      : 'paces: log in or navigate first? Press p (or Pause in the page) to stop recording, p again to resume.',
+  );
+
+  const run = await startRecording({ ...recordOptionsFor(flags, url, chosen.exe) });
+  const isTTY = Boolean(process.stdin.isTTY);
+  const detach = attachTerminal({
+    controls: browserControls(run),
+    flag: flags.keys,
+    input: process.stdin,
+    isTTY,
+    log: (l) => io.err(l),
+    title: (sequence) => {
+      if (process.stderr.isTTY) process.stderr.write(sequence);
+    },
+    panel:
+      process.stderr.isTTY && !flags.noPanel
+        ? {
+            color: !process.env['NO_COLOR'],
+            write: (s) => void process.stderr.write(s),
+            size: () => ({ rows: process.stderr.rows, cols: process.stderr.columns }),
+            onResize: (listener) => {
+              process.stderr.on('resize', listener);
+              return () => void process.stderr.off('resize', listener);
+            },
+          }
+        : undefined,
+  });
+  let interrupts = 0;
+  const onSigint = (): void => {
+    interrupts++;
+    if (interrupts === 1) void run.stop('sigint').catch(() => undefined);
+    else run.kill();
+  };
+  process.on('SIGINT', onSigint);
+  let recording;
+  try {
+    recording = await run.done;
+  } finally {
+    process.off('SIGINT', onSigint);
+    detach();
+  }
+
+  for (const w of recording.warnings) {
+    io.err(
+      `paces: ${w.kind}: ${w.count} (${w.details.slice(0, 3).join(', ')}${w.count > 3 ? ', …' : ''})`,
+    );
+  }
+  const capture = recordingToRawCapture(recording, flags, {
+    cwd: root,
+    platform: process.platform,
+  });
+  const out = resolve(cwd, flags.out ?? defaultSessionPath(cwd));
+  const engine = engineOrExplain(io);
+  const extras = sessionExtras(recording);
+  const model = saveSession(capture, {
+    out,
+    engine,
+    focus: flags.focus,
+    embedSources: false,
+    log: (l) => io.err(l),
+    browser: extras,
+  });
+  if (extras.screenshots.frames.length > 0) {
+    io.err(
+      'paces: this session contains screenshots of the page; they can show anything that was on screen. Pausing stops capture, and --no-screenshots leaves them out.',
+    );
+  }
+  if (model && engine) {
+    const session = readSessionFile(out, engine.engineVersion);
+    if (flags.report.runMode) {
+      printReport(model, session, displayPath(out, cwd), flags, io);
+    } else {
+      await present(toHostSession(out, session, model, engine), flags, io);
+    }
+  }
+  return model ? 0 : 1;
+}
+
 function analyzeOptions(flags: Flags): Record<string, unknown> | undefined {
   return flags.focus.length > 0 ? { focus: flags.focus } : undefined;
 }
@@ -299,12 +415,13 @@ function colorEnabled(flags: Flags): boolean {
 }
 
 function resolverFor(session: Session) {
-  const { embedded, scriptUrls } = sessionSourceInputs(session);
+  const { embedded, urlSources, scriptUrls } = sessionSourceInputs(session);
   return createSourceResolver({
     projectRoot: session.manifest.projectRoot,
     scriptUrls,
     sourceMaps: session.capture.sourceMaps,
     embedded,
+    urlSources,
     startedAt: session.manifest.startedAt,
   });
 }
@@ -483,6 +600,8 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
         return await cmdOpen(parsed.files[0], parsed.flags, io);
       case 'diff':
         return await cmdDiff(parsed.files[0], parsed.files[1], parsed.flags, io);
+      case 'browser':
+        return await cmdBrowser(parsed, io);
       case 'import':
         return await cmdImport(parsed.files[0], parsed.flags, io);
       case 'summary':

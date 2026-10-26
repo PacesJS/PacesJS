@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
+    "@pacesjs/collector-browser": "workspace:*",
     "@pacesjs/collector-node": "workspace:*",
     "@pacesjs/engine": "workspace:*",
     "@pacesjs/format": "workspace:*",

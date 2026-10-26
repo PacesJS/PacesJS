@@ -17,6 +17,7 @@ import { killTree } from '@pacesjs/shared';
 import { detectLostTracks } from './lost-tracks.js';
 import type { RegisteredTrack } from './lost-tracks.js';
 import { formatElapsed } from './progress.js';
+import type { ProgressState } from './progress.js';
 import { planSpawn } from './spawn-plan.js';
 
 export class NoProcessesError extends Error {
@@ -68,6 +69,10 @@ export interface ProfileControls {
   stop(): void;
   /** The same as Ctrl+C: stop profiling, then let the program shut itself down. */
   interrupt(): void;
+  /** Browser runs: pause or resume recording. Absent for a Node command, which cannot be paused. */
+  togglePause?(): void;
+  /** Browser runs: the phase and collection progress the panel shows. */
+  browserState?(): Pick<ProgressState, 'phase' | 'collecting'>;
   state(): { processes: number; marks: number };
   /** A profiled program has used `process.stdin`. */
   stdinUsed(): boolean;

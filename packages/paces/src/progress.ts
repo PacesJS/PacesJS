@@ -9,6 +9,12 @@ export interface ProgressState {
   keys: boolean;
   /** A profiled process has read stdin, which paces is holding for the hotkeys. */
   stdinUsed?: boolean;
+  /** Browser runs: the recording can be paused with p. */
+  canPause?: boolean;
+  /** Browser runs: what the recording is doing. */
+  phase?: 'ready' | 'recording' | 'paused' | 'collecting';
+  /** Browser runs: percent of the trace read back while saving. */
+  collecting?: number;
 }
 
 export function formatElapsed(ms: number): string {

@@ -68,11 +68,22 @@ const SEP: Segment = { text: ' · ', tone: 'dim' };
 /** What each key does, with the key names marked so they stand out. */
 function keyRow(state: ProgressState): Segment[] {
   if (!state.keys) return [{ text: ` ${TEXT.interrupt}` }, { text: TEXT.noKeys, tone: 'dim' }];
+  const pause: Segment[] = state.canPause
+    ? [
+        { text: 'p', tone: 'key' },
+        {
+          text:
+            state.phase === 'paused' ? ' resume' : state.phase === 'ready' ? ' start' : ' pause',
+        },
+        SEP,
+      ]
+    : [];
   return [
     { text: ' ' },
     { text: 'm', tone: 'key' },
     { text: TEXT.mark },
     SEP,
+    ...pause,
     { text: 's', tone: 'key' },
     { text: TEXT.stop },
     SEP,
@@ -90,8 +101,18 @@ export function panelRows(
   state: ProgressState,
   cols: number,
 ): Segment[][] {
+  const verb =
+    state.phase === 'paused'
+      ? 'paused'
+      : state.phase === 'ready'
+        ? 'ready to record'
+        : state.phase === 'collecting'
+          ? `collecting trace… ${state.collecting ?? 0}%`
+          : state.phase === 'recording'
+            ? 'recording'
+            : TEXT.profiling;
   const status: Segment[] = [
-    { text: ` ${SPINNER[tick % SPINNER.length]} ${TEXT.profiling}`, tone: 'accent' },
+    { text: ` ${SPINNER[tick % SPINNER.length]} ${verb}`, tone: 'accent' },
     SEP,
     { text: formatElapsed(elapsedMs) },
   ];

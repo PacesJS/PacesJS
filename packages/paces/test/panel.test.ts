@@ -14,6 +14,48 @@ describe('panelSupported', () => {
   });
 });
 
+describe('panelLines for a browser run', () => {
+  const browserState = {
+    processes: 0,
+    marks: 2,
+    keys: true,
+    canPause: true,
+    phase: 'recording' as const,
+  };
+
+  it('says recording, and offers p to pause', () => {
+    const lines = panelLines(5_000, 0, browserState, 100);
+    expect(lines[1]).toContain('recording');
+    expect(lines[2]).toContain('p pause');
+  });
+
+  it('says paused, and offers p to resume', () => {
+    const lines = panelLines(5_000, 0, { ...browserState, phase: 'paused' }, 100);
+    expect(lines[1]).toContain('paused');
+    expect(lines[2]).toContain('p resume');
+  });
+
+  it('says ready to record before the first start', () => {
+    const lines = panelLines(5_000, 0, { ...browserState, phase: 'ready' }, 100);
+    expect(lines[1]).toContain('ready');
+    expect(lines[2]).toContain('p start');
+  });
+
+  it('shows how far the trace collection has got', () => {
+    const lines = panelLines(
+      9_000,
+      0,
+      { ...browserState, phase: 'collecting', collecting: 41 },
+      100,
+    );
+    expect(lines[1]).toContain('collecting trace… 41%');
+  });
+
+  it('leaves out the process count, which a page does not have', () => {
+    expect(panelLines(5_000, 0, browserState, 100)[1]).not.toContain('process');
+  });
+});
+
 describe('panelLines', () => {
   it('has a rule, a status line and a key line', () => {
     const lines = panelLines(65_000, 0, state, 80);

@@ -18,6 +18,41 @@ export interface Flags {
   json: boolean;
   focus: string[];
   report: ReportFlags;
+  /** Flags of `paces browser`; the defaults for every other command. */
+  browser: BrowserFlags;
+}
+
+export interface BrowserFlags {
+  /** `--browser <path>`: a Chromium executable instead of the default browser. */
+  path?: string;
+  /** `--attach <port>`: join a browser started with a debugging port. */
+  attach?: number;
+  /** `--root <dir>`: where source-mapped paths are resolved for "Open in editor". */
+  root?: string;
+  /** `--throttle <n>x`: CPU slowdown factor. */
+  throttle?: number;
+  cache?: 'cold';
+  firstParty: string[];
+  paused: boolean;
+  noScreenshots: boolean;
+  noOverlay: boolean;
+  noEventMarks: boolean;
+  noEventText: boolean;
+  keepQuery: boolean;
+  fullTrace: boolean;
+}
+
+export function defaultBrowserFlags(): BrowserFlags {
+  return {
+    firstParty: [],
+    paused: false,
+    noScreenshots: false,
+    noOverlay: false,
+    noEventMarks: false,
+    noEventText: false,
+    keepQuery: false,
+    fullTrace: false,
+  };
 }
 
 export type TopSort = 'self' | 'total';
@@ -67,6 +102,7 @@ export type Parsed =
   | { kind: 'profile'; flags: Flags; command: string[] }
   | { kind: 'open' | 'summary' | 'import' | 'report'; flags: Flags; files: [string] }
   | { kind: 'mcp'; flags: Flags; files: [] | [string] }
+  | { kind: 'browser'; flags: Flags; target?: string }
   | { kind: 'mcp-run'; flags: Flags; command: string[] }
   | { kind: 'guide' }
   | { kind: 'diff'; flags: Flags; files: [string, string] }
@@ -91,6 +127,7 @@ Usage
   paces diff <a.paces> <b.paces>    compare two sessions (a is the baseline)
   paces import <file>               open a .cpuprofile or DevTools trace JSON (.gz is fine)
   paces summary <file.paces> [--json]   print findings, no UI
+  paces browser <url>               profile a page in your Chromium browser, then open the UI
   paces mcp                         serve paces over MCP (stdio); the client's profile tool runs commands
   paces mcp <file.paces>            the same, with a saved session already loaded
   paces mcp [flags] -- <cmd...>     the same, after profiling a command
@@ -115,6 +152,21 @@ Flags (before --)
   --exclude <glob>       skip matching processes (repeatable)
   --focus <pkg|glob>     rank this package or path first in findings and summaries (repeatable)
 
+Flags of paces browser (the rest above also apply: --interval, --duration, --out, --no-open, --no-keys)
+  --browser <path>       use this Chromium executable instead of the default browser
+  --attach <port>        join a browser started with --remote-debugging-port=<port> (127.0.0.1 only)
+  --paused               start with recording paused; press Start in the overlay or p in the terminal
+  --no-screenshots       do not capture the filmstrip
+  --no-overlay           no pause/mark/stop overlay in the page; terminal keys only
+  --no-event-marks       do not record clicks, typing bursts, scrolls and navigations
+  --no-event-text        record the structure of events (button, input) but no text-derived names
+  --keep-query           keep query strings and fragments in stored URLs
+  --full-trace           skip capture-time trace filtering (sessions get large)
+  --first-party <glob>   extra URLs to treat as your own code (repeatable)
+  --root <dir>           where source-mapped paths resolve for "Open in editor" (default: here)
+  --throttle <n>x        slow the CPU down n times while profiling
+  --cache cold           disable the HTTP cache for the run
+
 Report flags (paces report, paces --report)
   views: --tree  --callers <sel>  --callees <sel>  --top self|total  --pkg <name>  --lines <sel>
          --phases  --tasks            (default: summary)
@@ -132,6 +184,12 @@ const VALUE_FLAGS = new Set([
   '--include',
   '--exclude',
   '--focus',
+  '--browser',
+  '--attach',
+  '--root',
+  '--throttle',
+  '--cache',
+  '--first-party',
 ]);
 const REPORT_VALUE_FLAGS = new Set([
   '--callers',
@@ -166,8 +224,24 @@ const BOOL_FLAGS = new Set([
   '--tasks',
   '--no-collapse',
   '--no-color',
+  '--paused',
+  '--no-screenshots',
+  '--no-overlay',
+  '--no-event-marks',
+  '--no-event-text',
+  '--keep-query',
+  '--full-trace',
 ]);
-const COMMANDS = new Set(['open', 'diff', 'import', 'summary', 'mcp', 'report', 'guide']);
+const COMMANDS = new Set([
+  'open',
+  'diff',
+  'import',
+  'summary',
+  'mcp',
+  'report',
+  'guide',
+  'browser',
+]);
 
 function positiveNumber(flag: string, raw: string): number {
   const n = Number(raw);
@@ -236,6 +310,7 @@ export function parseArgs(argv: string[]): Parsed {
     json: false,
     focus: [],
     report: defaultReportFlags(),
+    browser: defaultBrowserFlags(),
   };
   const r = flags.report;
   const positional: string[] = [];
@@ -273,6 +348,13 @@ export function parseArgs(argv: string[]): Parsed {
       else if (name === '--phases') r.phases = true;
       else if (name === '--tasks') r.tasks = true;
       else if (name === '--no-collapse') r.noCollapse = true;
+      else if (name === '--paused') flags.browser.paused = true;
+      else if (name === '--no-screenshots') flags.browser.noScreenshots = true;
+      else if (name === '--no-overlay') flags.browser.noOverlay = true;
+      else if (name === '--no-event-marks') flags.browser.noEventMarks = true;
+      else if (name === '--no-event-text') flags.browser.noEventText = true;
+      else if (name === '--keep-query') flags.browser.keepQuery = true;
+      else if (name === '--full-trace') flags.browser.fullTrace = true;
       else r.noColor = true;
       continue;
     }
@@ -290,7 +372,25 @@ export function parseArgs(argv: string[]): Parsed {
     else if (name === '--include') flags.include.push(value);
     else if (name === '--focus') flags.focus.push(value);
     else if (name === '--exclude') flags.exclude.push(value);
-    else applyReportFlag(r, name, value);
+    else if (name === '--browser') flags.browser.path = value;
+    else if (name === '--root') flags.browser.root = value;
+    else if (name === '--first-party') flags.browser.firstParty.push(value);
+    else if (name === '--attach') {
+      const port = Number(value);
+      if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+        throw new UsageError(`--attach needs a port between 1 and 65535, got "${value}".`);
+      }
+      flags.browser.attach = port;
+    } else if (name === '--throttle') {
+      const n = Number(value.replace(/x$/i, ''));
+      if (!Number.isFinite(n) || n < 1) {
+        throw new UsageError(`--throttle needs a slowdown of 1 or more, like 4x. Got "${value}".`);
+      }
+      flags.browser.throttle = n;
+    } else if (name === '--cache') {
+      if (value !== 'cold') throw new UsageError(`--cache must be "cold". Got "${value}".`);
+      flags.browser.cache = 'cold';
+    } else applyReportFlag(r, name, value);
   }
 
   if (help) return { kind: 'help' };
@@ -327,6 +427,17 @@ export function parseArgs(argv: string[]): Parsed {
     );
   }
   const files = positional.slice(1);
+  if (first === 'browser') {
+    if (files.length > 1) {
+      throw new UsageError('paces browser takes one URL: paces browser http://localhost:3000');
+    }
+    if (files.length === 0 && flags.browser.attach === undefined) {
+      throw new UsageError(
+        'paces browser needs a URL to open, or --attach <port>. Example: paces browser http://localhost:3000',
+      );
+    }
+    return { kind: 'browser', flags, ...(files[0] !== undefined ? { target: files[0] } : {}) };
+  }
   if (first === 'mcp') {
     if (files.length > 1)
       throw new UsageError('paces mcp takes at most one file: paces mcp [file.paces]');
