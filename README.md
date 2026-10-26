@@ -1,6 +1,6 @@
 # paces
 
-Profile a Node command and read what the JavaScript did, yourself or through a coding agent.
+Profile a Node command or a web page and read what the JavaScript did, yourself or through a coding agent.
 
 ```sh
 npx @pacesjs/paces -- node app.js
@@ -41,6 +41,28 @@ npx @pacesjs/paces open .paces/<file>.paces
 ```
 
 Sessions are saved to `./.paces/` as timestamped `.paces` files. They can hold file paths and source maps, which can contain source code, so add `.paces/` to your `.gitignore`.
+
+## Profile a web page
+
+```sh
+npx @pacesjs/paces browser http://localhost:3000
+```
+
+paces opens a Chromium browser (Chrome, Edge, Brave, Vivaldi, Opera or Chromium: your default browser if it is one, else `--browser <path>`), loads the page, and records what its JavaScript did, plus rendering, frames, input and the loading milestones. Stop with `s` in the terminal, **Stop** in the page overlay, or by closing the window; the UI opens on what was recorded.
+
+- **A page, not a process.** Tracks are the page, its iframes (including cross-site ones) and its workers. Scripts from other sites are dependencies named for their host (`cdn.example.com`), so third-party cost is a finding. Rendering (style, layout, paint), frames, input and loading milestones come from trace events, so they are exact and carry no `~`; sampled JavaScript keeps its `~`.
+- **A filmstrip.** Screenshots of the page, aligned to the timeline. Pausing stops capture, so you can log in first.
+- **An overlay in the page** with **Pause**, **Mark** and **Stop** (`Alt+Shift+P` pauses or resumes, `Alt+Shift+M` marks). In the terminal, `p` pauses or resumes, `m` marks, `s` stops. `--paused` starts paused. `--no-overlay` removes it.
+- **Findings only a page has:** a task that blocked the main thread, a slow interaction, forced layout, third-party cost and layout shift.
+- **A fresh browser profile each run**, so nothing you are logged in to is visible. To profile a logged-in session, start your own browser with `--remote-debugging-port=9222 --user-data-dir=<a folder>` and run `paces browser --attach 9222` (it joins `127.0.0.1` only, and leaves your browser running).
+
+What it records, and what it does not:
+
+- It records what happens on the page, not what you type. Events are described by structure (`button#save "Save"`, `input[type=email]`), never by value; query strings and fragments are removed from stored URLs (`--keep-query` keeps them); `--no-event-text` drops the text-derived names too.
+- Screenshots can show anything that was on screen. paces says so when it saves a session that has them, and `--no-screenshots` leaves them out.
+- Chromium only. Firefox and Safari have no way to be driven this way, and paces refuses them before launching anything.
+
+Flags: `--browser <path>`, `--attach <port>`, `--paused`, `--duration <s>`, `--no-screenshots`, `--no-overlay`, `--no-event-marks`, `--no-event-text`, `--keep-query`, `--full-trace`, `--first-party <glob>`, `--root <dir>`, `--throttle <n>x`, `--cache cold`, `--out <file>`, `--no-open`. A DevTools Performance trace can also be opened with `paces import <trace.json>`. Coding agents get the same through the `profile_browser` MCP tool.
 
 ## Use paces from a coding agent
 
@@ -112,6 +134,7 @@ An agent that cannot run an MCP server can use the console reports below, and `n
 | -------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `npx @pacesjs/paces [flags] -- <cmd...>`           | Profile a command, then open the UI                                            |
 | `npx @pacesjs/paces --report -- <cmd...>`          | Profile, print a report with drill-down commands, exit                         |
+| `npx @pacesjs/paces browser <url>`                 | Profile a page in a Chromium browser, then open the UI                         |
 | `npx @pacesjs/paces open <file.paces>`             | Reopen a saved session                                                         |
 | `npx @pacesjs/paces report <file> [flags]`         | Drill into a saved session (`.paces` or `.cpuprofile`)                         |
 | `npx @pacesjs/paces summary <file.paces> [--json]` | Print findings in the terminal                                                 |
@@ -167,14 +190,16 @@ How to read it: times are sampled estimates (`~`, precision `±` in the header),
 
 pnpm workspace with Turborepo and TypeScript.
 
-| Package                   | Role                                                                         |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| `@pacesjs/paces`          | The published CLI, bundled for `npx`                                         |
-| `@pacesjs/engine`         | Analysis passes, execution model, query and transform layer (no Node or DOM) |
-| `@pacesjs/format`         | `.paces` session reader and writer                                           |
-| `@pacesjs/collector-node` | Preload scripts and control socket that run inside the target                |
-| `@pacesjs/ui`             | React view bundle and the `HostAdapter` interface                            |
-| `zoo/`                    | Bottleneck zoo: tiny apps, each with one planted problem                     |
+| Package                      | Role                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `@pacesjs/paces`             | The published CLI, bundled for `npx`                                         |
+| `@pacesjs/engine`            | Analysis passes, execution model, query and transform layer (no Node or DOM) |
+| `@pacesjs/format`            | `.paces` session reader and writer                                           |
+| `@pacesjs/collector-node`    | Preload scripts and control socket that run inside the target                |
+| `@pacesjs/collector-browser` | Default-browser detection, launch, CDP, tracing, the injected overlay        |
+| `@pacesjs/shared`            | Process, PATH and display helpers shared by the CLI and the collectors       |
+| `@pacesjs/ui`                | React view bundle and the `HostAdapter` interface                            |
+| `zoo/`                       | Bottleneck zoo: tiny apps, each with one planted problem                     |
 
 ```sh
 pnpm install
@@ -183,6 +208,7 @@ pnpm test          # unit and integration
 pnpm test:e2e      # CLI and UI end-to-end, including screenshot tests
 pnpm lint
 pnpm fixtures      # regenerate engine fixtures from the zoo
+pnpm fixtures:browser   # the same for the browser zoo (needs a Chromium: PACES_BROWSER=<path>)
 pnpm --filter @pacesjs/ui dev   # UI on the orders-server fixture
 ```
 

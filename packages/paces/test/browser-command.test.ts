@@ -171,3 +171,22 @@ describe('recordOptionsFor', () => {
     expect(recordOptionsFor(flagsOf([]), 'u', 'e').hiRes).toBe(false);
   });
 });
+
+describe('recordOptionsFor: joining a running browser', () => {
+  const attachFlags = (): Flags => {
+    const parsed = parseArgs(['browser', '--attach', '9222']);
+    if (parsed.kind !== 'browser') throw new Error('not browser');
+    return parsed.flags;
+  };
+
+  it('joins the browser on that port', () => {
+    expect(recordOptionsFor(attachFlags(), '', '')).toMatchObject({
+      attach: { port: 9222 },
+      url: '',
+    });
+  });
+
+  it('launches nothing of its own: a launched run has no attach option', () => {
+    expect(recordOptionsFor(flagsOf([]), 'http://x.test/', 'e').attach).toBeUndefined();
+  });
+});

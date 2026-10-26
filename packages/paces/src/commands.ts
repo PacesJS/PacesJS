@@ -306,27 +306,32 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
 async function cmdBrowser(p: Extract<Parsed, { kind: 'browser' }>, io: Io): Promise<number> {
   const cwd = process.cwd();
   const flags = p.flags;
-  if (flags.browser.attach !== undefined) {
-    io.err(
-      'paces: --attach is not available yet. Start a browser with paces instead: paces browser <url>.',
-    );
-    return 2;
+  const joining = flags.browser.attach !== undefined;
+  let exe = '';
+  let name = '';
+  if (!joining) {
+    const chosen = await chooseBrowser(flags, realBrowserDeps);
+    if ('exitCode' in chosen) {
+      io.err(chosen.message);
+      return chosen.exitCode;
+    }
+    exe = chosen.exe;
+    name = chosen.name;
   }
-  const chosen = await chooseBrowser(flags, realBrowserDeps);
-  if ('exitCode' in chosen) {
-    io.err(chosen.message);
-    return chosen.exitCode;
-  }
-  const url = normalizeTarget(p.target ?? '', existsSync);
+  const url = p.target === undefined ? '' : normalizeTarget(p.target, existsSync);
   const root = resolve(cwd, flags.browser.root ?? '.');
-  io.err(`paces: recording ${url} in ${chosen.name}`);
+  io.err(
+    joining
+      ? `paces: joined the browser on 127.0.0.1:${flags.browser.attach} (this machine only)${url ? `, recording ${url} in a new tab` : ', recording its open tab'}`
+      : `paces: recording ${url} in ${name}`,
+  );
   io.err(
     flags.browser.paused
       ? 'paces: recording starts paused. Press Start in the page overlay, or p here.'
       : 'paces: log in or navigate first? Press p (or Pause in the page) to stop recording, p again to resume.',
   );
 
-  const run = await startRecording({ ...recordOptionsFor(flags, url, chosen.exe) });
+  const run = await startRecording({ ...recordOptionsFor(flags, url, exe) });
   const isTTY = Boolean(process.stdin.isTTY);
   const detach = attachTerminal({
     controls: browserControls(run),

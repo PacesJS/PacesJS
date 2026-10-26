@@ -1,6 +1,8 @@
 ---
 paths:
   - 'packages/collector-node/**'
+  - 'packages/collector-browser/**'
+  - 'packages/shared/**'
   - 'packages/paces/**'
 ---
 
@@ -14,3 +16,7 @@ paths:
 - CLI: parse flags before `--` and pass everything after it untouched. The exit code of `paces -- <cmd>` mirrors the target's. Terminal output is plain, short and actionable; errors say what to do next. Nothing leaves the machine; no telemetry.
 - Server: bind `127.0.0.1` on a random port, require a random 32-byte token on every request, and restrict source reads to the recorded project root (resolve and `realpath` first, then check the prefix).
 - Runtime deps of the published `paces` package are pure JS and bundled (tsup `noExternal`). A test inspects `dist` and the dependency tree to enforce this.
+- Browser collector (`packages/collector-browser`): the browser is driven over a private pipe (`--remote-debugging-pipe`, no TCP listener); `--attach` connects to `127.0.0.1` only. Each launched run uses a fresh temporary profile that is removed afterwards. Shared helpers go in `packages/shared`, never copied between packages.
+- The injected script is paces' own code: it ends with `//# sourceURL=paces://instrumentation/inject.js`, never patches page APIs, calls `preventDefault` only for its own `Alt+Shift+M` and `Alt+Shift+P` shortcuts, never records a value, and its functions are self-contained (they are stringified into the page).
+- Stored URLs lose their query string and fragment unless `--keep-query`. A pause really stops tracing and the screencast.
+- Never claim a browser behavior in the design or the docs that was not run: the real-browser tests (`PACES_BROWSER`) are how it is checked.

@@ -97,6 +97,7 @@ export function recordOptionsFor(flags: Flags, url: string, exe: string): Record
     fullTrace: b.fullTrace,
     hiRes: flags.interval !== undefined && flags.interval <= 200,
     cacheCold: b.cache === 'cold',
+    ...(b.attach !== undefined ? { attach: { port: b.attach } } : {}),
     ...(b.throttle ? { throttle: b.throttle } : {}),
     ...(flags.duration ? { durationMs: flags.duration * 1000 } : {}),
   };
