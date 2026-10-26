@@ -85,7 +85,7 @@ try {
       page,
       input: {
         ...rest,
-        screenshots: frames.map(({ id, tsUs, hash }) => ({ id, tsUs, hash })),
+        screenshots: frames.map(({ id, epochMs, hash }) => ({ id, epochMs, hash })),
         screenshotCount: screenshots.frames.length,
         deduplicated: screenshots.deduplicated,
       },

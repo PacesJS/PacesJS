@@ -203,4 +203,26 @@ describe('createTargetManager', () => {
     });
     expect(manager.scripts()[0]).toMatchObject({ startLine: 6, startColumn: 8, endLine: 20 });
   });
+
+  it('tells the recorder about each script the moment it is parsed, not the injected one', () => {
+    const cdp = new FakeCdp();
+    const seen: string[] = [];
+    createTargetManager({
+      cdp,
+      injectSource: '',
+      keepQuery: false,
+      onBridge: () => undefined,
+      onScript: (script) => seen.push(script.url),
+    });
+    const parsed = (url: string, scriptId: string) =>
+      cdp.emit({
+        method: 'Debugger.scriptParsed',
+        sessionId: 's1',
+        params: { scriptId, url, sourceMapURL: '', hash: scriptId },
+      });
+    parsed('https://a.test/a.js', '1');
+    parsed('paces://instrumentation/inject.js', '2');
+    parsed('https://a.test/b.js?v=2', '3');
+    expect(seen).toEqual(['https://a.test/a.js', 'https://a.test/b.js']);
+  });
 });

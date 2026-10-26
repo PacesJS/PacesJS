@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectSources } from '../src/sources.js';
+import { collectSources, createSourceCollector } from '../src/sources.js';
 import type { ScriptRecord } from '../src/targets.js';
 import { FakeCdp } from './helpers/fake-cdp.js';
 
@@ -23,6 +23,7 @@ function cdpWith(sources: Record<string, string>, maps: Record<string, string> =
   cdp.send = (method, params, session) => {
     const p = params as Record<string, string>;
     if (method === 'Debugger.getScriptSource') {
+      cdp.calls.push({ method, params: p, sessionId: session });
       const text = sources[p.scriptId ?? ''];
       return text === undefined
         ? Promise.reject(new Error('No script'))
@@ -192,5 +193,61 @@ describe('collectSources', () => {
       );
       expect(sources[0]?.text).toBe('var a;');
     });
+  });
+});
+
+describe('createSourceCollector', () => {
+  const calls = (cdp: FakeCdp): string[] =>
+    cdp.calls.filter((c) => c.method === 'Debugger.getScriptSource').map((c) => c.method);
+
+  it('reads a script as soon as it is added, before anyone asks for the result', async () => {
+    const cdp = cdpWith({ '1': 'var a;' });
+    const collector = createSourceCollector(cdp, limits);
+    collector.add(script('1', 'https://a.test/a.js'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls(cdp)).toHaveLength(1);
+  });
+
+  it('hands over what it read, in the order the scripts were added', async () => {
+    const cdp = cdpWith({ '1': 'a', '2': 'b' });
+    const collector = createSourceCollector(cdp, limits);
+    collector.add(script('1', 'https://a.test/1.js'));
+    collector.add(script('2', 'https://a.test/2.js'));
+    const result = await collector.finish();
+    expect(result.sources.map((x) => x.url)).toEqual([
+      'https://a.test/1.js',
+      'https://a.test/2.js',
+    ]);
+  });
+
+  it('keeps what it read when a later script has already lost its page', async () => {
+    const cdp = cdpWith({ '1': 'kept' });
+    const collector = createSourceCollector(cdp, limits);
+    collector.add(script('1', 'https://a.test/1.js'));
+    collector.add(script('9', 'https://a.test/gone.js'));
+    const result = await collector.finish();
+    expect(result.sources.map((x) => x.text)).toEqual(['kept']);
+  });
+
+  it('reads a script added twice once', async () => {
+    const cdp = cdpWith({ '1': 'a' });
+    const collector = createSourceCollector(cdp, limits);
+    collector.add(script('1', 'https://a.test/1.js'));
+    collector.add(script('1', 'https://a.test/1.js'));
+    await collector.finish();
+    expect(calls(cdp)).toHaveLength(1);
+  });
+
+  it('lays inline scripts out when it finishes, however they arrived', async () => {
+    const cdp = cdpWith({ '1': 'a();', '2': 'b();' });
+    const collector = createSourceCollector(cdp, limits);
+    const inline = (id: string, line: number) =>
+      script(id, 'https://a.test/p.html', { hash: id, startLine: line, endLine: line });
+    collector.add(inline('2', 7));
+    collector.add(inline('1', 2));
+    const { sources } = await collector.finish();
+    const lines = sources[0]?.text.split('\n') ?? [];
+    expect([lines[2], lines[7]]).toEqual(['a();', 'b();']);
   });
 });

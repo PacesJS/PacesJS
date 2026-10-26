@@ -35,6 +35,13 @@ export interface RecordedScript {
   targetId?: string;
 }
 
+export interface RecordedTarget {
+  /** For a page or an out-of-process iframe, also the id of its frame. */
+  id: string;
+  type: string;
+  url: string;
+}
+
 /** What the capture host hands the engine; also what the committed browser fixtures hold. */
 export interface BrowserRecordingInput {
   product: string;
@@ -45,8 +52,14 @@ export interface BrowserRecordingInput {
   events: TraceEventIn[];
   segments?: RecordedSegment[];
   marks?: Array<{ at: number; label: string; kind: string; seq?: string; frame?: string }>;
-  screenshots?: Array<{ id: number; tsUs: number }>;
+  /** Filmstrip frames: `epochMs` is wall-clock time (a screencast), `tsUs` is already on the trace clock. */
+  screenshots?: Array<{ id: number; tsUs?: number; epochMs?: number }>;
   scripts?: RecordedScript[];
+  /**
+   * The pages and out-of-process iframes that were recorded, with their URLs. A trace started on the
+   * browser holds every renderer, and carries no frame list of its own: these say which are ours.
+   */
+  targets?: RecordedTarget[];
   sourceMaps?: Record<string, string>;
   filter?: {
     version: number;

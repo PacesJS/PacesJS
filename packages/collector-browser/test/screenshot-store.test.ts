@@ -10,7 +10,7 @@ describe('createScreenshotStore', () => {
     store.add(2000, jpeg(1));
     store.add(3000, jpeg(2));
     const result = store.finish();
-    expect(result.frames.map((f) => f.tsUs)).toEqual([1000, 3000]);
+    expect(result.frames.map((f) => f.epochMs)).toEqual([1000, 3000]);
     expect(result.deduplicated).toBe(1);
   });
 
@@ -27,8 +27,8 @@ describe('createScreenshotStore', () => {
     for (let i = 0; i < 20; i++) store.add(i * 1000, jpeg(i));
     const frames = store.finish().frames;
     expect(frames.length).toBeLessThanOrEqual(5);
-    expect(frames[0]?.tsUs).toBe(0);
-    expect(frames[frames.length - 1]?.tsUs).toBe(19_000);
+    expect(frames[0]?.epochMs).toBe(0);
+    expect(frames[frames.length - 1]?.epochMs).toBe(19_000);
   });
 
   it('thins to the byte cap', () => {
@@ -36,8 +36,8 @@ describe('createScreenshotStore', () => {
     for (let i = 0; i < 20; i++) store.add(i, jpeg(i));
     const result = store.finish();
     expect(result.frames.reduce((n, f) => n + f.bytes.length, 0)).toBeLessThanOrEqual(24);
-    expect(result.frames[0]?.tsUs).toBe(0);
-    expect(result.frames[result.frames.length - 1]?.tsUs).toBe(19);
+    expect(result.frames[0]?.epochMs).toBe(0);
+    expect(result.frames[result.frames.length - 1]?.epochMs).toBe(19);
   });
 
   it('numbers kept frames from zero in time order and records the cap', () => {
@@ -45,7 +45,7 @@ describe('createScreenshotStore', () => {
     store.add(5, jpeg(1));
     store.add(2, jpeg(2));
     const result = store.finish();
-    expect(result.frames.map((f) => [f.id, f.tsUs])).toEqual([
+    expect(result.frames.map((f) => [f.id, f.epochMs])).toEqual([
       [0, 2],
       [1, 5],
     ]);

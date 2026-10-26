@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>controls</title>
+<!-- Not a planted problem: drives the same bridge the overlay buttons use, so the tests can prove a
+     pause, a resume and a mark from the page reach the recorder. -->
+<p>overlay controls</p>
+<script>
+  const send = (message) => window.__pacesBridge(JSON.stringify(message));
+  setTimeout(() => send({ t: 'control', action: 'mark', label: 'from the page' }), 600);
+  setTimeout(() => send({ t: 'control', action: 'pause' }), 1000);
+  setTimeout(() => send({ t: 'control', action: 'resume' }), 2400);
+</script>

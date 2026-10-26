@@ -55,11 +55,11 @@ export interface Recording {
 
 export interface ControllerDeps {
   cdp: CdpLike;
-  /** Session of the first page: tracing must start there for screenshots to be recorded. */
-  session: string;
   options: ControllerOptions;
   /** Asks the page to emit `paces:sync:<n>`; returns its epoch ms. */
   syncClock: (n: number) => Promise<number | undefined>;
+  /** Ids of the frames being recorded, so the trace can be cut down to their processes. */
+  ownFrames?: () => ReadonlySet<string>;
   now?: () => number;
   onChange?: (state: ControllerState) => void;
 }
@@ -70,6 +70,8 @@ export interface SessionController {
   resume(): Promise<void>;
   stop(): Promise<Recording>;
   mark(label: string, kind?: string, extra?: { at?: number; seq?: string; frame?: string }): void;
+  /** A frame of the page, taken at `epochMs`. Kept only while recording, and only if screenshots are on. */
+  addScreenshot(epochMs: number, bytes: Uint8Array): void;
   state(): ControllerState;
   /** What has been collected so far, without ending anything: for a browser that went away. */
   partial(): Recording;
@@ -86,16 +88,19 @@ const BASE_CATEGORIES = [
   'latencyInfo',
   'disabled-by-default-v8.cpu_profiler',
 ];
-const SCREENSHOT_CATEGORY = 'disabled-by-default-devtools.screenshot';
 const HI_RES_CATEGORY = 'disabled-by-default-v8.cpu_profiler.hires';
 const SCREENSHOT_CAP = 600;
 const SCREENSHOT_MAX_BYTES = 64 * 1024 * 1024;
 
 export function createSessionController(deps: ControllerDeps): SessionController {
-  const { cdp, session, options } = deps;
+  const { cdp, options } = deps;
   const now = deps.now ?? Date.now;
   const flushTimeoutMs = options.flushTimeoutMs ?? 120_000;
-  const filter = createTraceFilter({ keepQuery: options.keepQuery, full: options.fullTrace });
+  const filter = createTraceFilter({
+    keepQuery: options.keepQuery,
+    full: options.fullTrace,
+    ...(deps.ownFrames ? { ownFrames: deps.ownFrames } : {}),
+  });
   const shots = createScreenshotStore({ cap: SCREENSHOT_CAP, maxBytes: SCREENSHOT_MAX_BYTES });
   const events: TraceEvent[] = [];
   const segments: Segment[] = [];
@@ -130,23 +135,15 @@ export function createSessionController(deps: ControllerDeps): SessionController
 
   let flush: { resolve: () => void; bounds: { start: number; end: number } } | undefined;
   cdp.onEvent((e: CdpEvent) => {
-    if (e.sessionId !== session) return;
+    // Tracing is on the browser, so its events carry no session; a page's own events are not ours.
+    if (e.sessionId) return;
     if (e.method === 'Tracing.bufferUsage' && collecting) {
       const total = (e.params as { eventCount?: number } | undefined)?.eventCount;
       if (typeof total === 'number') collecting.total = total;
       notify();
     } else if (e.method === 'Tracing.dataCollected' && flush) {
       const batch = (e.params as { value?: TraceEvent[] } | undefined)?.value ?? [];
-      const plain: TraceEvent[] = [];
-      for (const ev of batch) {
-        if (ev.name === 'Screenshot') {
-          const snapshot = (ev.args as { snapshot?: unknown } | undefined)?.snapshot;
-          if (options.screenshots && typeof snapshot === 'string') {
-            shots.add(ev.ts, Uint8Array.from(Buffer.from(snapshot, 'base64')));
-          }
-        } else plain.push(ev);
-      }
-      for (const ev of filter.push(plain)) {
+      for (const ev of filter.push(batch)) {
         events.push(ev);
         if (ev.ph !== 'M') {
           flush.bounds.start = Math.min(flush.bounds.start, ev.ts);
@@ -162,20 +159,16 @@ export function createSessionController(deps: ControllerDeps): SessionController
 
   async function beginSegment(): Promise<void> {
     const included = [...BASE_CATEGORIES];
-    if (options.screenshots) included.push(SCREENSHOT_CATEGORY);
     if (options.hiRes) included.push(HI_RES_CATEGORY);
-    await cdp.send(
-      'Tracing.start',
-      {
-        transferMode: 'ReportEvents',
-        traceConfig: {
-          recordMode: 'recordAsMuchAsPossible',
-          includedCategories: included,
-          excludedCategories: options.fullTrace ? [] : EXCLUDED_CATEGORIES,
-        },
+    // On the browser, not on a page: the trace has to outlive the page when the user closes it.
+    await cdp.send('Tracing.start', {
+      transferMode: 'ReportEvents',
+      traceConfig: {
+        recordMode: 'recordAsMuchAsPossible',
+        includedCategories: included,
+        excludedCategories: options.fullTrace ? [] : EXCLUDED_CATEGORIES,
       },
-      session,
-    );
+    });
     const next: Segment = {
       startUs: Number.POSITIVE_INFINITY,
       endUs: Number.NEGATIVE_INFINITY,
@@ -217,7 +210,7 @@ export function createSessionController(deps: ControllerDeps): SessionController
       };
     });
     try {
-      await cdp.send('Tracing.end', {}, session);
+      await cdp.send('Tracing.end');
       await done;
     } finally {
       flush = undefined;
@@ -263,6 +256,9 @@ export function createSessionController(deps: ControllerDeps): SessionController
         return finish();
       }),
     partial: () => finish(),
+    addScreenshot(epochMs, bytes) {
+      if (phase === 'recording' && options.screenshots) shots.add(epochMs, bytes);
+    },
     mark(label, kind = 'manual', extra = {}) {
       const trimmed = label.trim();
       if (kind === 'manual') manualMarks++;

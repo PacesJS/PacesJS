@@ -23,12 +23,7 @@ const ev = (name: string, ts: number, extra: Partial<TraceEvent> = {}): TraceEve
   ...extra,
 });
 
-const shot = (ts: number, n: number): TraceEvent =>
-  ev('Screenshot', ts, {
-    cat: 'disabled-by-default-devtools.screenshot',
-    ph: 'O',
-    args: { snapshot: Buffer.from([0xff, 0xd8, n, 0xff, 0xd9]).toString('base64') },
-  });
+const jpeg = (n: number): Uint8Array => Uint8Array.from([0xff, 0xd8, n, 0xff, 0xd9]);
 
 function setup(overrides: Partial<ControllerOptions> = {}) {
   const cdp = new FakeCdp();
@@ -36,7 +31,6 @@ function setup(overrides: Partial<ControllerOptions> = {}) {
   let epoch = 1_000_000;
   const controller = createSessionController({
     cdp,
-    session: 'page-1',
     options: { ...OPTIONS, ...overrides },
     syncClock: (n) => Promise.resolve(n * 10 + 5),
     now: () => (epoch += 100),
@@ -49,23 +43,20 @@ const startedWith = (cdp: FakeCdp): Record<string, unknown> | undefined =>
   cdp.calls.find((c) => c.method === 'Tracing.start')?.params;
 
 describe('createSessionController', () => {
-  it('starts tracing on the page session and reports recording', async () => {
+  it('starts tracing on the browser, not on a page, so it outlives the page', async () => {
     const { cdp, controller } = setup();
     await controller.start();
     const call = cdp.calls.find((c) => c.method === 'Tracing.start');
-    expect(call?.sessionId).toBe('page-1');
+    expect(call).toBeDefined();
+    expect(call?.sessionId).toBeUndefined();
     expect(controller.state().phase).toBe('recording');
   });
 
-  it('requests the screenshot category only when screenshots are wanted', async () => {
-    const withShots = setup();
-    await withShots.controller.start();
-    const without = setup({ screenshots: false });
-    await without.controller.start();
-    const included = (c: FakeCdp): string[] =>
-      (startedWith(c)?.traceConfig as { includedCategories: string[] }).includedCategories;
-    expect(included(withShots.cdp)).toContain('disabled-by-default-devtools.screenshot');
-    expect(included(without.cdp)).not.toContain('disabled-by-default-devtools.screenshot');
+  it('never asks the trace for screenshots: the screencast takes them', async () => {
+    const { cdp, controller } = setup();
+    await controller.start();
+    const config = startedWith(cdp)?.traceConfig as { includedCategories: string[] };
+    expect(config.includedCategories.join(',')).not.toMatch(/screenshot/);
   });
 
   it('never asks for the toplevel category', async () => {
@@ -114,19 +105,34 @@ describe('createSessionController', () => {
     expect(cdp.methods().filter((m) => m === 'Tracing.start')).toHaveLength(2);
   });
 
-  it('collects no screenshots while paused', async () => {
-    const { cdp, controller } = setup();
+  it('keeps a screenshot taken while recording', async () => {
+    const { controller } = setup();
     await controller.start();
-    cdp.nextTrace = [ev('Layout', 10), shot(11, 1)];
+    controller.addScreenshot(1_000_100, jpeg(1));
+    const recording = await controller.stop();
+    expect(recording.screenshots.frames.map((f) => f.epochMs)).toEqual([1_000_100]);
+  });
+
+  it('keeps no screenshot taken while paused, or before the first start', async () => {
+    const { cdp, controller } = setup({ startPaused: true });
+    await controller.start();
+    controller.addScreenshot(1, jpeg(1));
+    await controller.resume();
+    cdp.nextTrace = [ev('Layout', 10)];
     await controller.pause();
-    cdp.emit({
-      method: 'Tracing.dataCollected',
-      params: { value: [shot(20, 2)] },
-      sessionId: 'page-1',
-    });
+    controller.addScreenshot(2, jpeg(2));
+    await controller.resume();
+    controller.addScreenshot(3, jpeg(3));
     cdp.nextTrace = [];
     const recording = await controller.stop();
-    expect(recording.screenshots.frames.map((f) => f.tsUs)).toEqual([11]);
+    expect(recording.screenshots.frames.map((f) => f.epochMs)).toEqual([3]);
+  });
+
+  it('keeps no screenshot when screenshots are switched off', async () => {
+    const { controller } = setup({ screenshots: false });
+    await controller.start();
+    controller.addScreenshot(1, jpeg(1));
+    expect((await controller.stop()).screenshots.frames).toEqual([]);
   });
 
   it('starting paused starts no tracing until the first resume', async () => {
@@ -184,15 +190,6 @@ describe('createSessionController', () => {
     const recording = await controller.stop();
     expect(recording.events.map((e) => e.name)).toEqual(['Layout']);
     expect(recording.filter.droppedByName['V8.BytecodeBudgetInterrupt']).toBe(1);
-  });
-
-  it('keeps the Screenshot events out of the trace and in the store', async () => {
-    const { cdp, controller } = setup();
-    await controller.start();
-    cdp.nextTrace = [ev('Layout', 10), shot(20, 7)];
-    const recording = await controller.stop();
-    expect(recording.events.map((e) => e.name)).toEqual(['Layout']);
-    expect(recording.screenshots.frames).toHaveLength(1);
   });
 
   it('ignores a request to start tracing twice', async () => {

@@ -120,4 +120,47 @@ describe.runIf(exe)('startRecording (real browser)', () => {
     expect(recording.endedBy).toBe('duration');
     expect(recording.events.some((e) => e.name === 'loadEventEnd')).toBe(true);
   }, 60_000);
+
+  it('applies a pause, a resume and a mark that the page sends through the same bridge as the overlay', async () => {
+    const recording = await record('controls', { durationMs: 5000 });
+    expect(recording.segments).toHaveLength(2);
+    expect(recording.marks.filter((m) => m.kind === 'manual').map((m) => m.label)).toEqual([
+      'from the page',
+    ]);
+    const [first, second] = recording.segments;
+    expect((second?.startUs ?? 0) - (first?.endUs ?? 0)).toBeGreaterThan(500_000);
+  }, 60_000);
+
+  it('keeps the trace when the user closes the window, and says that is how it ended', async () => {
+    const run = await startRecording({
+      url: zoo.url('slow-click'),
+      exe: exe ?? '',
+      screenshots: true,
+      startPaused: false,
+      fullTrace: false,
+      keepQuery: false,
+      hiRes: false,
+      overlay: true,
+      eventMarks: true,
+      eventText: true,
+      cacheCold: false,
+    });
+    // Wait for the page's own click (a mark), then close every page as the user closing the window does.
+    const end = Date.now() + 20_000;
+    while (!run.controller.state().marks && Date.now() < end) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (run.controller.state().elapsedMs > 3000) break;
+    }
+    const { targetInfos } = (await run.cdp.send('Target.getTargets')) as {
+      targetInfos: Array<{ targetId: string; type: string }>;
+    };
+    for (const t of targetInfos.filter((x) => x.type === 'page')) {
+      await run.cdp.send('Target.closeTarget', { targetId: t.targetId }).catch(() => undefined);
+    }
+    const recording = await run.done;
+    expect(recording.endedBy).toBe('window-closed');
+    expect(recording.events.filter((e) => e.name === 'ProfileChunk').length).toBeGreaterThan(0);
+    expect(recording.warnings.map((w) => w.kind)).not.toContain('trace-incomplete');
+    expect(recording.sources.some((x) => x.text.includes('busy(220)'))).toBe(true);
+  }, 60_000);
 });

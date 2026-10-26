@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 export interface ScreenshotFrame {
   id: number;
-  tsUs: number;
+  epochMs: number;
   hash: string;
   bytes: Uint8Array;
 }
@@ -21,7 +21,8 @@ export interface ScreenshotStoreOptions {
 }
 
 export interface ScreenshotStore {
-  add(tsUs: number, bytes: Uint8Array): void;
+  /** `epochMs` is when the frame was taken, in wall-clock milliseconds. */
+  add(epochMs: number, bytes: Uint8Array): void;
   finish(): ScreenshotResult;
 }
 
@@ -45,19 +46,19 @@ export function createScreenshotStore(options: ScreenshotStoreOptions): Screensh
   let deduplicated = 0;
 
   return {
-    add(tsUs, bytes) {
+    add(epochMs, bytes) {
       const hash = createHash('sha1').update(bytes).digest('hex');
       if (hash === lastHash) {
         deduplicated++;
         return;
       }
       lastHash = hash;
-      held.push({ tsUs, hash, bytes });
+      held.push({ epochMs, hash, bytes });
       // Thin while recording so a busy page cannot hold thousands of frames in memory.
       if (held.length > options.cap * 2) held = spread(held, options.cap);
     },
     finish() {
-      const sorted = [...held].sort((a, b) => a.tsUs - b.tsUs);
+      const sorted = [...held].sort((a, b) => a.epochMs - b.epochMs);
       let count = Math.min(sorted.length, options.cap);
       let chosen = spread(sorted, count);
       const size = (list: Held[]): number => list.reduce((n, f) => n + f.bytes.length, 0);
