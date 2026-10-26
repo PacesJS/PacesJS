@@ -81,7 +81,7 @@ export function isChromiumProduct(product: string): boolean {
 interface BridgeMessage {
   t?: string;
   frame?: string;
-  seq?: number;
+  seq?: string;
   at?: number;
   kind?: string;
   label?: string;
@@ -280,6 +280,8 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
     await cdp.send('Page.navigate', { url: options.url }, sessionId);
 
     const finish = async (by: EndedBy): Promise<BrowserRecording> => {
+      // The run ends when it was asked to; collecting the trace afterwards is not part of it.
+      const stoppedAt = Date.now();
       let recording: Recording;
       const warnings: SourceWarning[] = [];
       try {
@@ -320,7 +322,7 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
         warnings,
         endedBy: by,
         startedAt,
-        endedAt: Date.now(),
+        endedAt: stoppedAt,
         ...(options.throttle ? { throttle: options.throttle } : {}),
         cacheCold: options.cacheCold,
       };

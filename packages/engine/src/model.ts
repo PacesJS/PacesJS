@@ -36,6 +36,12 @@ export const TaskKind = {
   Microtask: 4,
   Io: 5,
   Other: 6,
+  /** Browser: a task that ran an input event handler. */
+  Input: 7,
+  Animation: 8,
+  Parse: 9,
+  Script: 10,
+  Render: 11,
 } as const;
 export type TaskKindId = (typeof TaskKind)[keyof typeof TaskKind];
 export const TASK_KIND_NAMES = [
@@ -46,10 +52,15 @@ export const TASK_KIND_NAMES = [
   'microtask',
   'io',
   'other',
+  'input',
+  'animation',
+  'parse',
+  'script',
+  'render',
 ] as const;
 
 /** What the profiled program is: a long-running server, a command-line tool, or a plain script. */
-export type RunKind = 'server' | 'cli' | 'script';
+export type RunKind = 'server' | 'cli' | 'script' | 'page';
 
 /** One aggregated warning per `kind`: never one entry per file. */
 export interface ModelWarning {
@@ -71,8 +82,30 @@ export interface SessionMeta extends CaptureMeta {
   engineVersion: string;
   /** Aggregated warnings raised by passes, at most one per kind. */
   warnings: ModelWarning[];
+  /** Browser runs: what was recorded and how well its clock is known. */
+  browser?: BrowserMeta;
   /** `server` when request events or a listening server were seen, else `cli` or `script`. */
   runKind: RunKind;
+}
+
+export interface BrowserMeta {
+  product: string;
+  url: string;
+  /** Wall-clock accuracy of the trace clock, microseconds. */
+  clockErrorUs: number;
+  /** False for a DevTools export, whose start time is a guess. */
+  anchored: boolean;
+  /** `epoch µs = trace µs + offsetUs`. */
+  offsetUs: number;
+  throttle?: number;
+  cacheCold?: boolean;
+  segments: number;
+  traceFilter?: {
+    version: number;
+    excludedCategories: string[];
+    keptEvents: number;
+    droppedEvents: number;
+  };
 }
 
 /** One row per distinct function (after source mapping). */
@@ -273,6 +306,100 @@ export interface TargetInfo {
   kind: RunKind;
 }
 
+/** Rendering work on a page's main thread, exact (from trace events, not samples). */
+export interface RenderTable {
+  length: number;
+  start: Float64Array;
+  dur: Float64Array;
+  /** See `RENDER_PHASE_NAMES`. */
+  phase: Uint8Array;
+  /** 1 = style or layout run from script (it asked for a measurement), not by the browser after a task. */
+  forced: Uint8Array;
+}
+export const RENDER_PHASE_NAMES = [
+  'style',
+  'layout',
+  'paint',
+  'composite',
+  'parse',
+  'script',
+] as const;
+
+/** What the user did, as the page reported it; positioned on the trace. */
+export interface InputTable {
+  length: number;
+  start: Float64Array;
+  end: Float64Array;
+  /** See `INPUT_KIND_NAMES`. */
+  kind: Uint8Array;
+  label: Uint32Array;
+  /** Index into the track's tasks of the task that handled it, -1 = none. */
+  task: Int32Array;
+  /** Microseconds from the event to the next paint; -1 when there was none or it is not an input. */
+  latency: Float64Array;
+}
+export const INPUT_KIND_NAMES = [
+  'click',
+  'submit',
+  'change',
+  'key',
+  'typing',
+  'scroll',
+  'navigate',
+  'visibility',
+  'more',
+] as const;
+
+export interface FrameTimings {
+  length: number;
+  /** Start of the main-thread frame work, else the draw time. */
+  start: Float64Array;
+  /** When the frame was drawn. */
+  end: Float64Array;
+  dropped: Uint8Array;
+}
+
+export interface VitalTable {
+  length: number;
+  time: Float64Array;
+  /** See `VITAL_KIND_NAMES`. */
+  kind: Uint8Array;
+  /** Layout shift score, largest paint size; 0 for the rest. */
+  value: Float64Array;
+}
+export const VITAL_KIND_NAMES = [
+  'navigation',
+  'DOMContentLoaded',
+  'load',
+  'FCP',
+  'LCP',
+  'shift',
+] as const;
+
+export interface ScreenshotTable {
+  length: number;
+  time: Float64Array;
+  /** Index of the frame in the session; the bytes are served by the host. */
+  id: Uint32Array;
+}
+
+export interface TimeRanges {
+  length: number;
+  start: Float64Array;
+  end: Float64Array;
+}
+
+/** What belongs to the page as a whole rather than to one track. */
+export interface PageTimeline {
+  frames: FrameTimings;
+  vitals: VitalTable;
+  screenshots: ScreenshotTable;
+  /** Stretches that were recorded. */
+  recorded: TimeRanges;
+  /** Stretches between them, when recording was paused. */
+  paused: TimeRanges;
+}
+
 export interface Track {
   id: TrackId;
   kind: TrackKind;
@@ -298,6 +425,9 @@ export interface Track {
   /** Whole-track busy time (non-idle self), microseconds. */
   busyUs: number;
   durationUs: number;
+  /** Browser pages: rendering work and user input. */
+  render?: RenderTable;
+  inputs?: InputTable;
 }
 
 export type Severity = 'high' | 'medium' | 'low';
@@ -313,7 +443,12 @@ export type FindingKind =
   | 'heavy-serialization'
   | 'late-module-loading'
   | 'event-loop-lag'
-  | 'v8-deopt';
+  | 'v8-deopt'
+  | 'main-thread-blocked'
+  | 'slow-interaction'
+  | 'forced-layout'
+  | 'third-party-cost'
+  | 'layout-shift';
 
 /** What the UI should select and which view proves a finding. */
 export interface ShowMe {
@@ -363,4 +498,6 @@ export interface ExecutionModel {
   target: TargetInfo;
   /** Index into `tracks` of the program being profiled: the busiest track that is not supporting. */
   primaryTrack: number;
+  /** Browser runs: frames, loading milestones, filmstrip and pauses. */
+  page?: PageTimeline;
 }

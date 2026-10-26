@@ -7,6 +7,7 @@ import { Origin, TASK_KIND_NAMES, TaskKind } from '../model.js';
 import { functionName } from '../frames.js';
 import type { ExecutionModel, Finding, FindingKind, FnId, Severity, Track } from '../model.js';
 import { hotPaths } from '../query/paths.js';
+import { BROWSER_RULES } from './findings-browser.js';
 import { compareText } from '../util/compare.js';
 import { formatDuration, formatPercent, plural } from '../util/format.js';
 import { displayPath } from '../util/paths.js';
@@ -27,6 +28,11 @@ const KIND_ORDER: FindingKind[] = [
   'late-module-loading',
   'event-loop-lag',
   'v8-deopt',
+  'main-thread-blocked',
+  'slow-interaction',
+  'forced-layout',
+  'third-party-cost',
+  'layout-shift',
 ];
 const SEVERITY_RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
 
@@ -773,9 +779,12 @@ const RULES: Rule[] = [
 export function findIssues(model: ExecutionModel, ctx: PassContext): Finding[] {
   const suppressed =
     model.meta.runKind === 'server' ? [] : (ctx.options.suppressForCli ?? DEFAULT_SUPPRESS_FOR_CLI);
-  const all = RULES.flatMap((rule) => rule(model, ctx.thresholds)).filter(
-    (f) => !suppressed.includes(f.kind),
-  );
+  // A page has no event loop, synchronous I/O or module loading; it has its own rules.
+  const rules =
+    model.target.kind === 'page' ? [...BROWSER_RULES, hotFunction, hotPath, gcPressure] : RULES;
+  const all = rules
+    .flatMap((rule) => rule(model, ctx.thresholds))
+    .filter((f) => !suppressed.includes(f.kind));
   return all.sort(
     (a, b) =>
       SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||

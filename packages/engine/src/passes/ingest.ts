@@ -189,6 +189,7 @@ function ingestTrack(
         events,
         async,
         scripts: track.scripts,
+        ...(track.timeline ? { timeline: track.timeline } : {}),
       },
     };
   }
@@ -263,6 +264,7 @@ function ingestTrack(
       events,
       async,
       scripts: track.scripts,
+      ...(track.timeline ? { timeline: track.timeline } : {}),
     },
   };
 }
@@ -290,5 +292,6 @@ export function ingest(capture: RawCapture, ctx: PassContext): IngestResult {
     tracks,
     precisionUs: Math.max(capture.meta.intervalUs, measured),
     durationUs: Math.max(0, (capture.meta.endedAt - capture.meta.startedAt) * 1000),
+    monoAtStartUs: clock.monoAtStartUs,
   };
 }

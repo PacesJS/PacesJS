@@ -15,7 +15,17 @@ const opt = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : unde
 const positional = args.filter(
   (a, i) => !a.startsWith('--') && !['--browser', '--out', '--seconds'].includes(args[i - 1]),
 );
-const PAGES = ['forced-layout', 'slow-click', 'third-party', 'worker-and-iframe', 'layout-shift'];
+const PAGES = [
+  'forced-layout',
+  'slow-click',
+  'third-party',
+  'worker-and-iframe',
+  'layout-shift',
+  'paused-resume',
+];
+// Recorded from slow-click, with a pause and a resume in the middle: two trace segments.
+const PAGE_FILE = { 'paused-resume': 'slow-click' };
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const pages = positional.length > 0 ? positional : PAGES;
 const outDir = opt('--out') ?? join(root, 'packages/engine/test/fixtures/browser');
 const seconds = Number(opt('--seconds') ?? 3.5);
@@ -40,7 +50,7 @@ const zoo = await startZoo();
 try {
   for (const page of pages) {
     const run = await startRecording({
-      url: zoo.url(page),
+      url: zoo.url(PAGE_FILE[page] ?? page),
       exe,
       screenshots: true,
       startPaused: false,
@@ -51,8 +61,17 @@ try {
       eventMarks: true,
       eventText: true,
       cacheCold: false,
-      durationMs: seconds * 1000,
+      ...(page === 'paused-resume' ? {} : { durationMs: seconds * 1000 }),
     });
+    if (page === 'paused-resume') {
+      await wait(1500);
+      await run.controller.pause();
+      run.controller.mark('after login');
+      await wait(700);
+      await run.controller.resume();
+      await wait(1200);
+      await run.stop();
+    }
     const rec = await run.done;
     const frames = rec.screenshots.frames;
     const picked = [];
@@ -62,7 +81,7 @@ try {
     }
     const { screenshots, ...rest } = rec;
     const fixture = {
-      note: `Recorded by scripts/gen-browser-fixtures.mjs from zoo/browser/pages/${page}.html`,
+      note: `Recorded by scripts/gen-browser-fixtures.mjs from zoo/browser/pages/${PAGE_FILE[page] ?? page}.html`,
       page,
       input: {
         ...rest,

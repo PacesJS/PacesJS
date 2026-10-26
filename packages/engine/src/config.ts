@@ -29,6 +29,17 @@ export interface Thresholds {
   deoptMinCount: number;
   /** V8 deopt: and only if its own time is above this share of busy time. */
   deoptMinShare: number;
+  /** Browser: a main-thread task longer than this blocked the page (ms). */
+  mainThreadBlockedMs: number;
+  /** Browser: an input whose next paint is later than this is a slow interaction (ms). */
+  slowInteractionMs: number;
+  /** Browser: more layouts than this in one task, or more than `forcedLayoutMs` of them, is a forced layout. */
+  forcedLayoutCount: number;
+  forcedLayoutMs: number;
+  /** Browser: third-party scripts above this share of main-thread busy time. */
+  thirdPartyShare: number;
+  /** Browser: cumulative layout shift at or above this score. */
+  layoutShiftScore: number;
   /** Findings that need a share ignore tracks or kinds with fewer busy samples than this. */
   minSamples: number;
 }
@@ -47,6 +58,12 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   lateLoadMinMs: 5,
   deoptMinCount: 3,
   deoptMinShare: 0.05,
+  mainThreadBlockedMs: 50,
+  slowInteractionMs: 200,
+  forcedLayoutCount: 10,
+  forcedLayoutMs: 20,
+  thirdPartyShare: 0.1,
+  layoutShiftScore: 0.1,
   minSamples: 20,
 };
 
@@ -84,4 +101,4 @@ export interface AnalyzeOptions {
   suppressForCli?: FindingKind[];
 }
 
-export const ENGINE_VERSION = '0.6.0';
+export const ENGINE_VERSION = '0.7.0';

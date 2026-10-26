@@ -41,7 +41,7 @@ export interface RecordedMark {
   label: string;
   kind: string;
   /** Joins an automatic event to its `TimeStamp` in the trace. */
-  seq?: number;
+  seq?: string;
   frame?: string;
 }
 
@@ -69,7 +69,7 @@ export interface SessionController {
   pause(): Promise<void>;
   resume(): Promise<void>;
   stop(): Promise<Recording>;
-  mark(label: string, kind?: string, extra?: { at?: number; seq?: number; frame?: string }): void;
+  mark(label: string, kind?: string, extra?: { at?: number; seq?: string; frame?: string }): void;
   state(): ControllerState;
   /** What has been collected so far, without ending anything: for a browser that went away. */
   partial(): Recording;
