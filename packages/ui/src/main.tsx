@@ -6,6 +6,7 @@ import './theme/tokens.css';
 import './styles/base.css';
 import './styles/shell.css';
 import './styles/views.css';
+import './styles/browser.css';
 import './styles/motion.css';
 
 const root = document.getElementById('root');

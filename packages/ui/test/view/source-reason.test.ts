@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isOutsideProject, sourceReason } from '../../src/view/source-reason';
+import { isOutsideProject, isWebScript, sourceReason } from '../../src/view/source-reason';
 import type { SourceFacts } from '../../src/view/source-reason';
 
 const ok: SourceFacts = {
@@ -75,5 +75,33 @@ describe('why the source is unavailable', () => {
     expect(r?.title).toMatch(/connection|stopped/i);
     expect(r?.hint).toMatch(/paces open/);
     expect(r?.hint).not.toMatch(/project root/);
+  });
+
+  describe('a script a page loaded', () => {
+    const page = { ...ok, path: 'https://app.test/main.js' };
+
+    it.each(['https://app.test/a.js', 'http://127.0.0.1:3000/a.js', 'chrome-extension://abc/x.js'])(
+      'recognizes %s as a web script, not a file',
+      (path) => {
+        expect(isWebScript(path)).toBe(true);
+      },
+    );
+
+    it('does not call a file path or a file URL a web script', () => {
+      expect(isWebScript('src/a.ts')).toBe(false);
+      expect(isWebScript('file:///x/a.js')).toBe(false);
+    });
+
+    it('shows the code when the session kept it, instead of calling it outside the project', () => {
+      expect(sourceReason(page)).toBeNull();
+    });
+
+    it('says the script was not saved, rather than that it is missing from disk', () => {
+      const r = sourceReason({ ...page, exists: false });
+      expect(r?.kind).toBe('not-saved');
+      expect(r?.showsText).toBe(false);
+      expect(r?.hint).toMatch(/not saved with the session/);
+      expect(r?.hint).not.toMatch(/disk/);
+    });
   });
 });

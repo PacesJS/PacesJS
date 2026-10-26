@@ -1,3 +1,6 @@
+import { useApp } from '../app/context';
+import { BrowserLanesBottom } from './BrowserLanesBottom';
+import { BrowserLanesTop } from './BrowserLanesTop';
 import { Findings } from './Findings';
 import { TrackLanes } from './TrackLanes';
 
@@ -12,10 +15,15 @@ const TEXT = {
   nodeInternals: 'Node internals',
   longTask: 'Long task, over 50 ms',
   gcPause: 'GC pause',
+  exact: 'Exact: rendering, frames, input',
+  thirdParty: 'Third-party',
+  pageInternals: 'Browser internals',
 } as const;
 
 /** Overview band: findings strip on top, track lanes below. */
 export function Overview() {
+  const { summary } = useApp();
+  const page = summary.browser !== undefined;
   return (
     <section aria-label={TEXT.overview} className="overview card">
       <div className="overview-bar" aria-hidden="true" />
@@ -54,7 +62,7 @@ export function Overview() {
                   className="legend-swatch"
                   style={{ background: 'var(--c-origin-dependency)' }}
                 />
-                {TEXT.dependency}
+                {page ? TEXT.thirdParty : TEXT.dependency}
               </li>
               <li className="legend-item">
                 <span
@@ -62,8 +70,14 @@ export function Overview() {
                   className="legend-swatch"
                   style={{ background: 'var(--c-origin-node)' }}
                 />
-                {TEXT.nodeInternals}
+                {page ? TEXT.pageInternals : TEXT.nodeInternals}
               </li>
+              {page ? (
+                <li className="legend-item">
+                  <span aria-hidden="true" className="legend-swatch legend-exact" />
+                  {TEXT.exact}
+                </li>
+              ) : null}
               <li className="legend-item">
                 <span
                   aria-hidden="true"
@@ -88,7 +102,9 @@ export function Overview() {
               </li>
             </ul>
           </div>
+          <BrowserLanesTop />
           <TrackLanes />
+          <BrowserLanesBottom />
         </div>
       </div>
     </section>

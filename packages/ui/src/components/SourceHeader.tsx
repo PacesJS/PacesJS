@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import type { SourceState } from '../app/useSource';
 import { originInfo } from '../theme/origin';
+import { isWebScript } from '../view/source-reason';
 import { fmtCount, fmtDuration } from '../util/format';
 import { Icon } from './Icon';
 
@@ -115,14 +116,16 @@ export function SourceHeader({ source, tools, onScope }: SourceHeaderProps) {
           <span className="source-path">{info.loc || TEXT.noFile}</span>
         )}
         <div className="source-tools">
-          <button
-            type="button"
-            className="btn btn-sm btn-soft"
-            disabled={!info.path}
-            onClick={() => void host.openInEditor(info.path, info.startLine || 1)}
-          >
-            {TEXT.openInEditor}
-          </button>
+          {isWebScript(info.path) ? null : (
+            <button
+              type="button"
+              className="btn btn-sm btn-soft"
+              disabled={!info.path}
+              onClick={() => void host.openInEditor(info.path, info.startLine || 1)}
+            >
+              {TEXT.openInEditor}
+            </button>
+          )}
           {tools}
         </div>
       </div>

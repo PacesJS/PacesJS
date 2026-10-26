@@ -110,3 +110,24 @@ describe('startHeartbeat', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('httpHostAdapter: screenshots', () => {
+  it('reads a frame from api/screenshot/<id> with the token', async () => {
+    const f = fakeFetch(null, new Uint8Array([0xff, 0xd8, 9]));
+    const bytes = await httpHostAdapter({
+      search: '?token=t',
+      fetchImpl: f as unknown as typeof fetch,
+    }).readScreenshot(4);
+    const [url, init] = f.calls[0] ?? [];
+    expect(url).toBe('api/screenshot/4');
+    expect((init?.headers as Record<string, string>)['x-paces-token']).toBe('t');
+    expect(Array.from(bytes)).toEqual([0xff, 0xd8, 9]);
+  });
+
+  it('says which request failed when the host has no such frame', async () => {
+    const fetchImpl = (async () => new Response('no', { status: 404 })) as unknown as typeof fetch;
+    await expect(
+      httpHostAdapter({ search: '?token=t', fetchImpl }).readScreenshot(7),
+    ).rejects.toThrow(/HTTP 404/);
+  });
+});

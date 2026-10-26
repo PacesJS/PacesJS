@@ -6,6 +6,8 @@ export interface MemoryHostInit {
   meta?: Record<string, unknown>;
   sources?: Record<string, Partial<SourceResult> & { text: string }>;
   settings?: Settings;
+  /** Filmstrip frames (JPEG bytes) by id. */
+  screenshots?: Record<number, Uint8Array>;
 }
 
 /** In-memory adapter for tests and the dev server. */
@@ -29,6 +31,11 @@ export function memoryHostAdapter(
       const hit = init.sources?.[path];
       if (!hit) return { exists: false, text: '', hash: '', changedSinceProfile: false };
       return { exists: true, hash: '', changedSinceProfile: false, ...hit };
+    },
+    readScreenshot: async (id) => {
+      const bytes = init.screenshots?.[id];
+      if (!bytes) throw new Error(`paces host: no screenshot for frame ${id}`);
+      return bytes;
     },
     openInEditor: async (file, line) => {
       opened.push([file, line]);

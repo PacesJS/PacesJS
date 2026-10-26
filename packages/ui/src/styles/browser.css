@@ -1,0 +1,266 @@
+/* Browser lanes: filmstrip, page, rendering and interactions. Positions are shares of the run. */
+
+.browser-lanes {
+  display: flex;
+  flex-direction: column;
+}
+
+.lane-plot-dom {
+  position: relative;
+  min-width: 0;
+}
+
+.header-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.header-chips .chip {
+  padding: 0 var(--sp-10);
+  min-height: 24px;
+}
+
+.legend-exact {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--c-render-layout);
+}
+
+/* Filmstrip */
+.filmstrip {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-4) 0;
+}
+
+.filmstrip-frame,
+.filmstrip-gap {
+  position: relative;
+  min-height: 44px;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-ctl);
+  background: var(--c-bg);
+  overflow: hidden;
+  padding: 0;
+}
+
+.filmstrip-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.filmstrip-frame:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+.filmstrip-gap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-muted);
+  font-size: var(--fs-11);
+  line-height: var(--lh-16);
+  background: repeating-linear-gradient(135deg, var(--c-paused-hatch) 0 4px, transparent 4px 8px);
+}
+
+.filmstrip-gap span {
+  background: var(--c-surface);
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-chip);
+}
+
+.filmstrip-empty {
+  margin: 0;
+  padding: var(--sp-12) 0;
+  color: var(--c-muted);
+  font-size: var(--fs-13);
+}
+
+/* Shared lane surface */
+.page-plot,
+.render-plot,
+.interaction-plot {
+  height: 44px;
+  cursor: crosshair;
+}
+
+.lane-range {
+  z-index: 1;
+}
+
+.paused-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(135deg, var(--c-paused-hatch) 0 4px, transparent 4px 8px);
+  border-left: 1px dashed var(--c-border-strong);
+  border-right: 1px dashed var(--c-border-strong);
+  pointer-events: none;
+}
+
+/* Page lane */
+.page-mark {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  height: 70%;
+  background: var(--c-ink);
+  transform: translateX(-1px);
+}
+
+.page-mark.is-navigation {
+  height: 100%;
+}
+.page-mark.is-DOMContentLoaded,
+.page-mark.is-load {
+  background: var(--c-muted);
+  height: 55%;
+}
+.page-mark.is-FCP {
+  background: var(--c-origin-native);
+}
+.page-mark.is-LCP {
+  background: var(--c-origin-node);
+  height: 85%;
+}
+.page-mark.is-shift {
+  background: var(--c-origin-framework);
+  width: 4px;
+}
+
+.page-mark-label {
+  position: absolute;
+  top: 0;
+  left: var(--sp-4);
+  font-size: var(--fs-11);
+  line-height: var(--lh-16);
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+
+.page-long-task {
+  position: absolute;
+  top: 0;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--c-sev-medium);
+  border: 1px solid var(--c-outline);
+}
+
+/* Rendering lane */
+.render-frames {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 8px;
+}
+
+.frame-tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 6px;
+  background: var(--c-muted);
+}
+
+.frame-tick.is-dropped {
+  height: 8px;
+  width: 2px;
+  background: var(--c-ink);
+}
+
+.render-blocks {
+  position: absolute;
+  inset: 0 0 10px 0;
+}
+
+.render-block {
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  border-radius: 2px;
+  min-width: 1px;
+  background: var(--c-render-script);
+}
+.render-block.phase-style {
+  background: var(--c-render-style);
+}
+.render-block.phase-layout {
+  background: var(--c-render-layout);
+}
+.render-block.phase-paint {
+  background: var(--c-render-paint);
+}
+.render-block.phase-composite {
+  background: var(--c-render-composite);
+}
+.render-block.phase-parse {
+  background: var(--c-render-parse);
+}
+
+/* Forced work is marked by outline and stripes, not by a warning colour. */
+.render-block.is-forced {
+  outline: 2px solid var(--c-outline);
+  outline-offset: -1px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--c-self-stripe) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+/* Interaction lane */
+.input-block {
+  position: absolute;
+  top: 6px;
+  height: 22px;
+  min-width: 10px;
+  border-radius: var(--r-chip);
+  background: var(--c-origin-dependency);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.input-block.kind-key,
+.input-block.kind-typing {
+  background: var(--c-origin-node);
+}
+.input-block.kind-scroll {
+  background: var(--c-origin-gc);
+}
+.input-block.kind-navigate {
+  background: var(--c-ink);
+}
+.input-block.kind-submit,
+.input-block.kind-change {
+  background: var(--c-origin-framework);
+}
+.input-block.is-slow {
+  outline: 2px solid var(--c-sev-medium);
+  outline-offset: 1px;
+}
+
+.input-count {
+  font-size: var(--fs-11);
+  line-height: var(--lh-16);
+  color: var(--c-on-accent);
+  font-weight: var(--fw-semi);
+  background: var(--c-surface);
+  border-radius: var(--r-chip);
+  padding: 0 var(--sp-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-lanes * {
+    transition: none;
+    animation: none;
+  }
+}

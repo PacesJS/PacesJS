@@ -13,6 +13,9 @@ const TEXT = {
   outsideTitle: 'Outside the project root',
   outsideHint:
     'paces only reads files inside the project root, so this one (runtime or dependency code) is not shown. Per-line time is still listed.',
+  notSavedTitle: 'Script not saved',
+  notSavedHint:
+    'This page script was not saved with the session: it was too large, empty, or evaluated without a URL. Per-line time is still listed.',
   notOnDiskTitle: 'File not found on disk',
   notOnDiskHint: (path: string) =>
     `${path} is not on disk. Open the session from the project that was profiled, or restore the file; per-line time is still listed.`,
@@ -37,6 +40,7 @@ export type SourceReasonKind =
   | 'host-down'
   | 'outside-root'
   | 'not-on-disk'
+  | 'not-saved'
   | 'map-missing'
   | 'no-self-time'
   | 'no-line-data';
@@ -73,6 +77,11 @@ export interface SourceFacts {
 const ABSOLUTE = /^([a-zA-Z]:[\\/]|\/|\\\\)/;
 const SCHEME = /^(node:|file:|data:|internal\/|[a-z-]+:)/;
 
+/** A script the browser fetched: its text comes from the session, never from disk. */
+export function isWebScript(path: string): boolean {
+  return /^(https?|wss?|chrome-extension|app|blob):\/\//i.test(path);
+}
+
 /** A path the host would not read: outside the project root, absolute, or not a file at all. */
 export function isOutsideProject(path: string): boolean {
   return path.startsWith('..') || ABSOLUTE.test(path) || SCHEME.test(path);
@@ -104,7 +113,15 @@ export function sourceReason(f: SourceFacts): SourceReason | null {
       showsText: false,
     };
   }
-  if (isOutsideProject(f.path)) {
+  if (isWebScript(f.path) && f.exists === false) {
+    return {
+      kind: 'not-saved',
+      title: TEXT.notSavedTitle,
+      hint: TEXT.notSavedHint,
+      showsText: false,
+    };
+  }
+  if (!isWebScript(f.path) && isOutsideProject(f.path)) {
     return {
       kind: 'outside-root',
       title: TEXT.outsideTitle,

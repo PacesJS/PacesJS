@@ -61,6 +61,12 @@ export function httpHostAdapter(opts: HttpHostOptions = {}): HostAdapter {
     },
     readSource: (path) =>
       getJson<SourceResult>(`api/source?path=${encodeURIComponent(path)}`, 'reading source'),
+    async readScreenshot(id) {
+      const res = await send('loading a screenshot', `api/screenshot/${id}`, {
+        headers: headers(),
+      });
+      return new Uint8Array(await res.arrayBuffer());
+    },
     async openInEditor(file, line) {
       await send('opening the editor', 'api/open-in-editor', {
         method: 'POST',

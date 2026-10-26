@@ -49,6 +49,13 @@ export { deoptCounts, deoptSites } from './query/deopts.js';
 export type { DeoptSite } from './query/deopts.js';
 export { getEmbeddedSource } from './query/embedded-source.js';
 export { timelineLane } from './query/timeline.js';
+export { browserTimeline } from './query/browser.js';
+export type {
+  BrowserInput,
+  BrowserRender,
+  BrowserTimeline,
+  BrowserVital,
+} from './query/browser.js';
 export { describeTasks } from './query/tasks.js';
 export { callersOf, hotPaths, packageBreakdown } from './query/paths.js';
 export { callTreeQuery, functionId, resolveSelector } from './query/tree.js';
