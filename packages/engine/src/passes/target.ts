@@ -97,7 +97,7 @@ function inferAppSiteOf(
  * A browser has no launcher process: every thread is part of the page being profiled, the primary
  * track is the busiest page, and first-party code is whatever the launched site served.
  */
-function detectBrowserTarget(
+export function detectBrowserTarget(
   capture: RawCapture,
   ingest: IngestResult,
   ctx: PassContext,
@@ -148,12 +148,11 @@ function detectBrowserTarget(
   };
 }
 
-export function detectTarget(
+export function detectNodeTarget(
   capture: RawCapture,
   ingest: IngestResult,
   ctx: PassContext,
 ): TargetDetection {
-  if (capture.browser) return detectBrowserTarget(capture, ingest, ctx);
   const root = capture.meta.projectRoot;
   const strings = ctx.strings.strings;
   const n = capture.tracks.length;
@@ -276,13 +275,14 @@ export function processName(absEntry: string, support: boolean): string {
 
 export function runKindOf(input: {
   override: RunKind | undefined;
-  browser?: boolean;
+  /** What the adapter says the run is, when capturing already told. */
+  fixed?: RunKind | undefined;
   hasRequests: boolean;
   listening: boolean;
   commandLike: boolean;
 }): RunKind {
   if (input.override) return input.override;
-  if (input.browser) return 'page';
+  if (input.fixed) return input.fixed;
   if (input.hasRequests || input.listening) return 'server';
   return input.commandLike ? 'cli' : 'script';
 }

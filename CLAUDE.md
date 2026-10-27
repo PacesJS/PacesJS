@@ -49,6 +49,10 @@ Data flows one way: raw chunks (target) → finished model (CLI) → queries (UI
 - Prettier formats (single quotes, 100 cols, trailing commas). Do not hand-format.
 - Files: `kebab-case.ts`; React components `PascalCase.tsx`; tests `<name>.test.ts(x)` under the package's `test/`, mirroring `src/`.
 
+## Kinds of run
+
+What differs between a Node command and a web page (which track is the program, what counts as first-party, which finding rules apply) lives in a `RunAdapter` (`packages/engine/src/run/`), a plain object chosen once from the capture and held in `PassContext.run`. Passes call it; they never ask "is this a browser?". A new kind of run is a new adapter, not a new `if`. Layout details that differ by kind (the waterfall's small-task limit) are a `RunProfile` table in `query/run-profile.ts`.
+
 ## Honest data rules (product behavior)
 
 Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bars under two sampling intervals. Exact data (instrumentation) drops the `~`. Red and amber mean finding severity only. Dim non-user frames to 45%, never hide them. Folded things are always expandable.

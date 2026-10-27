@@ -5,6 +5,7 @@ import { Origin } from '../model.js';
 import type { OriginId } from '../model.js';
 import { isPacesInstrumentation, packageNameFromPath } from '../util/paths.js';
 import { hostOfUrl, isFirstParty } from '../util/sites.js';
+import type { ClassifiedFunction, FrameFacts } from '../run/types.js';
 import type { MappedFunctions } from './source-maps.js';
 import type { PassContext, TargetSpec } from './types.js';
 
@@ -51,20 +52,47 @@ function isFramework(pkg: string): boolean {
   return FRAMEWORK_PACKAGES.has(pkg) || FRAMEWORK_SCOPES.some((s) => pkg.startsWith(s));
 }
 
-const SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+/** A Node function: runtime names first, then the target's own files, then packages by name. */
+export function classifyNodeFunction(
+  { name, file, line }: FrameFacts,
+  target: TargetSpec | undefined,
+  forced: OriginId | undefined,
+): ClassifiedFunction {
+  const pkgName = packageNameFromPath(file);
+  let origin: OriginId = Origin.User;
+  let inTarget = false;
+  if (forced !== undefined) origin = forced;
+  else if (name === '(idle)') origin = Origin.Idle;
+  else if (name === '(garbage collector)') origin = Origin.Gc;
+  else if (name === '(program)' || name === '(root)') origin = Origin.Native;
+  else if (file.startsWith('node:')) origin = Origin.Node;
+  else if (file === '' && line === 0) origin = Origin.Native;
+  else if (isPacesInstrumentation(file)) origin = Origin.Node;
+  else if (isTarget(target, pkgName, file)) {
+    origin = Origin.User;
+    inTarget = true;
+  } else if (pkgName) origin = isFramework(pkgName) ? Origin.Framework : Origin.Dependency;
+  // The target package keeps its name so views can still show where its functions live.
+  const named = origin === Origin.Dependency || origin === Origin.Framework || inTarget;
+  return { origin, pkg: named ? pkgName : '' };
+}
+
+const SCHEME = /^[a-z][a-z0-9+.-]*:/; //i;
 
 /**
- * Browser frames: first-party code is what the launched site served; another site's script is a
- * dependency named for its host; an extension is a dependency named `extension:<id>`; a built-in
- * has no script. A source-mapped path with no origin left cannot be told apart, so it stays the
- * program's, unless it lives in node_modules.
+ * A browser function: first-party code is what the launched site (or the site that serves its app)
+ * delivered; another site's script is a dependency named for its host; an extension is a dependency
+ * named `extension:<id>`; a built-in has no script. A source-mapped path with no origin left cannot
+ * be told apart, so it stays the program's, unless it lives in node_modules.
  */
-function classifyBrowserFrame(
-  name: string,
-  file: string,
-  pkgName: string,
-  browser: NonNullable<TargetSpec['browser']>,
-): { origin: OriginId; pkg: string } {
+export function classifyBrowserFunction(
+  { name, file }: FrameFacts,
+  target: TargetSpec | undefined,
+  forced: OriginId | undefined,
+): ClassifiedFunction {
+  if (forced !== undefined) return { origin: forced, pkg: '' };
+  const site = target?.browser;
+  const pkgName = packageNameFromPath(file);
   if (name === '(idle)') return { origin: Origin.Idle, pkg: '' };
   if (name === '(garbage collector)') return { origin: Origin.Gc, pkg: '' };
   if (name === '(program)' || name === '(root)') return { origin: Origin.Native, pkg: '' };
@@ -77,7 +105,7 @@ function classifyBrowserFrame(
     return { origin: Origin.Dependency, pkg: `extension:${hostOfUrl(file)}` };
   }
   if (!SCHEME.test(file)) return { origin: Origin.User, pkg: '' };
-  if (isFirstParty(file, browser.launchedUrl, browser.firstParty, browser.appSites)) {
+  if (site && isFirstParty(file, site.launchedUrl, site.firstParty, site.appSites)) {
     return { origin: Origin.User, pkg: '' };
   }
   return { origin: Origin.Dependency, pkg: hostOfUrl(file) };
@@ -93,41 +121,18 @@ export function classify(functions: MappedFunctions, ctx: PassContext): Classifi
       ctx.warnings.push({ kind: 'invalid-pattern', severity: 'warn', detail: pattern });
     }
   }
-  const target = ctx.target;
   const origin = new Uint8Array(functions.length);
   const pkg = new Uint32Array(functions.length);
   for (let f = 0; f < functions.length; f++) {
-    const name = strings[functions.name[f] ?? 0] ?? '';
-    const file = strings[functions.file[f] ?? 0] ?? '';
-    const pkgName = packageNameFromPath(file);
-    let o: OriginId = Origin.User;
-    let inTarget = false;
-    let browserPkg = '';
-    const override = overrides.find(([re]) => re.test(file));
-    if (override) o = override[1];
-    else if (target?.browser) {
-      const verdict = classifyBrowserFrame(name, file, pkgName, target.browser);
-      o = verdict.origin;
-      browserPkg = verdict.pkg;
-    } else if (name === '(idle)') o = Origin.Idle;
-    else if (name === '(garbage collector)') o = Origin.Gc;
-    else if (name === '(program)' || name === '(root)') o = Origin.Native;
-    else if (file.startsWith('node:')) o = Origin.Node;
-    else if (file === '' && (functions.line[f] ?? 0) === 0) o = Origin.Native;
-    else if (isPacesInstrumentation(file)) o = Origin.Node;
-    else if (isTarget(target, pkgName, file)) {
-      o = Origin.User;
-      inTarget = true;
-    } else if (pkgName) o = isFramework(pkgName) ? Origin.Framework : Origin.Dependency;
-    origin[f] = o;
-    // The target package keeps its name so views can still show where its functions live.
-    pkg[f] = target?.browser
-      ? browserPkg
-        ? ctx.strings.intern(browserPkg)
-        : 0
-      : o === Origin.Dependency || o === Origin.Framework || (inTarget && o === Origin.User)
-        ? ctx.strings.intern(pkgName)
-        : 0;
+    const frame: FrameFacts = {
+      name: strings[functions.name[f] ?? 0] ?? '',
+      file: strings[functions.file[f] ?? 0] ?? '',
+      line: functions.line[f] ?? 0,
+    };
+    const forced = overrides.find(([re]) => re.test(frame.file))?.[1];
+    const verdict = ctx.run.classifyFunction(frame, ctx.target, forced);
+    origin[f] = verdict.origin;
+    pkg[f] = ctx.strings.intern(verdict.pkg);
   }
   return { origin, pkg };
 }

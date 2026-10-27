@@ -1,3 +1,4 @@
+import { NODE_RUN } from '../../src/run/index.js';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import type { PassContext } from '../../src/passes/types.js';
@@ -34,6 +35,7 @@ export function loadCapture(name: FixtureName): RawCapture {
 
 export function makeContext(): PassContext {
   return {
+    run: NODE_RUN,
     thresholds: DEFAULT_THRESHOLDS,
     options: {},
     strings: createStringTable(),

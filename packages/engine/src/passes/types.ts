@@ -3,6 +3,7 @@
 import type { AnalyzeOptions, Thresholds } from '../config.js';
 import type { Samples, EventTable } from '../model.js';
 import type { ScriptInfo, TimelineEvent, TrackInfo } from '../raw.js';
+import type { RunAdapter } from '../run/types.js';
 import type { StringTable } from '../util/strings.js';
 
 /** One occurrence of something worth a warning; `analyze` folds drafts into one `ModelWarning` per kind. */
@@ -24,6 +25,8 @@ export interface TargetSpec {
 }
 
 export interface PassContext {
+  /** What differs between kinds of run: chosen once from the capture. */
+  run: RunAdapter;
   thresholds: Thresholds;
   options: AnalyzeOptions;
   strings: StringTable;
