@@ -17,11 +17,10 @@ function el(spec: Spec): ElementLike {
   return {
     tagName: spec.tag.toUpperCase(),
     id: spec.id ?? '',
-    className: spec.className ?? '',
     textContent: spec.text ?? '',
     isContentEditable: spec.editable ?? false,
     parentElement: spec.parent ?? null,
-    getAttribute: (name) => attrs[name] ?? null,
+    getAttribute: (name) => (name === 'class' ? (spec.className ?? null) : (attrs[name] ?? null)),
   };
 }
 
@@ -29,6 +28,13 @@ const withText = { text: true };
 const structureOnly = { text: false };
 
 describe('describeElement', () => {
+  it('describes an SVG icon, whose className is an object and not a string', () => {
+    const icon = Object.assign(el({ tag: 'svg', className: 'icon-close' }), {
+      className: { baseVal: 'icon-close' },
+    });
+    expect(describeElement(icon, withText)).toBe('svg.icon-close');
+  });
+
   it('names an input by tag, type and id', () => {
     const input = el({ tag: 'input', id: 'signup-email', attrs: { type: 'email' } });
     expect(describeElement(input, withText)).toBe('input[type=email]#signup-email');

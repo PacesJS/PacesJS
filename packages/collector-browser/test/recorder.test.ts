@@ -63,6 +63,13 @@ describe.runIf(exe)('startRecording (real browser)', () => {
     expect(recording.startedAt).toBeGreaterThanOrEqual(tracingSince);
   }, 60_000);
 
+  it('records a click on an SVG icon, whose className is not a string', async () => {
+    const recording = await record('icon-dialog');
+    const clicks = recording.marks.filter((m) => m.kind === 'click').map((m) => m.label);
+    expect(clicks).toHaveLength(1);
+    expect(clicks[0]).toContain('icon-close');
+  }, 60_000);
+
   it('never records the injected script as a page script', async () => {
     const recording = await record('slow-click');
     expect(recording.scripts.some((s) => s.url.startsWith('paces://'))).toBe(false);
