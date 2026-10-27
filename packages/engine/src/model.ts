@@ -414,6 +414,12 @@ export interface RequestTable {
   decoded: Float64Array;
   /** HTTP status, 0 when unknown. */
   status: Uint16Array;
+  /** String table index of the function that asked for it; 0 when the page's code did not. */
+  initiatorFn: Uint32Array;
+  /** String table index of the file that function is in. */
+  initiatorScript: Uint32Array;
+  /** 1-based line of the call; 0 when unknown. */
+  initiatorLine: Uint32Array;
 }
 
 export interface ScreenshotTable {

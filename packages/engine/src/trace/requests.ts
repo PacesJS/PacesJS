@@ -2,7 +2,7 @@
 // joined by request id. Only the fields named below are read, so response headers (cookies among
 // them) never reach a capture.
 
-import type { RawRequest } from '../raw.js';
+import type { RawRequest, RawRequestInitiator } from '../raw.js';
 import type { TraceEventIn } from './types.js';
 
 export interface RequestCollector {
@@ -14,6 +14,35 @@ export interface RequestCollector {
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const num = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+
+/** The browser types a `fetch()` or XHR as `Other`; the initiator says which it was. */
+function typeOf(data: Record<string, unknown>): string {
+  const initiator = data.initiator as { fetchType?: unknown } | undefined;
+  const fetchType = str(initiator?.fetchType);
+  if (fetchType === 'fetch') return 'Fetch';
+  if (fetchType === 'xmlhttprequest') return 'XHR';
+  return str(data.resourceType) ?? 'Other';
+}
+
+/** Only requests sent from running script carry a stack; the innermost frame is who asked. */
+function initiatorOf(data: Record<string, unknown>): RawRequestInitiator | undefined {
+  const kind = str((data.initiator as { type?: unknown } | undefined)?.type);
+  const top = Array.isArray(data.stackTrace)
+    ? (data.stackTrace[0] as Record<string, unknown> | undefined)
+    : undefined;
+  if (!kind || kind === 'other' || !top) return undefined;
+  const fn = str(top.functionName);
+  const script = str(top.url);
+  const line = num(top.lineNumber);
+  const column = num(top.columnNumber);
+  return {
+    kind,
+    ...(fn ? { fn } : {}),
+    ...(script ? { script } : {}),
+    ...(line !== undefined ? { line: line + 1 } : {}),
+    ...(column !== undefined ? { column: column + 1 } : {}),
+  };
+}
 
 export function createRequestCollector(): RequestCollector {
   const byId = new Map<string, RawRequest>();
@@ -49,17 +78,19 @@ export function createRequestCollector(): RequestCollector {
         const url = str(data.url);
         if (!url || byId.has(id)) return;
         const frame = str(data.frame);
+        const initiator = initiatorOf(data);
         const r: RawRequest = {
           id,
           pid: e.pid,
           url,
-          type: str(data.resourceType) ?? 'Other',
+          type: typeOf(data),
           priority: str(data.priority) ?? '',
           renderBlocking: data.renderBlocking === 'blocking',
           startUs: e.ts,
           fromCache: false,
           failed: false,
           ...(frame ? { frame } : {}),
+          ...(initiator ? { initiator } : {}),
         };
         byId.set(id, r);
         for (const later of early.get(id) ?? []) {

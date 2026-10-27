@@ -176,6 +176,20 @@ export interface RawRequest {
   /** Bytes of the body after decompression. */
   decodedBytes?: number;
   frame?: string;
+  /** Who asked for it, when the page's own code did. */
+  initiator?: RawRequestInitiator;
+}
+
+/** The innermost script frame that was running when a request was sent. */
+export interface RawRequestInitiator {
+  /** The browser's own word for it: `script`, `parser`, `preload` or `other`. */
+  kind: string;
+  fn?: string;
+  /** URL of the script or document the function is in. */
+  script?: string;
+  /** 1-based. */
+  line?: number;
+  column?: number;
 }
 
 /** What a browser capture adds to the common shapes. */

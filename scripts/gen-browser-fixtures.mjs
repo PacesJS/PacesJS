@@ -24,10 +24,11 @@ const PAGES = [
   'big-script',
   'slow-load',
   'slow-doc',
+  'late-hero',
   'paused-resume',
 ];
 // Pages whose story needs longer than the default recording.
-const PAGE_SECONDS = { 'slow-load': 5.5, 'slow-doc': 3.5 };
+const PAGE_SECONDS = { 'slow-load': 5.5, 'slow-doc': 3.5, 'late-hero': 5.5 };
 // Recorded from slow-click, with a pause and a resume in the middle: two trace segments.
 const PAGE_FILE = { 'paused-resume': 'slow-click' };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

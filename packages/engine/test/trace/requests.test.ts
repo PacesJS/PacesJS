@@ -46,4 +46,17 @@ describe('recordingToCapture: network requests', () => {
     expect(text).not.toContain('set-cookie');
     expect(JSON.stringify(requests())).not.toContain('headers');
   });
+
+  it('keeps the function, file and line of the script that made a fetch', () => {
+    const late = recordingToCapture(cloneInput('late-hero')).browser?.requests ?? [];
+    const hero = late.find((r) => r.url.endsWith('/slow-hero.svg'));
+    expect(hero?.type).toBe('Fetch');
+    expect(hero?.initiator).toMatchObject({ kind: 'script', fn: 'showHero', line: 10 });
+    expect(hero?.initiator?.script?.endsWith('/late-hero.html')).toBe(true);
+  });
+
+  it('leaves out a requester when the page did not call anything', () => {
+    const late = recordingToCapture(cloneInput('late-hero')).browser?.requests ?? [];
+    expect(late[0]?.initiator).toBeUndefined();
+  });
 });

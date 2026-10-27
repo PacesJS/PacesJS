@@ -24,6 +24,10 @@ load, so tests of these captures assert the planted finding and exact structure,
 | `worker-and-iframe` | Work on the page, in a worker and in a cross-site iframe  | three tracks; third-party-cost (iframe) |
 | `layout-shift`      | A banner inserted above content after it was painted      | layout-shift                            |
 | `paused-resume`     | `slow-click`, paused and resumed once: two trace segments | a paused band between the segments      |
+| `big-script`        | A large script served as plain text, and the same gzipped | uncompressed-text                       |
+| `slow-load`         | A hero image the server sends after 2.8 s                 | slow-load                               |
+| `slow-doc`          | HTML the server takes 1.3 s to start sending              | slow-document                           |
+| `late-hero`         | A script fetches the slow hero image after load           | slow-load, naming the requesting script |
 
 Each file is budgeted at about 500 KB gzipped (a test enforces it); if a fixture outgrows that, the
 capture-time filter is wrong, not the budget.

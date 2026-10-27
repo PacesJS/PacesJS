@@ -97,6 +97,25 @@ export function networkOverview(model: ExecutionModel): NetworkOverview {
   };
 }
 
+export interface RequestInitiator {
+  fn: string;
+  /** The file the function is in. */
+  script: string;
+  line: number;
+}
+
+/** The function that asked for request `i`, or null when the browser, the parser or the page itself did. */
+export function requestInitiator(model: ExecutionModel, i: number): RequestInitiator | null {
+  const t = model.page?.requests;
+  const fn = t?.initiatorFn[i] ?? 0;
+  if (!t || fn === 0) return null;
+  return {
+    fn: model.strings[fn] ?? '',
+    script: model.strings[t.initiatorScript[i] ?? 0] ?? '',
+    line: t.initiatorLine[i] ?? 0,
+  };
+}
+
 const costsByUrl = new WeakMap<ExecutionModel, Map<string, ScriptCost>>();
 
 /** What the file that `fn` was parsed from cost to fetch and to run, or null when it was not fetched as a script. */
