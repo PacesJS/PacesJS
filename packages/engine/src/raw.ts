@@ -148,6 +148,36 @@ export interface PageEvent extends TimelineEvent {
   pid: number;
 }
 
+/**
+ * One network request of the page, from the trace's resource events. Times are microseconds on the
+ * trace clock. Only sizes, timing and a few facts are kept; response headers never are.
+ */
+export interface RawRequest {
+  id: string;
+  /** The process that sent it. */
+  pid: number;
+  url: string;
+  /** Document, Script, Stylesheet, Image, Font, Fetch, XHR or Other. */
+  type: string;
+  priority: string;
+  /** The browser held rendering until this arrived. */
+  renderBlocking: boolean;
+  startUs: number;
+  responseUs?: number;
+  endUs?: number;
+  status?: number;
+  mime?: string;
+  protocol?: string;
+  /** Served from the HTTP cache or a service worker. */
+  fromCache: boolean;
+  failed: boolean;
+  /** Bytes on the wire, headers included. */
+  encodedBytes?: number;
+  /** Bytes of the body after decompression. */
+  decodedBytes?: number;
+  frame?: string;
+}
+
 /** What a browser capture adds to the common shapes. */
 export interface BrowserInfo {
   product: string;
@@ -165,6 +195,8 @@ export interface BrowserInfo {
   throttle?: number;
   cacheCold?: boolean;
   page: PageEvent[];
+  /** Network requests; absent in sessions recorded before they were kept. */
+  requests?: RawRequest[];
   /** Filmstrip frames: the bytes live in the session, next to the model. */
   screenshots: Array<{ id: number; tsUs: number }>;
   traceFilter?: {

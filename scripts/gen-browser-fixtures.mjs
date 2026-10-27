@@ -21,6 +21,7 @@ const PAGES = [
   'third-party',
   'worker-and-iframe',
   'layout-shift',
+  'big-script',
   'paused-resume',
 ];
 // Recorded from slow-click, with a pause and a resume in the middle: two trace segments.

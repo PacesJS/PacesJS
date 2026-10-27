@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>big script</title>
+<!-- Planted problem: a large script is served uncompressed. The same code served compressed is fine. -->
+<p>page with a large script sent as plain text</p>
+<script src="/vendor.js"></script>
+<script src="/vendor-gz.js"></script>
+<script>
+  for (let round = 0; round < 600; round++) {
+    for (let i = 0; i < 1500; i += 7) {
+      window['vendorStep' + i](round, i);
+      window['vendorStepGz' + i](round, i);
+    }
+  }
+</script>

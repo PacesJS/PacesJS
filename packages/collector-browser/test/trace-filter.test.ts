@@ -33,6 +33,31 @@ describe('scrubUrl', () => {
   });
 });
 
+describe('createTraceFilter: response headers', () => {
+  const response = (): TraceEvent =>
+    ev('ResourceReceiveResponse', 1, {
+      args: {
+        data: {
+          requestId: 'r1',
+          statusCode: 200,
+          headers: [{ name: 'set-cookie', value: 'session=hunter2' }],
+        },
+      },
+    });
+
+  it('drops the headers of a response and keeps the rest of it', () => {
+    const [kept] = createTraceFilter({ keepQuery: false, full: false }).push([response()]);
+    const data = (kept?.args as { data: Record<string, unknown> }).data;
+    expect(data.headers).toBeUndefined();
+    expect(data.statusCode).toBe(200);
+  });
+
+  it('drops them in a full trace too: nothing reads them and they can hold cookies', () => {
+    const [kept] = createTraceFilter({ keepQuery: false, full: true }).push([response()]);
+    expect(JSON.stringify(kept)).not.toContain('hunter2');
+  });
+});
+
 describe('createTraceFilter', () => {
   it('drops events on the noise list and counts them by name', () => {
     const filter = createTraceFilter({ keepQuery: false, full: false });
