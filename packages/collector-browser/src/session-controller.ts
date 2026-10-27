@@ -86,6 +86,7 @@ const BASE_CATEGORIES = [
   'v8.execute',
   'disabled-by-default-devtools.timeline',
   'disabled-by-default-devtools.timeline.frame',
+  'disabled-by-default-devtools.timeline.stack',
   'blink.user_timing',
   'blink.console',
   'latencyInfo',

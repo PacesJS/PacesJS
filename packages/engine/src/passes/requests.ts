@@ -32,6 +32,9 @@ export function buildRequests(
     encoded: new Float64Array(n),
     decoded: new Float64Array(n),
     status: new Uint16Array(n),
+    initiatorFn: new Uint32Array(n),
+    initiatorScript: new Uint32Array(n),
+    initiatorLine: new Uint32Array(n),
   };
   requests.forEach((r, i) => {
     table.start[i] = rel(r.startUs);
@@ -43,6 +46,11 @@ export function buildRequests(
     table.encoded[i] = r.encodedBytes ?? -1;
     table.decoded[i] = r.decodedBytes ?? -1;
     table.status[i] = r.status ?? 0;
+    if (r.initiator?.fn) {
+      table.initiatorFn[i] = strings.intern(r.initiator.fn);
+      table.initiatorScript[i] = strings.intern(r.initiator.script ?? '');
+      table.initiatorLine[i] = r.initiator.line ?? 0;
+    }
   });
   return table;
 }

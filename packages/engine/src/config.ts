@@ -110,4 +110,4 @@ export interface AnalyzeOptions {
   suppressForCli?: FindingKind[];
 }
 
-export const ENGINE_VERSION = '0.8.1';
+export const ENGINE_VERSION = '0.8.2';

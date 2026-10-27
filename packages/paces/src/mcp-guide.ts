@@ -68,7 +68,9 @@ refused without a display.
   summary of a page also has a \`network\` block: requests and bytes by type, and the scripts that ran
   the most with what each cost to fetch beside what it cost to run. \`slow-load\` splits the time to the
   largest content into main thread busy, idle with requests in flight, and idle with nothing in
-  flight; a request in flight is not proof the page was waiting on it. Origins other than the site you opened are
+  flight; a request in flight is not proof the page was waiting on it. When a script called \`fetch\` or
+  XHR for the slowest request, \`slow-load\` names the function that did (images and scripts the
+  browser starts itself have no requester). Origins other than the site you opened are
   \`dependency\`, named for their host (\`cdn.example.com\`). Rendering and input timings come from
   trace events and are exact; sampled JavaScript time keeps the \`~\`.
 - Query strings and fragments are dropped from the URLs it stores, and typed text is never recorded.

@@ -11,6 +11,7 @@ export const BROWSER_FIXTURES = [
   'big-script',
   'slow-load',
   'slow-doc',
+  'late-hero',
   'paused-resume',
 ] as const;
 export type BrowserFixtureName = (typeof BROWSER_FIXTURES)[number];

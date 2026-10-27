@@ -3,6 +3,7 @@ import { analyze } from '../../src/analyze.js';
 import { REQUEST_FLAG, REQUEST_TYPE_NAMES } from '../../src/model.js';
 import type { ExecutionModel } from '../../src/model.js';
 import { deserializeModel, serializeModel } from '../../src/serialize.js';
+import { requestInitiator } from '../../src/query/network.js';
 import { recordingToCapture } from '../../src/trace/trace-to-capture.js';
 import { cloneInput } from '../helpers/browser-fixtures.js';
 import { BROWSER_FIXTURES } from '../helpers/browser-fixtures.js';
@@ -116,9 +117,23 @@ describe('browser model: the slow-load finding', () => {
     expect(found('slow-load')[0]?.hint).toMatch(/network|request/i);
   });
 
-  it.each(BROWSER_FIXTURES.filter((n) => n !== 'slow-load'))('stays silent on %s', (name) => {
-    expect(found(name)).toEqual([]);
+  it('says which function asked for the slowest request when a script did', () => {
+    const f = found('late-hero');
+    expect(f).toHaveLength(1);
+    expect(f[0]?.summary).toContain('slow-hero.svg');
+    expect(f[0]?.summary).toMatch(/requested by showHero \(\S*late-hero\.html:\d+\)/);
   });
+
+  it('does not name a requester for a request the parser made', () => {
+    expect(found('slow-load')[0]?.summary).not.toContain('requested by');
+  });
+
+  it.each(BROWSER_FIXTURES.filter((n) => n !== 'slow-load' && n !== 'late-hero'))(
+    'stays silent on %s',
+    (name) => {
+      expect(found(name)).toEqual([]);
+    },
+  );
 });
 
 describe('browser model: the slow-document finding', () => {
@@ -146,6 +161,37 @@ describe('browser model: network findings only count real network requests', () 
     }
     const m = analyze(recordingToCapture(input));
     expect(m.findings.filter((f) => f.kind === 'uncompressed-text')).toEqual([]);
+  });
+});
+
+describe('browser model: who asked for a request', () => {
+  it('records the function, file and line of the script that called fetch', () => {
+    const m = model('late-hero');
+    const t = m.page?.requests;
+    const i = Array.from({ length: t?.length ?? 0 }, (_, k) => k).find((k) =>
+      (m.strings[t?.url[k] ?? 0] ?? '').endsWith('/slow-hero.svg'),
+    );
+    expect(i).toBeDefined();
+    expect(requestInitiator(m, i ?? -1)).toMatchObject({ fn: 'showHero', line: 10 });
+    expect(requestInitiator(m, i ?? -1)?.script.endsWith('/late-hero.html')).toBe(true);
+  });
+
+  it('types a fetch call as Fetch, not Other', () => {
+    expect(request(model('late-hero'), '/slow-hero.svg')?.type).toBe('Fetch');
+  });
+
+  it('has no requester for the document, which nothing in the page asked for', () => {
+    const m = model('late-hero');
+    expect(requestInitiator(m, 0)).toBeNull();
+  });
+
+  it('survives a trip through the cached model', () => {
+    const back = deserializeModel(serializeModel(model('late-hero')));
+    const t = back.page?.requests;
+    const i = Array.from({ length: t?.length ?? 0 }, (_, k) => k).find((k) =>
+      (back.strings[t?.url[k] ?? 0] ?? '').endsWith('/slow-hero.svg'),
+    );
+    expect(requestInitiator(back, i ?? -1)?.fn).toBe('showHero');
   });
 });
 

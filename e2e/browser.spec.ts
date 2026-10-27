@@ -180,6 +180,19 @@ test.describe('paces browser: a real browser', () => {
     }
   });
 
+  test('names the function that fetched the request the largest content waited on', async () => {
+    const dir = tempDir();
+    try {
+      const { run, out } = await record('late-hero', dir, ['--duration', '6']);
+      expect(run.code, run.stderr).toBe(0);
+      const summary = await runPaces(['summary', out]);
+      expect(summary.stdout).toMatch(/slow-hero\.svg/);
+      expect(summary.stdout).toMatch(/requested by showHero/);
+    } finally {
+      removeDir(dir);
+    }
+  });
+
   test('reports a page whose HTML was slow to start arriving', async () => {
     const dir = tempDir();
     try {

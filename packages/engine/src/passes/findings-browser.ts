@@ -6,6 +6,8 @@ import { functionName } from '../frames.js';
 import { INPUT_KIND_NAMES, Origin, REQUEST_FLAG, REQUEST_TYPE_NAMES } from '../model.js';
 import type { ExecutionModel, Finding, FnId, Severity, Track } from '../model.js';
 import { formatBytes, formatDuration, formatPercent, plural } from '../util/format.js';
+import { requestInitiator } from '../query/network.js';
+import type { RequestInitiator } from '../query/network.js';
 import { displayPath } from '../util/paths.js';
 import { lowerBound } from '../util/search.js';
 
@@ -453,9 +455,17 @@ const slowestRequestBefore = (m: ExecutionModel, from: number, to: number) => {
     }
   }
   return t && best >= 0
-    ? { url: text(m, t.url[best] ?? 0), start: t.start[best] ?? 0, took: bestTook }
+    ? {
+        url: text(m, t.url[best] ?? 0),
+        start: t.start[best] ?? 0,
+        took: bestTook,
+        by: requestInitiator(m, best),
+      }
     : undefined;
 };
+
+const requesterText = (by: RequestInitiator | null): string =>
+  by ? `, requested by ${by.fn} (${displayPath(by.script)}:${by.line})` : '';
 
 const slowLoad: BrowserRule = (m, th) => {
   const lcp = lastVital(m, VITAL_LCP);
@@ -473,7 +483,7 @@ const slowLoad: BrowserRule = (m, th) => {
   const primary = m.tracks[m.primaryTrack];
   const slowestText =
     slowest && dominant === split.waiting
-      ? ` The slowest request to finish before it was ${displayPath(slowest.url)} (sent at ${seconds(slowest.start)}, took ${formatDuration(slowest.took, false)}).`
+      ? ` The slowest request to finish before it was ${displayPath(slowest.url)} (sent at ${seconds(slowest.start)}, took ${formatDuration(slowest.took, false)}${requesterText(slowest.by)}).`
       : '';
   return [
     {

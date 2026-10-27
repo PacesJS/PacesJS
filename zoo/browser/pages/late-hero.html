@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>late hero</title>
+<!-- Planted problem: a script fetches the hero image only after the page has loaded, and the server is slow to send it. -->
+<h1>Report</h1>
+<div id="slot" style="width: 800px; height: 500px"></div>
+<script>
+  async function showHero() {
+    const blob = await (await fetch('/slow-hero.svg')).blob();
+    const img = new Image(800, 500);
+    img.src = URL.createObjectURL(blob);
+    document.getElementById('slot').appendChild(img);
+  }
+  setTimeout(showHero, 300);
+</script>
