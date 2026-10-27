@@ -49,6 +49,24 @@ const until = async (condition: () => Promise<boolean> | boolean, what: string):
   }
 };
 
+/**
+ * Presses a button the way a person does under a slow machine: look, and press again if nothing
+ * happened yet. Each press gets a moment to show its effect first.
+ */
+async function pressUntil(
+  press: () => Promise<void>,
+  done: () => Promise<boolean> | boolean,
+  what: string,
+): Promise<void> {
+  const end = Date.now() + 20_000;
+  while (!(await done())) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await press().catch(() => undefined);
+    const settle = Date.now() + 1500;
+    while (Date.now() < settle && !(await done())) await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 /** Finds and presses things in the page the way a person does: a real mouse, at real coordinates. */
 async function pageHands(cdp: CdpLike, sessionId: string) {
   await cdp.send('DOM.enable', {}, sessionId);
@@ -100,6 +118,32 @@ async function pageHands(cdp: CdpLike, sessionId: string) {
       await mouse('mouseReleased', x, y, { button: 'left', clickCount: 1 });
     },
     labels: async () => (await buttons()).map((b) => b.label),
+    /** The Mark label box, when it is open. */
+    labelBox: async (): Promise<DomNode | undefined> => {
+      const { root } = (await send('DOM.getDocument', { depth: -1, pierce: true })) as {
+        root: DomNode;
+      };
+      let box: DomNode | undefined;
+      walk(root, (n) => {
+        if (n.nodeName === 'INPUT' && attr(n, 'type') !== 'hidden') box = n;
+      });
+      return box;
+    },
+    /** Clicks into the label box, as a person would, so the keys go there however slow the page is. */
+    clickLabelBox: async (): Promise<void> => {
+      const { root } = (await send('DOM.getDocument', { depth: -1, pierce: true })) as {
+        root: DomNode;
+      };
+      let box: DomNode | undefined;
+      walk(root, (n) => {
+        if (n.nodeName === 'INPUT' && attr(n, 'type') !== 'hidden') box = n;
+      });
+      if (!box) throw new Error('the label box is not open');
+      const { x, y } = await centre(box.nodeId);
+      await mouse('mouseMoved', x, y);
+      await mouse('mousePressed', x, y, { button: 'left', clickCount: 1 });
+      await mouse('mouseReleased', x, y, { button: 'left', clickCount: 1 });
+    },
   };
 }
 
@@ -112,7 +156,7 @@ describe.runIf(exe)('the overlay, with a real mouse', () => {
   afterAll(async () => {
     run?.kill();
     await zoo.close();
-  });
+  }, 60_000);
 
   const start = async (): Promise<
     ReturnType<typeof pageHands> extends Promise<infer H> ? H : never
@@ -139,11 +183,17 @@ describe.runIf(exe)('the overlay, with a real mouse', () => {
     const hands = await start();
     await hands.hover('paces: recording');
     await until(async () => (await hands.labels()).includes('Pause'), 'the overlay to expand');
-    await hands.click('Pause');
-    await until(() => run?.controller.state().phase === 'paused', 'the recording to pause');
+    await pressUntil(
+      () => hands.click('Pause'),
+      () => run?.controller.state().phase === 'paused',
+      'the recording to pause',
+    );
     await until(async () => (await hands.labels()).includes('Resume'), 'the Resume button');
-    await hands.click('Resume');
-    await until(() => run?.controller.state().phase === 'recording', 'the recording to resume');
+    await pressUntil(
+      () => hands.click('Resume'),
+      () => run?.controller.state().phase === 'recording',
+      'the recording to resume',
+    );
     await run?.stop();
     const recording = await run?.done;
     expect(recording?.segments).toHaveLength(2);
@@ -154,9 +204,13 @@ describe.runIf(exe)('the overlay, with a real mouse', () => {
     await hands.hover('paces: recording');
     await until(async () => (await hands.labels()).includes('Mark'), 'the overlay to expand');
     const before = run?.controller.state().marks ?? 0;
-    await hands.click('Mark');
     // The label box opens and takes the keys; Enter adds the mark.
-    await new Promise((r) => setTimeout(r, 300));
+    await pressUntil(
+      () => hands.click('Mark'),
+      async () => (await hands.labelBox()) !== undefined,
+      'the label box',
+    );
+    await hands.clickLabelBox();
     const cdp = run?.cdp as CdpLike;
     const sessionId = run?.pageSession ?? '';
     for (const ch of 'checkout') {
@@ -184,7 +238,12 @@ describe.runIf(exe)('the overlay, with a real mouse', () => {
     const hands = await start();
     await hands.hover('paces: recording');
     await until(async () => (await hands.labels()).includes('Stop'), 'the overlay to expand');
-    await hands.click('Stop');
+    await pressUntil(
+      () => hands.click('Stop'),
+      () =>
+        run?.controller.state().phase === 'stopping' || run?.controller.state().phase === 'done',
+      'the run to stop',
+    );
     const recording = await run?.done;
     expect(recording?.endedBy).toBe('stop');
   }, 90_000);

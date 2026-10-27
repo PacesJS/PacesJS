@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
-// The transport test launches a real browser; a cold CI runner needs more than 5 s.
-export default defineConfig({ test: { include: ['test/**/*.test.ts'], testTimeout: 30_000 } });
+// The real-browser tests open windows. Side by side they cover each other, and a covered window
+// stops rendering, so a real mouse press in it is never seen: run the files one after the other.
+export default defineConfig({
+  test: { include: ['test/**/*.test.ts'], testTimeout: 30_000, fileParallelism: false },
+});
