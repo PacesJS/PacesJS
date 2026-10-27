@@ -3,6 +3,7 @@
 
 import { Origin, TaskKind } from '../model.js';
 import { functionName } from '../frames.js';
+import { profileOf } from './run-profile.js';
 import type { ExecutionModel, Samples, Track } from '../model.js';
 import { reconstructSpans } from '../passes/spans.js';
 import { formatDuration, plural } from '../util/format.js';
@@ -400,20 +401,13 @@ export function waterfallForRange(
  * collapsing off). Root-level `(program)`, GC and idle rows between tasks fold at the larger of this and two
  * sampling intervals.
  */
-const PAGE_SMALL_TASK_US = 5000;
-/** A group of small tasks on a page ends at an idle stretch this long, so a group is a burst, not seconds. */
-const PAGE_GROUP_GAP_US = 100_000;
-
 export function smallTaskLimitUs(
   model: ExecutionModel,
   trackIndex: number,
   override?: number,
 ): number {
   const track = model.tracks[trackIndex];
-  if (override !== undefined) return override;
-  // A page runs thousands of tasks of a fraction of a millisecond; listing them one by one buries the few that matter.
-  if (model.target.kind === 'page') return PAGE_SMALL_TASK_US;
-  return Math.max(500, 0.001 * (track?.durationUs ?? 0));
+  return override ?? profileOf(model).smallTaskUs(track?.durationUs ?? 0);
 }
 
 /** Tasks that are not worth a row: little busy time, or nothing of the program's in them. */
@@ -882,14 +876,14 @@ function summaryRows(
   return summaries;
 }
 
-function pageGaps(model: ExecutionModel): { maxUs: number; pauses: Array<[number, number]> } {
-  if (model.target.kind !== 'page') return { maxUs: Infinity, pauses: [] };
+/** Where a summary row must end: after an idle stretch, or at a pause (a run with none has none). */
+function groupBreaks(model: ExecutionModel): { maxUs: number; pauses: Array<[number, number]> } {
   const paused = model.page?.paused;
   const pauses: Array<[number, number]> = [];
   for (let k = 0; k < (paused?.length ?? 0); k++) {
     pauses.push([paused?.start[k] ?? 0, paused?.end[k] ?? 0]);
   }
-  return { maxUs: PAGE_GROUP_GAP_US, pauses };
+  return { maxUs: profileOf(model).groupGapUs, pauses };
 }
 
 export function waterfallForRun(
@@ -940,7 +934,7 @@ export function waterfallForRun(
     { small, blips },
     { alias, drop, topDepth, rootId: root ? root.id : -1 },
     span,
-    pageGaps(model),
+    groupBreaks(model),
   );
 
   const ordered = reindex([...rows, ...summaries], alias, drop);
