@@ -14,6 +14,8 @@ import {
   relativeToRoot,
   urlToPath,
 } from '../util/paths.js';
+import type { SiteUsage } from '../util/sites.js';
+import { inferAppSites, siteOf } from '../util/sites.js';
 import type { IngestResult, PassContext, TargetSpec } from './types.js';
 
 export interface TargetDetection {
@@ -64,6 +66,33 @@ export function isLauncherEntry(absEntry: string): boolean {
   return LAUNCHER_FILE.test(basenameOf(absEntry).replace(/\.(c|m)?js$/, ''));
 }
 
+/** Script time and function count per site on the primary page, for `inferAppSites`. */
+function inferAppSiteOf(
+  ingest: IngestResult,
+  primary: number,
+  launchedUrl: string,
+  strings: readonly string[],
+): string[] {
+  const tree = ingest.tracks[primary]?.tree;
+  if (!tree) return [];
+  const usage = new Map<string, SiteUsage>();
+  const seen = new Set<number>();
+  for (let node = 0; node < tree.length; node++) {
+    const frame = tree.frame[node] ?? 0;
+    const url = strings[ingest.frames.url[frame] ?? 0] ?? '';
+    const site = siteOf(url);
+    if (url === '' || site === '') continue;
+    const row = usage.get(site) ?? { selfUs: 0, functions: 0 };
+    row.selfUs += tree.self[node] ?? 0;
+    if (!seen.has(frame)) {
+      seen.add(frame);
+      row.functions += 1;
+    }
+    usage.set(site, row);
+  }
+  return inferAppSites(usage, siteOf(launchedUrl));
+}
+
 /**
  * A browser has no launcher process: every thread is part of the page being profiled, the primary
  * track is the busiest page, and first-party code is whatever the launched site served.
@@ -97,13 +126,16 @@ function detectBrowserTarget(
   if (primary < 0) primary = 0;
   const urls = capture.tracks.map((t) => t.info.url ?? '');
   const browser = capture.browser;
+  const launchedUrl = browser?.url || urls[primary] || '';
+  const firstParty = browser?.firstParty ?? [];
+  const appSites = inferAppSiteOf(ingest, primary, launchedUrl, strings);
+  for (const site of appSites) {
+    ctx.warnings.push({ kind: 'app-site-inferred', severity: 'info', detail: site });
+  }
   const spec: TargetSpec = {
     packages: new Set(),
     globs: [],
-    browser: {
-      launchedUrl: browser?.url || urls[primary] || '',
-      firstParty: browser?.firstParty ?? [],
-    },
+    browser: { launchedUrl, firstParty, appSites },
   };
   return {
     entryAbs: urls,

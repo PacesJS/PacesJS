@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyze } from '../../src/analyze.js';
+import { DEFAULT_THRESHOLDS } from '../../src/config.js';
+import { BROWSER_RULES } from '../../src/passes/findings-browser.js';
 import { ORIGIN_NAMES, TASK_KIND_NAMES } from '../../src/model.js';
 import type { ExecutionModel } from '../../src/model.js';
 import { deserializeModel, serializeModel } from '../../src/serialize.js';
@@ -292,5 +294,20 @@ describe('browser model: findings', () => {
 
   it('does not report a third party on a page with none', () => {
     expect(kinds('slow-click')).not.toContain('third-party-cost');
+  });
+});
+
+describe('a long task that was mostly not sampled', () => {
+  const blocked = (m: ExecutionModel) =>
+    BROWSER_RULES[0]?.(m, DEFAULT_THRESHOLDS).filter((f) => f.kind === 'main-thread-blocked') ?? [];
+
+  it('is not reported as blocking the page: its time cannot be attributed to anything', () => {
+    const m = deserializeModel(serializeModel(model('slow-click')));
+    const track = m.tracks[m.primaryTrack];
+    expect(blocked(m)).toHaveLength(1);
+    for (let k = 0; k < (track?.tasks.length ?? 0); k++) {
+      if (track) track.tasks.busy[k] = 0;
+    }
+    expect(blocked(m)).toEqual([]);
   });
 });

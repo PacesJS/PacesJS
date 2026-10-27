@@ -20,7 +20,7 @@ export interface TargetSpec {
   /** Path globs (as regular expressions) tested against the stored file path. */
   globs: RegExp[];
   /** Browser runs: code is first-party when it comes from the site the run started on. */
-  browser?: { launchedUrl: string; firstParty: string[] };
+  browser?: { launchedUrl: string; firstParty: string[]; appSites: string[] };
 }
 
 export interface PassContext {

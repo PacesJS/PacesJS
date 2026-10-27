@@ -74,6 +74,8 @@ Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bar
 - **Read script text as scripts are parsed.** After the window closes the page sessions are gone. An inline script's text is only part of its document while V8 reports document lines, so scripts are laid out at their start line.
 - **`ProfileChunk` events are emitted by the profiler's thread, `Profile` by the profiled one.** Group chunks by process and profile id; the thread comes from `Profile`. Each sample's source line becomes a per-line tick.
 - **Sequence numbers join page events to the trace and restart in each document**, so they carry the document's start time.
+- **The page's own code may live on another domain** (linkedin.com serves its app from licdn.com). Counting only the launched site as first-party folded the whole app into one dependency and left an empty waterfall. When one other site does most of the script work and serves far more functions than the launched site, it is inferred to be the app (`inferAppSites`, with a note); `--first-party` overrides. Test on a real large site, not only the zoo.
+- **A long task the profiler barely sampled is not a blocking finding.** The first task after a resume can span the profiler restart (532 ms wall, 3 ms sampled).
 - **Never record what was typed.** Events are structure only; the privacy e2e types a secret into a page and fails if it appears anywhere in the unzipped session.
 - Real-browser tests are skipped unless `PACES_BROWSER` points at a Chromium executable. Measure with `node scripts/bench-browser.mjs`.
 
