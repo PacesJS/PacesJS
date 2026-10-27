@@ -23,3 +23,9 @@ export const ms = (us: number): number => Math.round(us / 100) / 10;
 
 /** A 0..1 share rounded to three decimals, for JSON digests. */
 export const share = (x: number): number => Math.round(x * 1000) / 1000;
+
+/** `172 KB`, `1.4 MB`: sizes on the wire, whole kilobytes below a megabyte. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

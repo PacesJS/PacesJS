@@ -40,6 +40,8 @@ export interface Thresholds {
   thirdPartyShare: number;
   /** Browser: cumulative layout shift at or above this score. */
   layoutShiftScore: number;
+  /** Browser: a text file this large (decoded bytes) that was sent without compression. */
+  uncompressedTextBytes: number;
   /** Findings that need a share ignore tracks or kinds with fewer busy samples than this. */
   minSamples: number;
 }
@@ -64,6 +66,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   forcedLayoutMs: 20,
   thirdPartyShare: 0.1,
   layoutShiftScore: 0.1,
+  uncompressedTextBytes: 20_000,
   minSamples: 20,
 };
 
@@ -101,4 +104,4 @@ export interface AnalyzeOptions {
   suppressForCli?: FindingKind[];
 }
 
-export const ENGINE_VERSION = '0.7.3';
+export const ENGINE_VERSION = '0.8.0';

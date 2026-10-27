@@ -127,6 +127,8 @@ export interface FunctionTable {
   mapMissing: Uint8Array;
   /** 1 = module loading: a loader frame (require, Module._load, ...) or a module's top-level function. */
   loader: Uint8Array;
+  /** String table index of the URL the function was parsed from (the generated file, before source maps). */
+  script: Uint32Array;
 }
 
 /**
@@ -376,6 +378,44 @@ export const VITAL_KIND_NAMES = [
   'shift',
 ] as const;
 
+/** Kinds of request, in the order of `RequestTable.type`. */
+export const REQUEST_TYPE_NAMES = [
+  'Other',
+  'Document',
+  'Script',
+  'Stylesheet',
+  'Image',
+  'Font',
+  'Fetch',
+  'XHR',
+  'Media',
+] as const;
+
+/** Bits of `RequestTable.flags`. */
+export const REQUEST_FLAG = { renderBlocking: 1, cached: 2, failed: 4 } as const;
+
+/** The page's network requests. Sizes and times that were not seen are -1. */
+export interface RequestTable {
+  length: number;
+  /** Sent, in microseconds since `meta.startedAt`. */
+  start: Float64Array;
+  /** First byte of the response came back. */
+  response: Float64Array;
+  /** The body had arrived. */
+  end: Float64Array;
+  /** String table index of the URL. */
+  url: Uint32Array;
+  /** Index into `REQUEST_TYPE_NAMES`. */
+  type: Uint8Array;
+  flags: Uint8Array;
+  /** Bytes on the wire, headers included. */
+  encoded: Float64Array;
+  /** Bytes of the body after decompression. */
+  decoded: Float64Array;
+  /** HTTP status, 0 when unknown. */
+  status: Uint16Array;
+}
+
 export interface ScreenshotTable {
   length: number;
   time: Float64Array;
@@ -392,6 +432,7 @@ export interface TimeRanges {
 /** What belongs to the page as a whole rather than to one track. */
 export interface PageTimeline {
   frames: FrameTimings;
+  requests: RequestTable;
   vitals: VitalTable;
   screenshots: ScreenshotTable;
   /** Stretches that were recorded. */
@@ -448,7 +489,8 @@ export type FindingKind =
   | 'slow-interaction'
   | 'forced-layout'
   | 'third-party-cost'
-  | 'layout-shift';
+  | 'layout-shift'
+  | 'uncompressed-text';
 
 /** What the UI should select and which view proves a finding. */
 export interface ShowMe {

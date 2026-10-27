@@ -39,6 +39,49 @@ const text = (v: unknown): string | undefined => {
   return undefined;
 };
 
+interface NetworkLike {
+  requests?: number;
+  wireKB?: number;
+  decodedKB?: number;
+  byType?: Array<{ type: string; count: number; wireKB: number }>;
+  scripts?: Array<{
+    url: string;
+    wireKB: number;
+    decodedKB: number;
+    downloadMs: number | null;
+    renderBlocking: boolean;
+    cached: boolean;
+    selfMs: number;
+  }>;
+}
+
+const size = (kb: number): string =>
+  kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`;
+
+function networkLines(n: NetworkLike | undefined): string[] {
+  if (!n || !n.requests) return [];
+  const lines = [
+    '',
+    `Network: ${n.requests} requests, ${size(n.wireKB ?? 0)} (${size(n.decodedKB ?? 0)} unpacked)`,
+  ];
+  const types = (n.byType ?? []).slice(0, 5).map((t) => `${t.type} ${t.count} (${size(t.wireKB)})`);
+  if (types.length > 0) lines.push(`  ${types.join(' · ')}`);
+  for (const s of (n.scripts ?? []).slice(0, 5)) {
+    const parts = [
+      `${size(s.wireKB)} (${size(s.decodedKB)} unpacked)`,
+      s.cached
+        ? 'from cache'
+        : s.downloadMs === null
+          ? 'fetch time unknown'
+          : `fetched in ${Math.round(s.downloadMs)} ms`,
+      `~${Math.round(s.selfMs)} ms to run`,
+      ...(s.renderBlocking ? ['render-blocking'] : []),
+    ];
+    lines.push(`  ${parts.join(', ')}  ${s.url}`);
+  }
+  return lines;
+}
+
 /** Terminal rendering: what ran, then one block per finding with function names and file:line. */
 export function formatSummary(
   input: AgentSummary | Record<string, unknown>,
@@ -81,6 +124,7 @@ export function formatSummary(
       lines.push(`  ~${fn.selfMs ?? '?'} ms${pct}  ${where(fn)}`);
     }
   }
+  lines.push(...networkLines(summary.network as NetworkLike | undefined));
   const caveats = summary.caveats;
   if (Array.isArray(caveats) && caveats.length > 0) {
     lines.push('', 'Caveats:');

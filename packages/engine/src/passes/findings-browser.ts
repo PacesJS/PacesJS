@@ -3,9 +3,9 @@
 
 import type { Thresholds } from '../config.js';
 import { functionName } from '../frames.js';
-import { INPUT_KIND_NAMES, Origin } from '../model.js';
+import { INPUT_KIND_NAMES, Origin, REQUEST_FLAG, REQUEST_TYPE_NAMES } from '../model.js';
 import type { ExecutionModel, Finding, FnId, Severity, Track } from '../model.js';
-import { formatDuration, formatPercent, plural } from '../util/format.js';
+import { formatBytes, formatDuration, formatPercent, plural } from '../util/format.js';
 import { displayPath } from '../util/paths.js';
 import { lowerBound } from '../util/search.js';
 
@@ -323,6 +323,59 @@ const layoutShift: BrowserRule = (m, th) => {
   ];
 };
 
+/** Request types whose body is text, so compression always pays. */
+const TEXT_TYPES = new Set(['Document', 'Script', 'Stylesheet', 'Fetch', 'XHR']);
+/** Wire bytes include headers; a body that shrank at all is below this share of its decoded size. */
+const UNCOMPRESSED_RATIO = 0.9;
+
+const uncompressedText: BrowserRule = (m, th) => {
+  const t = m.page?.requests;
+  if (!t) return [];
+  const hits: Array<{ url: string; bytes: number; start: number; end: number }> = [];
+  for (let i = 0; i < t.length; i++) {
+    const decoded = t.decoded[i] ?? -1;
+    const encoded = t.encoded[i] ?? -1;
+    const flags = t.flags[i] ?? 0;
+    if (!TEXT_TYPES.has(REQUEST_TYPE_NAMES[t.type[i] ?? 0] ?? '')) continue;
+    if (flags & (REQUEST_FLAG.cached | REQUEST_FLAG.failed)) continue;
+    if (decoded < th.uncompressedTextBytes || encoded < UNCOMPRESSED_RATIO * decoded) continue;
+    hits.push({
+      url: text(m, t.url[i] ?? 0),
+      bytes: decoded,
+      start: t.start[i] ?? 0,
+      end: Math.max(t.end[i] ?? 0, t.start[i] ?? 0),
+    });
+  }
+  if (hits.length === 0) return [];
+  hits.sort((a, b) => b.bytes - a.bytes || a.url.localeCompare(b.url));
+  const total = hits.reduce((n, h) => n + h.bytes, 0);
+  const listed = hits
+    .slice(0, 3)
+    .map((h) => `${displayPath(h.url)} (${formatBytes(h.bytes)})`)
+    .join(', ');
+  const primary = m.tracks[m.primaryTrack];
+  const worst = hits[0];
+  return [
+    {
+      id: 'uncompressed-text',
+      kind: 'uncompressed-text',
+      severity: severityBy(total, 500_000, 100_000),
+      title: 'Uncompressed text',
+      summary: `${plural(hits.length, 'text file was', 'text files were')} sent without compression (${formatBytes(total)} in all): ${listed}.`,
+      hint: 'Turn on gzip or brotli for text files on the server or CDN; they usually shrink to a quarter or less.',
+      rule: `A script, stylesheet, document or fetch of ${formatBytes(th.uncompressedTextBytes)} or more whose bytes on the wire are within ${formatPercent(1 - UNCOMPRESSED_RATIO)} of its size unpacked.`,
+      impact: Math.min(1, total / 1_000_000),
+      showMe: {
+        view: 'timeline',
+        ...(primary ? { track: primary.id } : {}),
+        ...(worst ? { range: [worst.start, worst.end] as [number, number] } : {}),
+      },
+      evidence: [],
+      ...(primary ? { track: primary.id } : {}),
+    },
+  ];
+};
+
 /** The browser-only rules, in report order. */
 export const BROWSER_RULES: BrowserRule[] = [
   mainThreadBlocked,
@@ -330,4 +383,5 @@ export const BROWSER_RULES: BrowserRule[] = [
   forcedLayout,
   thirdPartyCost,
   layoutShift,
+  uncompressedText,
 ];

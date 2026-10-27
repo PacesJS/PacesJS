@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildAgentSummary } from '../src/agent-summary.js';
 import { analyze } from '../src/analyze.js';
 import { FIXTURES, loadModel } from './helpers/fixtures.js';
+import { recordingToCapture } from '../src/trace/trace-to-capture.js';
+import { cloneInput } from './helpers/browser-fixtures.js';
 import { synthCapture } from './helpers/synth.js';
 
 describe('agent summary', () => {
@@ -194,5 +196,30 @@ describe('finding hints in the agent summary', () => {
     const findings = buildAgentSummary(loadModel('hot-regex')).findings;
     expect(findings.length).toBeGreaterThan(0);
     expect(findings.every((f) => !('hint' in f))).toBe(true);
+  });
+});
+
+describe('agent summary: network (page runs)', () => {
+  const page = buildAgentSummary(analyze(recordingToCapture(cloneInput('big-script'))));
+
+  it('totals the requests and the bytes by type', () => {
+    expect(page.network?.requests).toBeGreaterThanOrEqual(3);
+    expect(page.network?.wireKB).toBeGreaterThan(170);
+    expect(page.network?.byType.find((t) => t.type === 'Script')?.count).toBe(2);
+  });
+
+  it('lists the scripts with what they cost to fetch and to run', () => {
+    const vendor = page.network?.scripts.find((s) => s.url.endsWith('/vendor.js'));
+    expect(vendor).toMatchObject({ renderBlocking: true, cached: false });
+    expect(vendor?.wireKB).toBeGreaterThan(170);
+    expect(vendor?.selfMs).toBeGreaterThan(0);
+  });
+
+  it('survives JSON', () => {
+    expect(JSON.parse(JSON.stringify(page))).toEqual(page);
+  });
+
+  it('is absent from a Node run', () => {
+    expect(buildAgentSummary(loadModel('orders-server')).network).toBeUndefined();
   });
 });

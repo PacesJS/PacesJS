@@ -97,6 +97,7 @@ function withEntryFunctions(
       mapped: grow(base.mapped, () => 0),
       mapMissing: grow(base.mapMissing, () => 0),
       loader: grow(base.loader, () => 0),
+      script: grow(base.script, () => 0),
     },
   };
 }
@@ -274,6 +275,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
     plumbing,
     mapped: sm.functions.mapped,
     mapMissing: sm.functions.mapMissing,
+    script: sm.functions.script,
     loader,
   };
   // One function row per distinct entry script: the root of that run in stitched views.
@@ -322,6 +324,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
       capture.browser,
       capture.tracks[detection.primary]?.info.pid,
       ing.monoAtStartUs,
+      ctx.strings,
     );
   }
   const aggregates = built.map((x) => x.aggregate);

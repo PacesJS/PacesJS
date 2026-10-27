@@ -76,3 +76,58 @@ describe('formatSummary with a fix', () => {
     expect(out).toContain('fix: Create objects with the same properties in the same order.');
   });
 });
+
+describe('formatSummary: network', () => {
+  const summary = {
+    runKind: 'page',
+    findings: [],
+    network: {
+      requests: 163,
+      wireKB: 2434,
+      decodedKB: 7099,
+      byType: [
+        { type: 'Script', count: 112, wireKB: 1573 },
+        { type: 'Font', count: 9, wireKB: 597 },
+      ],
+      scripts: [
+        {
+          url: 'https://cdn.example.com/app.js',
+          wireKB: 143,
+          decodedKB: 486,
+          downloadMs: 62,
+          renderBlocking: true,
+          cached: false,
+          selfMs: 310.4,
+        },
+        {
+          url: 'https://cdn.example.com/lazy.js',
+          wireKB: 4.5,
+          decodedKB: 12,
+          downloadMs: null,
+          renderBlocking: false,
+          cached: true,
+          selfMs: 2,
+        },
+      ],
+    },
+  };
+
+  it('prints the totals and the bytes by type', () => {
+    const out = formatSummary(summary);
+    expect(out).toContain('Network: 163 requests, 2.4 MB (6.9 MB unpacked)');
+    expect(out).toContain('Script 112 (1.5 MB)');
+  });
+
+  it('prints each script with its fetch cost beside its run cost', () => {
+    const out = formatSummary(summary);
+    expect(out).toContain(
+      '143 KB (486 KB unpacked), fetched in 62 ms, ~310 ms to run, render-blocking',
+    );
+    expect(out).toContain('https://cdn.example.com/app.js');
+    expect(out).toContain('from cache');
+  });
+
+  it('prints nothing about the network for a run without it', () => {
+    expect(formatSummary({ runKind: 'script', findings: [] })).not.toContain('Network:');
+  });
+});
