@@ -2,15 +2,7 @@
 // lines of one function for the source panel.
 
 import type { ExecutionModel } from '../model.js';
-import type { ViewFnId } from './types.js';
-
-export interface DeoptSite {
-  reason: string;
-  kind: 'eager' | 'lazy' | 'soft' | 'other';
-  /** 1-based original line, 0 when unknown. */
-  line: number;
-  count: number;
-}
+import type { DeoptSite, ViewFnId } from './types.js';
 
 const KIND_NAMES = ['eager', 'lazy', 'soft', 'other'] as const;
 

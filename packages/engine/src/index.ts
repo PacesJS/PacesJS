@@ -47,7 +47,7 @@ export { callGraph } from './query/callgraph.js';
 export { functionRows, sandwich } from './query/functions.js';
 export { functionSource } from './query/source.js';
 export { deoptCounts, deoptSites } from './query/deopts.js';
-export type { DeoptSite } from './query/deopts.js';
+export type { DeoptSite } from './query/types.js';
 export { getEmbeddedSource } from './query/embedded-source.js';
 export { timelineLane } from './query/timeline.js';
 export { browserTimeline } from './query/browser.js';
