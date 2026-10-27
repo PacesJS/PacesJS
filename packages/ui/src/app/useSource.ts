@@ -7,6 +7,8 @@ import type { CallSiteChip } from '../view/call-sites';
 import { lineWindow, rollUpToStatements } from '../view/source-lines';
 import { isHostLost } from '../host/http';
 import { fmtCount } from '../util/format';
+import { formatMinified, looksMinified } from '../view/format-minified';
+import type { FormattedSource } from '../view/format-minified';
 import { sourceReason } from '../view/source-reason';
 import type { SourceReason } from '../view/source-reason';
 
@@ -28,6 +30,8 @@ export interface SourceState {
   lines: SourceLine[];
   /** Every line of the file ('' entries are empty lines); empty when the text is unavailable. */
   fileTexts: string[];
+  /** The text was minified and has been laid out for reading: line numbers are not the file's. */
+  formatted: boolean;
   /** The file changed on disk since the session was recorded. */
   changed: boolean;
   selfByLine: Map<number, number>;
@@ -65,6 +69,22 @@ interface Options {
   mode?: 'all' | 'call';
 }
 
+/** The function's lines moved to where the formatter put them; time on a line goes to its first formatted line. */
+function laidOut(info: SourceInfo, layout: FormattedSource): SourceInfo {
+  const at = (line: number): number =>
+    layout.lineOf(line, line === info.definitionLine ? info.definitionCol : 0);
+  const self = new Map<number, number>();
+  for (const l of info.lineSelf) self.set(at(l.line), (self.get(at(l.line)) ?? 0) + l.selfUs);
+  return {
+    ...info,
+    startLine: at(info.startLine),
+    definitionLine: at(info.definitionLine),
+    hottestLine: info.hottestLine > 0 ? at(info.hottestLine) : 0,
+    lineSelf: [...self].map(([line, selfUs]) => ({ line, selfUs })).sort((a, b) => a.line - b.line),
+    deopts: info.deopts.map((d) => ({ ...d, line: d.line > 0 ? at(d.line) : d.line })),
+  };
+}
+
 /** Everything the source dock and the Source view need for the selected function. */
 export function useSource({ whole, mode = 'all' }: Options): SourceState {
   const { client, host, scope, scopeKey, snap, selection, summary } = useApp();
@@ -85,16 +105,27 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
   );
   const call = callKey ? (callQ.data ?? null) : null;
   const scopeMode: 'all' | 'call' = mode === 'call' && call ? 'call' : 'all';
-  const info = fn === null ? null : (infoQ.data ?? null);
+  const rawInfo = fn === null ? null : (infoQ.data ?? null);
   const details = fn === null ? null : (detailsQ.data ?? null);
-  const path = info?.path ?? '';
+  const path = rawInfo?.path ?? '';
   const textQ = useAsync(
     () => (path ? host.readSource(path) : Promise.resolve(null)),
     `text:${path}`,
   );
   const file = path && !textQ.loading ? (textQ.data ?? null) : null;
 
-  const allLines = useMemo(() => (file?.exists ? file.text.split(/\r?\n/) : []), [file]);
+  const rawLines = useMemo(() => (file?.exists ? file.text.split(/\r?\n/) : []), [file]);
+  const minified = file?.exists === true && looksMinified(rawLines);
+  const layoutQ = useAsync(
+    () => (minified && file ? formatMinified(file.text) : Promise.resolve(null)),
+    `layout:${path}:${minified}:${file?.text.length ?? 0}`,
+  );
+  const layout = minified ? (layoutQ.data ?? null) : null;
+  const allLines = layout ? layout.lines : rawLines;
+  const info = useMemo(
+    () => (rawInfo && layout ? laidOut(rawInfo, layout) : rawInfo),
+    [rawInfo, layout],
+  );
   const lines = useMemo((): SourceLine[] => {
     if (info && allLines.length > 0) {
       if (whole) return allLines.map((text, i) => ({ n: i + 1, text }));
@@ -190,6 +221,7 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
     details,
     lines,
     fileTexts: allLines,
+    formatted: layout !== null,
     changed: file?.exists === true && file.changedSinceProfile,
     selfByLine,
     deoptsByLine,

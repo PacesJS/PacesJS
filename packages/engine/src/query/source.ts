@@ -155,6 +155,7 @@ export function functionSource(
     file: info.file,
     line: info.line,
     definitionLine: info.synthetic ? 0 : info.line,
+    definitionCol: info.synthetic ? 0 : info.col,
     selfUs,
     totalUs,
     lines,
