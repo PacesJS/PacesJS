@@ -5,6 +5,7 @@ import { Legend } from './Legend';
 const TEXT = {
   originColors: 'Origin colors',
   criticalPath: 'Critical path: widest child at each level',
+  ownTime: 'Own time: the striped share of a bar is time in the call itself, not in what it calls',
   underThreshold: (threshold: string) => `Under ${threshold}, below sampling precision`,
   idleWait: 'Idle wait between an await and its continuation',
   resumedGlyph: '↻',
@@ -31,6 +32,10 @@ export function WaterfallLegend({
       <span className="wf-legend-item">
         <span className="wf-legend-swatch swatch-critical" aria-hidden="true" />
         {TEXT.criticalPath}
+      </span>
+      <span className="wf-legend-item">
+        <span className="wf-legend-swatch swatch-self" aria-hidden="true" />
+        {TEXT.ownTime}
       </span>
       <span className="wf-legend-item">
         <span className="wf-legend-swatch swatch-hatch" aria-hidden="true" />
