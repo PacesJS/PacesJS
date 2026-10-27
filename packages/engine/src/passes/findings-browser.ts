@@ -328,6 +328,8 @@ const TEXT_TYPES = new Set(['Document', 'Script', 'Stylesheet', 'Fetch', 'XHR'])
 /** Wire bytes include headers; a body that shrank at all is below this share of its decoded size. */
 const UNCOMPRESSED_RATIO = 0.9;
 
+const NETWORK_URL = /^(https?|wss?):\/\//i;
+
 const uncompressedText: BrowserRule = (m, th) => {
   const t = m.page?.requests;
   if (!t) return [];
@@ -337,6 +339,8 @@ const uncompressedText: BrowserRule = (m, th) => {
     const encoded = t.encoded[i] ?? -1;
     const flags = t.flags[i] ?? 0;
     if (!TEXT_TYPES.has(REQUEST_TYPE_NAMES[t.type[i] ?? 0] ?? '')) continue;
+    // The browser's own error page is a document too, but nothing served it.
+    if (!NETWORK_URL.test(text(m, t.url[i] ?? 0))) continue;
     if (flags & (REQUEST_FLAG.cached | REQUEST_FLAG.failed)) continue;
     if (decoded < th.uncompressedTextBytes || encoded < UNCOMPRESSED_RATIO * decoded) continue;
     hits.push({
@@ -376,6 +380,160 @@ const uncompressedText: BrowserRule = (m, th) => {
   ];
 };
 
+const VITAL_NAVIGATION = 0;
+const VITAL_LCP = 4;
+
+/** Time of the last vital of a kind at or before `limit`, else -1. */
+function lastVital(m: ExecutionModel, kind: number, limit = Number.POSITIVE_INFINITY): number {
+  const v = m.page?.vitals;
+  let at = -1;
+  for (let i = 0; v && i < v.length; i++) {
+    const time = v.time[i] ?? 0;
+    if (v.kind[i] === kind && time <= limit && time > at) at = time;
+  }
+  return at;
+}
+
+interface LoadSplit {
+  busy: number;
+  waiting: number;
+  nothing: number;
+}
+
+/** What the main thread did in `[from, to]`: running a task, idle with a request in flight, or idle with none. */
+function splitLoad(m: ExecutionModel, from: number, to: number): LoadSplit {
+  const edges: Array<{ at: number; busy: number; flight: number }> = [];
+  const track = m.tracks[m.primaryTrack];
+  for (let k = 0; track && k < track.tasks.length; k++) {
+    const a = Math.max(from, track.tasks.start[k] ?? 0);
+    const b = Math.min(to, track.tasks.end[k] ?? 0);
+    if (b > a) edges.push({ at: a, busy: 1, flight: 0 }, { at: b, busy: -1, flight: 0 });
+  }
+  const t = m.page?.requests;
+  for (let i = 0; t && i < t.length; i++) {
+    const end = t.end[i] ?? -1;
+    const a = Math.max(from, t.start[i] ?? 0);
+    const b = Math.min(to, end);
+    if (end >= 0 && b > a)
+      edges.push({ at: a, busy: 0, flight: 1 }, { at: b, busy: 0, flight: -1 });
+  }
+  edges.sort((x, y) => x.at - y.at);
+  const split: LoadSplit = { busy: 0, waiting: 0, nothing: 0 };
+  let busy = 0;
+  let flight = 0;
+  let cursor = from;
+  for (const e of edges) {
+    const span = e.at - cursor;
+    if (span > 0) {
+      if (busy > 0) split.busy += span;
+      else if (flight > 0) split.waiting += span;
+      else split.nothing += span;
+    }
+    cursor = Math.max(cursor, e.at);
+    busy += e.busy;
+    flight += e.flight;
+  }
+  if (to > cursor) split.nothing += to - cursor;
+  return split;
+}
+
+/** The request that took the longest among those that finished in `(from, to]`. */
+const slowestRequestBefore = (m: ExecutionModel, from: number, to: number) => {
+  const t = m.page?.requests;
+  let best = -1;
+  let bestTook = -1;
+  for (let i = 0; t && i < t.length; i++) {
+    const end = t.end[i] ?? -1;
+    const took = end - (t.start[i] ?? 0);
+    const type = REQUEST_TYPE_NAMES[t.type[i] ?? 0];
+    if (type === 'Media' || type === 'Other') continue;
+    if (end > from && end <= to && took > bestTook) {
+      best = i;
+      bestTook = took;
+    }
+  }
+  return t && best >= 0
+    ? { url: text(m, t.url[best] ?? 0), start: t.start[best] ?? 0, took: bestTook }
+    : undefined;
+};
+
+const slowLoad: BrowserRule = (m, th) => {
+  const lcp = lastVital(m, VITAL_LCP);
+  if (lcp < th.slowLoadMs * 1000) return [];
+  const from = Math.max(0, lastVital(m, VITAL_NAVIGATION, lcp));
+  const split = splitLoad(m, from, lcp);
+  const slowest = slowestRequestBefore(m, from, lcp + 50_000);
+  const dominant = Math.max(split.busy, split.waiting, split.nothing);
+  const hint =
+    dominant === split.waiting
+      ? 'Most of the time went to waiting on the network: start the slowest request sooner (preload it), make it smaller, or serve it from nearer.'
+      : dominant === split.busy
+        ? 'Most of the time the main thread was busy: look at the long tasks before this moment.'
+        : undefined;
+  const primary = m.tracks[m.primaryTrack];
+  const slowestText =
+    slowest && dominant === split.waiting
+      ? ` The slowest request to finish before it was ${displayPath(slowest.url)} (sent at ${seconds(slowest.start)}, took ${formatDuration(slowest.took, false)}).`
+      : '';
+  return [
+    {
+      id: 'slow-load',
+      kind: 'slow-load',
+      severity: severityBy(lcp, 4_000_000, th.slowLoadMs * 1000),
+      title: 'Slow load',
+      summary: `Largest content appeared at ${seconds(lcp)}. Until then the main thread was busy ${seconds(split.busy)}, idle with requests in flight ${seconds(split.waiting)} and idle with nothing in flight ${seconds(split.nothing)}.${slowestText}`,
+      ...(hint ? { hint } : {}),
+      rule: `The last largest-contentful-paint of the page came after ${th.slowLoadMs} ms.`,
+      impact: Math.min(1, lcp / 10_000_000),
+      showMe: {
+        view: 'timeline',
+        ...(primary ? { track: primary.id } : {}),
+        range: [from, lcp] as [number, number],
+      },
+      evidence: [],
+      ...(primary ? { track: primary.id } : {}),
+    },
+  ];
+};
+
+/** A navigation is taken to be the cause of a document request that starts within this long of it. */
+const NAVIGATION_WINDOW_US = 10_000_000;
+
+const slowDocument: BrowserRule = (m, th) => {
+  const t = m.page?.requests;
+  if (!t) return [];
+  let doc = -1;
+  for (let i = 0; i < t.length; i++) {
+    if (REQUEST_TYPE_NAMES[t.type[i] ?? 0] !== 'Document') continue;
+    if (doc < 0 || (t.start[i] ?? 0) < (t.start[doc] ?? 0)) doc = i;
+  }
+  if (doc < 0) return [];
+  const sent = t.start[doc] ?? 0;
+  const navigation = lastVital(m, VITAL_NAVIGATION, sent);
+  const wait = sent - navigation;
+  if (navigation < 0 || wait > NAVIGATION_WINDOW_US || wait < th.documentWaitMs * 1000) return [];
+  const primary = m.tracks[m.primaryTrack];
+  return [
+    {
+      id: 'slow-document',
+      kind: 'slow-document',
+      severity: severityBy(wait, 2_000_000, th.documentWaitMs * 1000),
+      title: 'Slow document',
+      summary: `The HTML of ${displayPath(text(m, t.url[doc] ?? 0))} took ${seconds(wait)} to start arriving after the navigation began, before anything on the page could load.`,
+      hint: 'That time is DNS, the connection, any redirects and the server itself: check the server response time first.',
+      rule: `The page's first document request was sent more than ${th.documentWaitMs} ms after its navigation began.`,
+      impact: Math.min(1, wait / 5_000_000),
+      showMe: {
+        view: 'timeline',
+        ...(primary ? { track: primary.id } : {}),
+        range: [navigation, sent] as [number, number],
+      },
+      evidence: [],
+      ...(primary ? { track: primary.id } : {}),
+    },
+  ];
+};
+
 /** The browser-only rules, in report order. */
 export const BROWSER_RULES: BrowserRule[] = [
   mainThreadBlocked,
@@ -384,4 +542,6 @@ export const BROWSER_RULES: BrowserRule[] = [
   thirdPartyCost,
   layoutShift,
   uncompressedText,
+  slowDocument,
+  slowLoad,
 ];

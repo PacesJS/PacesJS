@@ -5,6 +5,7 @@ import type { ExecutionModel } from '../../src/model.js';
 import { deserializeModel, serializeModel } from '../../src/serialize.js';
 import { recordingToCapture } from '../../src/trace/trace-to-capture.js';
 import { cloneInput } from '../helpers/browser-fixtures.js';
+import { BROWSER_FIXTURES } from '../helpers/browser-fixtures.js';
 import type { BrowserFixtureName } from '../helpers/browser-fixtures.js';
 
 const models = new Map<BrowserFixtureName, ExecutionModel>();
@@ -94,4 +95,67 @@ describe('browser model: the uncompressed-text finding', () => {
       expect(found(name)).toEqual([]);
     },
   );
+});
+
+describe('browser model: the slow-load finding', () => {
+  const found = (name: BrowserFixtureName) =>
+    model(name).findings.filter((f) => f.kind === 'slow-load');
+
+  it('says where the time to the largest content went: busy, waiting on requests, or nothing', () => {
+    const f = found('slow-load');
+    expect(f).toHaveLength(1);
+    expect(f[0]?.summary).toMatch(/Largest content appeared at 2\.\d s/);
+    expect(f[0]?.summary).toMatch(/idle with requests in flight 2\.\d s/);
+  });
+
+  it('names the slowest request that finished before the content appeared', () => {
+    expect(found('slow-load')[0]?.summary).toContain('slow-hero.svg');
+  });
+
+  it('points at the network when that is where the wait was', () => {
+    expect(found('slow-load')[0]?.hint).toMatch(/network|request/i);
+  });
+
+  it.each(BROWSER_FIXTURES.filter((n) => n !== 'slow-load'))('stays silent on %s', (name) => {
+    expect(found(name)).toEqual([]);
+  });
+});
+
+describe('browser model: the slow-document finding', () => {
+  const found = (name: BrowserFixtureName) =>
+    model(name).findings.filter((f) => f.kind === 'slow-document');
+
+  it('reports a page whose HTML took over a second to start arriving', () => {
+    const f = found('slow-doc');
+    expect(f).toHaveLength(1);
+    expect(f[0]?.summary).toMatch(/1\.\d s/);
+    expect(f[0]?.summary).toContain('slow-doc.html');
+  });
+
+  it.each(BROWSER_FIXTURES.filter((n) => n !== 'slow-doc'))('stays silent on %s', (name) => {
+    expect(found(name)).toEqual([]);
+  });
+});
+
+describe('browser model: network findings only count real network requests', () => {
+  it('ignores the browser own error page, which is not a file anyone served', () => {
+    const input = cloneInput('big-script');
+    for (const e of input.events) {
+      const data = (e.args as { data?: { url?: string } } | undefined)?.data;
+      if (data?.url?.endsWith('/vendor.js')) data.url = 'chrome-error://chromewebdata/';
+    }
+    const m = analyze(recordingToCapture(input));
+    expect(m.findings.filter((f) => f.kind === 'uncompressed-text')).toEqual([]);
+  });
+});
+
+describe('browser model: the slow-load finding when the wait was not on the network', () => {
+  it('does not blame a request when most of the time was idle with nothing in flight', () => {
+    const m = analyze(recordingToCapture(cloneInput('slow-doc')), {
+      thresholds: { slowLoadMs: 1000 },
+    });
+    const f = m.findings.find((x) => x.kind === 'slow-load');
+    expect(f).toBeDefined();
+    expect(f?.summary).not.toContain('slowest request');
+  });
 });

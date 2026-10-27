@@ -32,6 +32,8 @@ const KIND_ORDER: FindingKind[] = [
   'third-party-cost',
   'layout-shift',
   'uncompressed-text',
+  'slow-load',
+  'slow-document',
 ];
 const SEVERITY_RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
 
