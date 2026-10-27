@@ -29,6 +29,23 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
+/** Every node's call path from the root, as text: stable however the nodes are numbered. */
+function callPaths(nodes: CdpProfile['nodes']): Map<number, string> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const paths = new Map<number, string>();
+  const walk = (id: number, prefix: string): void => {
+    const n = byId.get(id);
+    if (!n) return;
+    const f = n.callFrame;
+    const path = `${prefix}/${f.functionName}:${f.url}:${f.lineNumber}:${f.columnNumber}`;
+    paths.set(id, path);
+    for (const c of n.children ?? []) walk(c, path);
+  };
+  const children = new Set(nodes.flatMap((n) => n.children ?? []));
+  for (const n of nodes) if (!children.has(n.id)) walk(n.id, '');
+  return paths;
+}
+
 describe('importProfile', () => {
   it('imports a real node --cpu-prof file as one track with its samples', () => {
     const capture = importProfile(profileText, opts);
@@ -64,12 +81,16 @@ describe('importProfile', () => {
     const capture = importProfile(JSON.stringify(trace), { ...opts, name: 'trace.json' });
     const imported = capture.tracks[0]?.cpuProfile;
     expect(capture.tracks[0]?.info.pid).toBe(7);
-    expect(imported?.samples).toEqual(p.samples);
-    const rebuilt = new Map(imported?.nodes.map((n) => [n.id, n.children ?? []]));
-    const original = new Map(p.nodes.map((n) => [n.id, n.children ?? []]));
-    expect([...rebuilt.entries()].map(([id, c]) => [id, [...c].sort()])).toEqual(
-      [...original.entries()].map(([id, c]) => [id, [...c].sort()]),
-    );
+    // The importer numbers nodes in the order it meets them, so ids can differ from V8's: what has to
+    // survive is each sample's call path and the shape of the tree.
+    const samplePaths = (profile: CdpProfile | undefined): string[] => {
+      const pathOf = callPaths(profile?.nodes ?? []);
+      return (profile?.samples ?? []).map((id) => pathOf.get(id) ?? '?');
+    };
+    expect(samplePaths(imported)).toEqual(samplePaths(p));
+    const shape = (profile: CdpProfile | undefined): string[] =>
+      [...callPaths(profile?.nodes ?? []).values()].sort();
+    expect(shape(imported)).toEqual(shape(p));
   });
 
   it('rejects non-JSON with guidance', () => {
