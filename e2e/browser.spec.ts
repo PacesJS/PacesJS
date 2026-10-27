@@ -138,6 +138,35 @@ test.describe('paces browser: a real browser', () => {
     }
   });
 
+  test('keeps the requests of a page but no response header or cookie', async () => {
+    const dir = tempDir();
+    try {
+      const { run, out } = await record('big-script', dir);
+      expect(run.code, run.stderr).toBe(0);
+      const files = unzipped(out);
+      const leaks = Object.entries(files).filter(([, text]) =>
+        /cookie-secret|set-cookie/i.test(text),
+      );
+      expect(leaks.map(([name]) => name)).toEqual([]);
+      expect(files['raw/requests.events']).toContain('/vendor.js');
+    } finally {
+      removeDir(dir);
+    }
+  });
+
+  test('reports the script that was sent uncompressed, and only that one', async () => {
+    const dir = tempDir();
+    try {
+      const { out } = await record('big-script', dir);
+      const summary = await runPaces(['summary', out]);
+      expect(summary.stdout).toMatch(/Uncompressed text/);
+      expect(summary.stdout).toMatch(/vendor\.js \(\d+ KB\)/);
+      expect(summary.stdout).not.toMatch(/vendor-gz\.js \(\d+ KB\)\./);
+    } finally {
+      removeDir(dir);
+    }
+  });
+
   test('drops query strings from every URL it stored', async () => {
     const dir = tempDir();
     try {

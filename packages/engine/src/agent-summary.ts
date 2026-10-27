@@ -7,6 +7,7 @@ import { phasesOf } from './agent-phases.js';
 import { functionName } from './frames.js';
 import { ms, share } from './util/format.js';
 import type { AgentPhase, SourceLocation } from './agent-phases.js';
+import { networkOverview, scriptCosts } from './query/network.js';
 import { hotPaths } from './query/paths.js';
 
 export type { AgentPhase, SourceLocation };
@@ -107,8 +108,29 @@ export interface AgentSummary {
     byKind: Record<string, AgentTaskKindStats>;
     longest: Array<{ track: string; label: string; startMs: number; durationMs: number }>;
   };
+  /** Page runs: what the page fetched and what its scripts cost. Absent for Node runs and old sessions. */
+  network?: AgentNetwork;
   /** `caveats[i].summary`, for readers that want plain strings. */
   warnings: string[];
+}
+
+export interface AgentNetwork {
+  requests: number;
+  wireKB: number;
+  decodedKB: number;
+  byType: Array<{ type: string; count: number; wireKB: number }>;
+  /** The 10 scripts that ran the most: fetch cost beside run cost. */
+  scripts: Array<{
+    url: string;
+    wireKB: number;
+    decodedKB: number;
+    /** Request sent to body arrived; null when unknown. */
+    downloadMs: number | null;
+    renderBlocking: boolean;
+    cached: boolean;
+    /** Sampled main-thread time in its functions. */
+    selfMs: number;
+  }>;
 }
 
 type Where = (fn: FnId) => SourceLocation;
@@ -283,6 +305,7 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
     .filter(([fn, v]) => real(fn) && v > 0)
     .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
   const topSelf: AgentFunction[] = bySelf.slice(0, 25).map(([fn, v]) => describe(fn, v));
+  const network = networkDigest(model);
 
   return {
     schemaVersion: 2,
@@ -315,7 +338,32 @@ export function buildAgentSummary(model: ExecutionModel): AgentSummary {
     phases: phasesOf(model, busy),
     caveats: model.meta.warnings,
     taskStats: taskStatsDigest(model),
+    ...(network ? { network } : {}),
     warnings: model.meta.warnings.map((w) => w.summary),
+  };
+}
+
+const kb = (bytes: number): number => Math.round(bytes / 102.4) / 10;
+
+function networkDigest(model: ExecutionModel): AgentNetwork | undefined {
+  const o = networkOverview(model);
+  if (o.requests === 0) return undefined;
+  return {
+    requests: o.requests,
+    wireKB: kb(o.wireBytes),
+    decodedKB: kb(o.decodedBytes),
+    byType: o.byType.map((t) => ({ type: t.type, count: t.count, wireKB: kb(t.wireBytes) })),
+    scripts: scriptCosts(model)
+      .slice(0, 10)
+      .map((s) => ({
+        url: s.url,
+        wireKB: kb(s.wireBytes),
+        decodedKB: kb(s.decodedBytes),
+        downloadMs: s.downloadUs < 0 ? null : ms(s.downloadUs),
+        renderBlocking: s.renderBlocking,
+        cached: s.cached,
+        selfMs: ms(s.selfUs),
+      })),
   };
 }
 

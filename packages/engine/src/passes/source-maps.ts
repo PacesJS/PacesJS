@@ -16,6 +16,8 @@ export interface MappedFunctions {
   col: Uint32Array;
   mapped: Uint8Array;
   mapMissing: Uint8Array;
+  /** String table index of the URL of the script the function came from. */
+  script: Uint32Array;
 }
 
 export interface SourceMapResult {
@@ -108,6 +110,7 @@ function mapFrames(
   const col: number[] = [];
   const mapped: number[] = [];
   const mapMissing: number[] = [];
+  const script: number[] = [];
   const frameInfo: FrameInfo[] = [];
 
   for (let f = 0; f < frames.length; f++) {
@@ -163,6 +166,7 @@ function mapFrames(
       col.push(origCol);
       mapped.push(isMapped);
       mapMissing.push(isMissing);
+      script.push(frames.url[f] ?? 0);
     } else {
       if (isMapped) mapped[fn] = 1;
       if (isMissing) mapMissing[fn] = 1;
@@ -180,6 +184,7 @@ function mapFrames(
       col: Uint32Array.from(col),
       mapped: Uint8Array.from(mapped),
       mapMissing: Uint8Array.from(mapMissing),
+      script: Uint32Array.from(script),
     },
     frameToFn,
     frameInfo,

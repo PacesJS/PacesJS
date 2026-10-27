@@ -12,6 +12,8 @@ export type {
   RecordedTarget,
   TraceEventIn,
 } from './trace/types.js';
+export { networkOverview, scriptCostFor, scriptCosts } from './query/network.js';
+export type { NetworkOverview, ScriptCost } from './query/network.js';
 export { ensureCaptureWarnings } from './passes/warnings.js';
 export { buildAgentSummary } from './agent-summary.js';
 export { ms, share } from './util/format.js';
@@ -19,6 +21,7 @@ export { functionName } from './frames.js';
 export type {
   AgentFinding,
   AgentFunction,
+  AgentNetwork,
   AgentHotPath,
   AgentPackage,
   AgentPhase,

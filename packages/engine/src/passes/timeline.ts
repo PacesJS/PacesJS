@@ -15,6 +15,8 @@ import type {
 } from '../model.js';
 import type { BrowserInfo, CaptureMeta, PageEvent, TimelineEvent } from '../raw.js';
 import { lowerBound } from '../util/search.js';
+import type { StringTable } from '../util/strings.js';
+import { buildRequests } from './requests.js';
 import type { PassContext } from './types.js';
 
 const STYLE = 0;
@@ -205,6 +207,7 @@ export function buildPageTimeline(
   browser: BrowserInfo,
   pid: number | undefined,
   monoAtStartUs: number,
+  strings: StringTable,
 ): PageTimeline {
   const mine = browser.page.filter((e) => pid === undefined || e.pid === pid);
   const rel = (ts: number): number => ts - monoAtStartUs;
@@ -258,5 +261,6 @@ export function buildPageTimeline(
     start: Float64Array.from(gaps, (g) => g[0]),
     end: Float64Array.from(gaps, (g) => g[1]),
   };
-  return { frames, vitals, screenshots, recorded, paused };
+  const requests = buildRequests(browser.requests ?? [], monoAtStartUs, strings);
+  return { frames, requests, vitals, screenshots, recorded, paused };
 }
