@@ -2,6 +2,7 @@
 // in `thirdParty` on a second origin (a different port, so the browser treats it as another site).
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
+import { gzipSync } from 'node:zlib';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -14,7 +15,29 @@ function listen(handler) {
   });
 }
 
+/** A large, repetitive script: `vendor.js` goes out as plain text, `vendor-gz.js` compressed. */
+function vendorScript(prefix) {
+  let text = '';
+  for (let i = 0; i < 1500; i++) {
+    text += `function ${prefix}${i}(a, b) { var total = 0; for (var k = 0; k < 10; k++) total += (a + b + k) % 7; return total; }
+`;
+  }
+  return text;
+}
+
 function serveFile(res, file) {
+  if (file === 'vendor.js' || file === 'vendor-gz.js') {
+    const plain = file === 'vendor.js';
+    const body = Buffer.from(vendorScript(plain ? 'vendorStep' : 'vendorStepGz'));
+    res.writeHead(200, {
+      'content-type': 'application/javascript',
+      // Response headers must never reach a session: the privacy test looks for this value.
+      'set-cookie': 'paces_probe=cookie-secret-4d2a; Path=/',
+      ...(plain ? {} : { 'content-encoding': 'gzip' }),
+    });
+    res.end(plain ? body : gzipSync(body));
+    return;
+  }
   try {
     const body = readFileSync(join(here, 'pages', file));
     const ext = file.slice(file.lastIndexOf('.'));
@@ -55,6 +78,6 @@ export async function startZoo() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const zoo = await startZoo();
   console.log(
-    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift)`,
+    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift, big-script)`,
   );
 }

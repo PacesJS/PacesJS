@@ -3,6 +3,7 @@ import type {
   CdpProfile,
   PageEvent,
   RawCapture,
+  RawRequest,
   RawTrack,
   RuntimeEvent,
   ScriptInfo,
@@ -16,6 +17,7 @@ export type FileMap = Record<string, Uint8Array>;
 
 const SOURCE_MAPS = 'raw/sourcemaps.json';
 const PAGE_EVENTS = 'raw/page.events';
+const REQUESTS = 'raw/requests.events';
 const SCREENSHOT_INDEX = 'raw/screenshots.json';
 
 const ndjson = (rows: unknown[]): Uint8Array =>
@@ -40,6 +42,7 @@ export function captureToFiles(
   const b = capture.browser;
   if (b) {
     files[PAGE_EVENTS] = ndjson(b.page);
+    if (b.requests) files[REQUESTS] = ndjson(b.requests);
     files[SCREENSHOT_INDEX] = strToU8(JSON.stringify(b.screenshots));
   }
   const m = capture.meta;
@@ -131,6 +134,7 @@ export function filesToCapture(files: FileMap, manifest: Manifest): RawCapture {
           ...(manifest.throttle ? { throttle: manifest.throttle.cpu } : {}),
           ...(manifest.browser.cacheCold ? { cacheCold: true } : {}),
           page: lines<PageEvent>(files, PAGE_EVENTS) ?? [],
+          ...(files[REQUESTS] ? { requests: lines<RawRequest>(files, REQUESTS) ?? [] } : {}),
           screenshots: parse<BrowserInfo['screenshots']>(files, SCREENSHOT_INDEX, []),
           ...(manifest.traceFilter ? { traceFilter: manifest.traceFilter } : {}),
         }

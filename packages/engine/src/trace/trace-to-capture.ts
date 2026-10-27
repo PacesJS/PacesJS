@@ -18,6 +18,7 @@ import type {
   TrackKind,
 } from '../raw.js';
 import { anchorClock } from './clock-sync.js';
+import { createRequestCollector } from './requests.js';
 import type { BrowserRecordingInput, RecordedScript, TraceEventIn } from './types.js';
 
 const THREAD_EVENTS = new Set([
@@ -229,6 +230,7 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
   const threadEvents = new Map<string, TimelineEvent[]>();
   const pageEvents: PageEvent[] = [];
   const stamps = new Map<string, number>();
+  const network = createRequestCollector();
 
   const noteFrame = (frame: Record<string, unknown>): void => {
     const id = String(frame.frame ?? '');
@@ -272,6 +274,7 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
         e.pid,
       );
     }
+    network.add(e);
     if (e.name === 'TracingStartedInBrowser') {
       const frames = data.frames;
       if (Array.isArray(frames)) for (const f of frames) noteFrame(f as Record<string, unknown>);
@@ -536,6 +539,7 @@ export function recordingToCapture(input: BrowserRecordingInput): RawCapture {
     page: pageEvents
       .filter((e) => pagePids.has(e.pid))
       .sort((a, b) => a.ts - b.ts || a.name.localeCompare(b.name)),
+    requests: network.done().filter((r) => pagePids.has(r.pid)),
     screenshots: (input.screenshots ?? []).map((s) => ({
       id: s.id,
       tsUs: s.tsUs ?? (s.epochMs ?? 0) * 1000 - clock.offsetUs,

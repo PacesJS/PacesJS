@@ -8,6 +8,7 @@ export const BROWSER_FIXTURES = [
   'third-party',
   'worker-and-iframe',
   'layout-shift',
+  'big-script',
   'paused-resume',
 ] as const;
 export type BrowserFixtureName = (typeof BROWSER_FIXTURES)[number];

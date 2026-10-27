@@ -87,6 +87,12 @@ function scrubValue(value: unknown, depth: number): unknown {
   return record;
 }
 
+/** Response headers carry cookies and nothing reads them, so they are removed even from a full trace. */
+function dropHeaders(e: TraceEvent): void {
+  const data = (e.args as { data?: Record<string, unknown> } | undefined)?.data;
+  if (data) delete data.headers;
+}
+
 /** The frame an event is about, wherever the browser put it. */
 function frameOf(e: TraceEvent): string | undefined {
   const a = e.args as
@@ -158,6 +164,7 @@ export function createTraceFilter(options: TraceFilterOptions): TraceFilter {
             continue;
           }
         }
+        if (e.name === 'ResourceReceiveResponse') dropHeaders(e);
         if (!options.keepQuery && e.args) scrubValue(e.args, 0);
         kept++;
         out.push(e);
