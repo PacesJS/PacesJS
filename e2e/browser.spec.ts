@@ -167,6 +167,31 @@ test.describe('paces browser: a real browser', () => {
     }
   });
 
+  test('reports a page whose largest content waited on one slow request', async () => {
+    const dir = tempDir();
+    try {
+      const { run, out } = await record('slow-load', dir, ['--duration', '6']);
+      expect(run.code, run.stderr).toBe(0);
+      const summary = await runPaces(['summary', out]);
+      expect(summary.stdout).toMatch(/Slow load/);
+      expect(summary.stdout).toMatch(/slow-hero\.svg/);
+    } finally {
+      removeDir(dir);
+    }
+  });
+
+  test('reports a page whose HTML was slow to start arriving', async () => {
+    const dir = tempDir();
+    try {
+      const { run, out } = await record('slow-doc', dir);
+      expect(run.code, run.stderr).toBe(0);
+      const summary = await runPaces(['summary', out]);
+      expect(summary.stdout).toMatch(/Slow document/);
+    } finally {
+      removeDir(dir);
+    }
+  });
+
   test('drops query strings from every URL it stored', async () => {
     const dir = tempDir();
     try {

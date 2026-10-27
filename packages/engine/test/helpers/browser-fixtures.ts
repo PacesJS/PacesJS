@@ -9,6 +9,8 @@ export const BROWSER_FIXTURES = [
   'worker-and-iframe',
   'layout-shift',
   'big-script',
+  'slow-load',
+  'slow-doc',
   'paused-resume',
 ] as const;
 export type BrowserFixtureName = (typeof BROWSER_FIXTURES)[number];

@@ -490,7 +490,9 @@ export type FindingKind =
   | 'forced-layout'
   | 'third-party-cost'
   | 'layout-shift'
-  | 'uncompressed-text';
+  | 'uncompressed-text'
+  | 'slow-load'
+  | 'slow-document';
 
 /** What the UI should select and which view proves a finding. */
 export interface ShowMe {

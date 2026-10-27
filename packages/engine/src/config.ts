@@ -42,6 +42,10 @@ export interface Thresholds {
   layoutShiftScore: number;
   /** Browser: a text file this large (decoded bytes) that was sent without compression. */
   uncompressedTextBytes: number;
+  /** Browser: the largest content appeared later than this. */
+  slowLoadMs: number;
+  /** Browser: the page's HTML took longer than this to start arriving. */
+  documentWaitMs: number;
   /** Findings that need a share ignore tracks or kinds with fewer busy samples than this. */
   minSamples: number;
 }
@@ -67,6 +71,8 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   thirdPartyShare: 0.1,
   layoutShiftScore: 0.1,
   uncompressedTextBytes: 20_000,
+  slowLoadMs: 2500,
+  documentWaitMs: 800,
   minSamples: 20,
 };
 
@@ -104,4 +110,4 @@ export interface AnalyzeOptions {
   suppressForCli?: FindingKind[];
 }
 
-export const ENGINE_VERSION = '0.8.0';
+export const ENGINE_VERSION = '0.8.1';

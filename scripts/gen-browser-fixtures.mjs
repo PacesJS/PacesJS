@@ -22,8 +22,12 @@ const PAGES = [
   'worker-and-iframe',
   'layout-shift',
   'big-script',
+  'slow-load',
+  'slow-doc',
   'paused-resume',
 ];
+// Pages whose story needs longer than the default recording.
+const PAGE_SECONDS = { 'slow-load': 5.5, 'slow-doc': 3.5 };
 // Recorded from slow-click, with a pause and a resume in the middle: two trace segments.
 const PAGE_FILE = { 'paused-resume': 'slow-click' };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,7 +66,7 @@ try {
       eventMarks: true,
       eventText: true,
       cacheCold: false,
-      ...(page === 'paused-resume' ? {} : { durationMs: seconds * 1000 }),
+      ...(page === 'paused-resume' ? {} : { durationMs: (PAGE_SECONDS[page] ?? seconds) * 1000 }),
     });
     if (page === 'paused-resume') {
       await wait(1500);

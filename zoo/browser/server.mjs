@@ -25,7 +25,29 @@ function vendorScript(prefix) {
   return text;
 }
 
+/** An image busy enough to count as content: the browser ignores flat pictures as largest paint. */
+function heroSvg() {
+  let shapes = '';
+  for (let i = 0; i < 400; i++) {
+    const x = (i * 97) % 780;
+    const y = (i * 61) % 480;
+    const hue = (i * 47) % 360;
+    shapes += `<rect x="${x}" y="${y}" width="${20 + (i % 5) * 6}" height="${20 + (i % 7) * 4}" fill="hsl(${hue},60%,55%)"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500">${shapes}</svg>`;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function serveFile(res, file) {
+  if (file === 'slow-hero.svg') {
+    // The one slow request of slow-load.html.
+    void sleep(2800).then(() => {
+      res.writeHead(200, { 'content-type': 'image/svg+xml' });
+      res.end(heroSvg());
+    });
+    return;
+  }
   if (file === 'vendor.js' || file === 'vendor-gz.js') {
     const plain = file === 'vendor.js';
     const body = Buffer.from(vendorScript(plain ? 'vendorStep' : 'vendorStepGz'));
@@ -55,15 +77,19 @@ export async function startZoo() {
   const first = await listen((req, res) => {
     const name = req.url.split('?')[0].slice(1) || 'index.html';
     if (name.endsWith('.html')) {
-      try {
-        const html = readFileSync(join(here, 'pages', name), 'utf8').replaceAll(
-          '%THIRD%',
-          secondOrigin,
-        );
-        res.writeHead(200, { 'content-type': 'text/html' }).end(html);
-      } catch {
-        res.writeHead(404).end('not found');
-      }
+      // The server takes its time answering for this page (slow-doc.html).
+      const wait = name === 'slow-doc.html' ? sleep(1300) : Promise.resolve();
+      void wait.then(() => {
+        try {
+          const html = readFileSync(join(here, 'pages', name), 'utf8').replaceAll(
+            '%THIRD%',
+            secondOrigin,
+          );
+          res.writeHead(200, { 'content-type': 'text/html' }).end(html);
+        } catch {
+          res.writeHead(404).end('not found');
+        }
+      });
     } else serveFile(res, name);
   });
   const origin = `http://127.0.0.1:${first.address().port}`;
@@ -78,6 +104,6 @@ export async function startZoo() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const zoo = await startZoo();
   console.log(
-    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift, big-script)`,
+    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift, big-script, slow-load, slow-doc)`,
   );
 }
