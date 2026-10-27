@@ -328,3 +328,35 @@
 .milestone-label.is-load {
   --ms-color: var(--c-ms-load);
 }
+
+/* Waiting lane: idle time by cause, and the page's requests under it. */
+.waiting-plot {
+  cursor: crosshair;
+}
+
+.idle-block {
+  position: absolute;
+  top: var(--sp-4);
+  height: 10px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.idle-block.cause-requests {
+  background: var(--c-wait-requests);
+}
+
+/* Dotted, so the two causes differ by pattern as well as by color. */
+.idle-block.cause-nothing {
+  border: 1px dotted var(--c-muted);
+  background: color-mix(in srgb, var(--c-muted) 14%, transparent);
+}
+
+.request-bar {
+  position: absolute;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--c-request);
+  opacity: 0.85;
+  cursor: pointer;
+}

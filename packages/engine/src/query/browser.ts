@@ -1,9 +1,15 @@
 // What the browser lanes of the UI draw, as plain data: the filmstrip, the loading milestones, the
 // rendering work, the user's input and the pauses. A pure function of the model.
 
-import { INPUT_KIND_NAMES, RENDER_PHASE_NAMES, VITAL_KIND_NAMES } from '../model.js';
+import {
+  INPUT_KIND_NAMES,
+  RENDER_PHASE_NAMES,
+  REQUEST_TYPE_NAMES,
+  VITAL_KIND_NAMES,
+} from '../model.js';
 import type { ExecutionModel } from '../model.js';
 import type { TrackId } from '../raw.js';
+import { stretches } from './idle.js';
 
 export interface BrowserVital {
   timeUs: number;
@@ -21,6 +27,28 @@ export interface BrowserInput {
   task: number;
   /** Microseconds to the next paint; -1 when it does not apply. */
   latencyUs: number;
+}
+
+/** A stretch where the main thread had nothing to run, and what the page was waiting on. */
+export interface BrowserIdle {
+  startUs: number;
+  endUs: number;
+  /** `requests`: at least one request was in flight. `nothing`: none was. */
+  cause: 'requests' | 'nothing';
+  /** Addresses of the requests in flight, the ones in flight longest first; empty for `nothing`. */
+  requests: string[];
+}
+
+/** One request of the page, laid out in a row so overlapping ones do not cover each other. */
+export interface BrowserRequest {
+  startUs: number;
+  endUs: number;
+  /** One of `REQUEST_TYPE_NAMES`. */
+  type: string;
+  url: string;
+  /** Bytes on the wire; -1 when unknown. */
+  wireBytes: number;
+  row: number;
 }
 
 export interface BrowserRender {
@@ -46,6 +74,8 @@ export interface BrowserTimeline {
   vitals: BrowserVital[];
   inputs: BrowserInput[];
   render: BrowserRender[];
+  idle: BrowserIdle[];
+  requests: BrowserRequest[];
   /** Main-thread tasks over the long-task limit: ticks on the page lane. */
   longTasks: Array<{ startUs: number; durationUs: number; task: number }>;
   recorded: Array<{ startUs: number; endUs: number }>;
@@ -54,6 +84,61 @@ export interface BrowserTimeline {
 
 /** Tasks longer than this are long tasks (the same limit as the main-thread-blocked finding). */
 const LONG_TASK_US = 50_000;
+/** Idle stretches shorter than this are not worth a mark. */
+const MIN_IDLE_US = 20_000;
+/** The lane has this many rows of requests; a busier moment shares the last row. */
+const MAX_REQUEST_ROWS = 5;
+/** Naming what an idle wait was on skips these: icons and streams are not what a page waits for. */
+const QUIET_TYPES = new Set(['Media', 'Other']);
+const NAMED_REQUESTS = 3;
+
+function idleStretches(model: ExecutionModel, durationUs: number): BrowserIdle[] {
+  const t = model.page?.requests;
+  const out: BrowserIdle[] = [];
+  for (const s of stretches(model, 0, durationUs)) {
+    if (s.cause === 'busy' || s.end - s.start < MIN_IDLE_US) continue;
+    const inFlight: Array<{ url: string; overlap: number }> = [];
+    for (let i = 0; s.cause === 'requests' && t && i < t.length; i++) {
+      const end = t.end[i] ?? -1;
+      const overlap = Math.min(s.end, end) - Math.max(s.start, t.start[i] ?? 0);
+      const type = REQUEST_TYPE_NAMES[t.type[i] ?? 0] ?? 'Other';
+      if (end >= 0 && overlap > 0 && !QUIET_TYPES.has(type)) {
+        inFlight.push({ url: model.strings[t.url[i] ?? 0] ?? '', overlap });
+      }
+    }
+    inFlight.sort((a, b) => b.overlap - a.overlap || a.url.localeCompare(b.url));
+    out.push({
+      startUs: s.start,
+      endUs: s.end,
+      cause: s.cause,
+      requests: inFlight.slice(0, NAMED_REQUESTS).map((r) => r.url),
+    });
+  }
+  return out;
+}
+
+function requestRows(model: ExecutionModel): BrowserRequest[] {
+  const t = model.page?.requests;
+  const rows: number[] = [];
+  const out: BrowserRequest[] = [];
+  for (let i = 0; t && i < t.length; i++) {
+    const startUs = t.start[i] ?? 0;
+    const endUs = t.end[i] ?? -1;
+    if (endUs < startUs) continue;
+    let row = rows.findIndex((last) => last <= startUs);
+    if (row < 0) row = rows.length < MAX_REQUEST_ROWS ? rows.length : MAX_REQUEST_ROWS - 1;
+    rows[row] = endUs;
+    out.push({
+      startUs,
+      endUs,
+      type: REQUEST_TYPE_NAMES[t.type[i] ?? 0] ?? 'Other',
+      url: model.strings[t.url[i] ?? 0] ?? '',
+      wireBytes: t.encoded[i] ?? -1,
+      row,
+    });
+  }
+  return out;
+}
 
 export function browserTimeline(model: ExecutionModel): BrowserTimeline | null {
   const page = model.page;
@@ -123,6 +208,8 @@ export function browserTimeline(model: ExecutionModel): BrowserTimeline | null {
     vitals,
     inputs,
     render,
+    idle: idleStretches(model, model.meta.durationUs),
+    requests: requestRows(model),
     longTasks,
     recorded: ranges(page.recorded),
     paused: ranges(page.paused),
