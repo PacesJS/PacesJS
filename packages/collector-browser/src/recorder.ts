@@ -409,8 +409,10 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
       },
     });
     live.controller = controller;
-    const startedAt = Date.now();
     await controller.start();
+    // Every time in the model counts from here. Starting the trace can take seconds on a busy
+    // machine, and none of that time was recorded: counting from before it leaves a blank start.
+    const startedAt = Date.now();
     if (options.url) await cdp.send('Page.navigate', { url: options.url }, sessionId);
 
     const finish = async (by: EndedBy): Promise<BrowserRecording> => {

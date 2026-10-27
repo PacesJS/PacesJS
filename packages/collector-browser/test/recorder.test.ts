@@ -52,6 +52,17 @@ describe.runIf(exe)('startRecording (real browser)', () => {
     expect(recording.endedBy).toBe('duration');
   }, 60_000);
 
+  it('starts the run when the trace has started, not before it was asked for', async () => {
+    let tracingSince = 0;
+    const recording = await record('slow-click', {
+      onState: (s) => {
+        if (s.phase === 'recording' && tracingSince === 0) tracingSince = Date.now();
+      },
+    });
+    expect(tracingSince).toBeGreaterThan(0);
+    expect(recording.startedAt).toBeGreaterThanOrEqual(tracingSince);
+  }, 60_000);
+
   it('never records the injected script as a page script', async () => {
     const recording = await record('slow-click');
     expect(recording.scripts.some((s) => s.url.startsWith('paces://'))).toBe(false);
