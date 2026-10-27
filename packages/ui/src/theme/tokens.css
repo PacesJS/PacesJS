@@ -108,6 +108,10 @@
   --c-origin-node: #1bb5a2;
   --c-origin-native: #2bc48a;
   --c-origin-gc: #848aa3;
+  --c-ms-fcp: #12a150;
+  --c-ms-dcl: #0a8fb0;
+  --c-ms-lcp: #b026d6;
+  --c-ms-load: #4a49d9;
   --origin-dim: 45%;
   --c-origin-you-dim: var(--c-origin-you);
   --c-origin-dependency-dim: color-mix(
@@ -192,6 +196,10 @@
     --c-origin-node: #2cc9b6;
     --c-origin-native: #3fd49a;
     --c-origin-gc: #9aa0bb;
+    --c-ms-fcp: #3ddc84;
+    --c-ms-dcl: #38c6ea;
+    --c-ms-lcp: #d77cf2;
+    --c-ms-load: #8c8bff;
     --c-flame-root: #2b2f4d;
 
     --c-diff-faster: #6ba0ff;
@@ -244,6 +252,10 @@
   --c-origin-node: #2cc9b6;
   --c-origin-native: #3fd49a;
   --c-origin-gc: #9aa0bb;
+  --c-ms-fcp: #3ddc84;
+  --c-ms-dcl: #38c6ea;
+  --c-ms-lcp: #d77cf2;
+  --c-ms-load: #8c8bff;
   --c-flame-root: #2b2f4d;
 
   --c-diff-faster: #6ba0ff;
