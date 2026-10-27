@@ -55,8 +55,10 @@ export { getEmbeddedSource } from './query/embedded-source.js';
 export { timelineLane } from './query/timeline.js';
 export { browserTimeline } from './query/browser.js';
 export type {
+  BrowserIdle,
   BrowserInput,
   BrowserRender,
+  BrowserRequest,
   BrowserTimeline,
   BrowserVital,
 } from './query/browser.js';

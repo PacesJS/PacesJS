@@ -6,6 +6,7 @@ import { functionName } from '../frames.js';
 import { INPUT_KIND_NAMES, Origin, REQUEST_FLAG, REQUEST_TYPE_NAMES } from '../model.js';
 import type { ExecutionModel, Finding, FnId, Severity, Track } from '../model.js';
 import { formatBytes, formatDuration, formatPercent, plural } from '../util/format.js';
+import { stretches } from '../query/idle.js';
 import { requestInitiator } from '../query/network.js';
 import type { RequestInitiator } from '../query/network.js';
 import { displayPath } from '../util/paths.js';
@@ -404,38 +405,13 @@ interface LoadSplit {
 
 /** What the main thread did in `[from, to]`: running a task, idle with a request in flight, or idle with none. */
 function splitLoad(m: ExecutionModel, from: number, to: number): LoadSplit {
-  const edges: Array<{ at: number; busy: number; flight: number }> = [];
-  const track = m.tracks[m.primaryTrack];
-  for (let k = 0; track && k < track.tasks.length; k++) {
-    const a = Math.max(from, track.tasks.start[k] ?? 0);
-    const b = Math.min(to, track.tasks.end[k] ?? 0);
-    if (b > a) edges.push({ at: a, busy: 1, flight: 0 }, { at: b, busy: -1, flight: 0 });
-  }
-  const t = m.page?.requests;
-  for (let i = 0; t && i < t.length; i++) {
-    const end = t.end[i] ?? -1;
-    const a = Math.max(from, t.start[i] ?? 0);
-    const b = Math.min(to, end);
-    if (end >= 0 && b > a)
-      edges.push({ at: a, busy: 0, flight: 1 }, { at: b, busy: 0, flight: -1 });
-  }
-  edges.sort((x, y) => x.at - y.at);
   const split: LoadSplit = { busy: 0, waiting: 0, nothing: 0 };
-  let busy = 0;
-  let flight = 0;
-  let cursor = from;
-  for (const e of edges) {
-    const span = e.at - cursor;
-    if (span > 0) {
-      if (busy > 0) split.busy += span;
-      else if (flight > 0) split.waiting += span;
-      else split.nothing += span;
-    }
-    cursor = Math.max(cursor, e.at);
-    busy += e.busy;
-    flight += e.flight;
+  for (const s of stretches(m, from, to)) {
+    const span = s.end - s.start;
+    if (s.cause === 'busy') split.busy += span;
+    else if (s.cause === 'requests') split.waiting += span;
+    else split.nothing += span;
   }
-  if (to > cursor) split.nothing += to - cursor;
   return split;
 }
 

@@ -71,6 +71,23 @@ describe('a browser session: lanes', () => {
     expect(new Set([...lines].map((l) => l.className)).size).toBe(lines.length);
   });
 
+  it('shows what the page was idle for, with the request it waited on', async () => {
+    open(browserModel('slow-load'), 'slow-load');
+    await ready();
+    expect((await screen.findAllByText('Waiting')).length).toBeGreaterThan(0);
+    const list = await screen.findByRole('list', { name: 'Idle stretches' });
+    expect(within(list).getAllByText(/waiting on slow-hero\.svg/).length).toBeGreaterThan(0);
+  });
+
+  it('draws a block for each idle stretch and a bar for each request', async () => {
+    open(browserModel('slow-load'), 'slow-load');
+    await ready();
+    await screen.findAllByText('Waiting');
+    expect(document.querySelectorAll('.idle-block.cause-requests').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.idle-block.cause-nothing').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.request-bar').length).toBeGreaterThan(1);
+  });
+
   it('shows frames as buttons that say when they were taken', async () => {
     open(browserModel('slow-click'), 'slow-click');
     await ready();
