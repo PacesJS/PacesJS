@@ -144,31 +144,9 @@
 .page-mark.is-navigation {
   height: 100%;
 }
-.page-mark.is-DOMContentLoaded,
-.page-mark.is-load {
-  background: var(--c-muted);
-  height: 55%;
-}
-.page-mark.is-FCP {
-  background: var(--c-origin-native);
-}
-.page-mark.is-LCP {
-  background: var(--c-origin-node);
-  height: 85%;
-}
 .page-mark.is-shift {
   background: var(--c-origin-framework);
   width: 4px;
-}
-
-.page-mark-label {
-  position: absolute;
-  top: 0;
-  left: var(--sp-4);
-  font-size: var(--fs-11);
-  line-height: var(--lh-16);
-  color: var(--c-muted);
-  white-space: nowrap;
 }
 
 .page-long-task {
@@ -287,4 +265,66 @@
     transition: none;
     animation: none;
   }
+}
+
+/* The lanes from the page lane down, so the milestone lines can run through all of them. */
+.lane-stack {
+  position: relative;
+}
+
+.milestone-lines {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--lane-head-w) + var(--sp-12));
+  right: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.milestone-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  opacity: 0.8;
+  background: var(--ms-color);
+}
+
+/* A flag on its line: the label sits beside the line it names and takes its color. */
+.milestone-label {
+  position: absolute;
+  padding: 0 var(--sp-6);
+  border-left: 3px solid var(--ms-color);
+  font-size: var(--fs-11);
+  line-height: var(--lh-16);
+  color: var(--c-ink);
+  background: var(--c-surface);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.milestone-label.is-flipped {
+  transform: translateX(-100%);
+  border-left: 0;
+  border-right: 3px solid var(--ms-color);
+}
+
+.milestone-line.is-FCP,
+.milestone-label.is-FCP {
+  --ms-color: var(--c-ms-fcp);
+}
+.milestone-line.is-DOMContentLoaded,
+.milestone-label.is-DOMContentLoaded {
+  --ms-color: var(--c-ms-dcl);
+}
+.milestone-line.is-LCP,
+.milestone-label.is-LCP {
+  --ms-color: var(--c-ms-lcp);
+}
+.milestone-line.is-load,
+.milestone-label.is-load {
+  --ms-color: var(--c-ms-load);
 }

@@ -166,9 +166,10 @@ const VITAL_OF: Record<string, number> = {
   LayoutShift: 5,
 };
 
-/** Two navigation or load events this close are one: a document and its initial blank one. */
+/** Two navigation events this close are one: a document and its initial blank one. */
 const SAME_MOMENT_US = 50_000;
-const ONCE_PER_DOCUMENT = new Set(['navigationStart', 'domContentLoadedEventEnd', 'loadEventEnd']);
+/** A navigation is ready and loaded once; a blank document before the page's own reports it too, so the last counts. */
+const LAST_PER_NAVIGATION = new Set(['domContentLoadedEventEnd', 'loadEventEnd']);
 
 /**
  * The milestones of the page itself: its main frame only (an iframe or an ad has its own loading story),
@@ -177,29 +178,40 @@ const ONCE_PER_DOCUMENT = new Set(['navigationStart', 'domContentLoadedEventEnd'
 function milestoneEvents(events: PageEvent[]): PageEvent[] {
   const all = events.filter((e) => VITAL_OF[e.name] !== undefined);
   const main = all.find((e) => e.name === 'navigationStart')?.arg;
-  const own = all.filter((e) => main === undefined || e.arg === undefined || e.arg === main);
+  // An event with no frame cannot be this page's (frames a script creates fire a hundred of them).
+  const own = all.filter((e) => main === undefined || e.arg === main);
   const out: PageEvent[] = [];
   const lastOf = new Map<string, number>();
-  const navigations = own.filter((e) => e.name === 'navigationStart').map((e) => e.ts);
+  const navigations: number[] = [];
+  for (const e of own) {
+    if (e.name !== 'navigationStart') continue;
+    const before = navigations[navigations.length - 1];
+    if (before === undefined || e.ts - before >= SAME_MOMENT_US) navigations.push(e.ts);
+  }
   const navigationOf = (ts: number): number => {
     let at = -1;
     for (const n of navigations) if (n <= ts) at = n;
     return at;
   };
   const lcp = new Map<number, PageEvent>();
+  const ready = new Map<string, PageEvent>();
   for (const e of own) {
     if (e.name === 'largestContentfulPaint::Candidate') {
       lcp.set(navigationOf(e.ts), e);
       continue;
     }
-    if (ONCE_PER_DOCUMENT.has(e.name)) {
+    if (LAST_PER_NAVIGATION.has(e.name)) {
+      ready.set(`${e.name}|${navigationOf(e.ts)}`, e);
+      continue;
+    }
+    if (e.name === 'navigationStart') {
       const before = lastOf.get(e.name);
       if (before !== undefined && e.ts - before < SAME_MOMENT_US) continue;
       lastOf.set(e.name, e.ts);
     }
     out.push(e);
   }
-  return [...out, ...lcp.values()];
+  return [...out, ...ready.values(), ...lcp.values()];
 }
 
 /** Frames, loading milestones, the filmstrip and the stretches that were and were not recorded. */

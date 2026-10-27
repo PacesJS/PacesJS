@@ -1,7 +1,10 @@
+import type { ReactNode } from 'react';
 import { useApp } from '../app/context';
 import { BrowserLanesBottom } from './BrowserLanesBottom';
-import { BrowserLanesTop } from './BrowserLanesTop';
+import { BrowserFilmstrip } from './BrowserFilmstrip';
+import { BrowserPageLane } from './BrowserPageLane';
 import { Findings } from './Findings';
+import { MilestoneLines } from './MilestoneLines';
 import { TrackLanes } from './TrackLanes';
 
 const TEXT = {
@@ -19,6 +22,11 @@ const TEXT = {
   thirdParty: 'Third-party',
   pageInternals: 'Browser internals',
 } as const;
+
+/** The lanes of a page share a box the milestone lines run down; a Node run has no such lines and no box. */
+function LaneStack({ page, children }: { page: boolean; children: ReactNode }) {
+  return page ? <div className="lane-stack">{children}</div> : <>{children}</>;
+}
 
 /** Overview band: findings strip on top, track lanes below. */
 export function Overview() {
@@ -102,9 +110,13 @@ export function Overview() {
               </li>
             </ul>
           </div>
-          <BrowserLanesTop />
-          <TrackLanes />
-          <BrowserLanesBottom />
+          <BrowserFilmstrip />
+          <LaneStack page={page}>
+            <MilestoneLines />
+            <BrowserPageLane />
+            <TrackLanes />
+            <BrowserLanesBottom />
+          </LaneStack>
         </div>
       </div>
     </section>

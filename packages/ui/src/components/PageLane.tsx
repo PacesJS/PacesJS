@@ -2,6 +2,7 @@ import type { BrowserTimeline } from '@pacesjs/engine';
 import { useMemo } from 'react';
 import { useApp } from '../app/context';
 import { fmtDuration, fmtSeconds } from '../util/format';
+import { milestones } from '../view/milestones';
 import { LaneRange } from './LaneRange';
 import { PausedBands } from './PausedBands';
 
@@ -11,6 +12,7 @@ const TEXT = {
   milestones: 'Page milestones',
   longTasks: 'Long tasks',
   at: (name: string, when: string) => `${name} at ${when}`,
+  labelled: (name: string, when: string) => `${name} ${when}`,
   shift: (score: string, when: string) => `Layout shift ${score} at ${when}`,
   longTask: (dur: string, when: string) => `Long task, ${dur}, at ${when}`,
   navigation: 'Navigation',
@@ -24,25 +26,10 @@ const NAMES: Record<string, string> = {
   LCP: 'Largest contentful paint',
 };
 
-/** Marks wider apart than this (as a share of the run) can both carry a label. */
-const LABEL_GAP = 0.06;
-
-/** Which marks get a label: FCP and load, skipping one that would sit on top of the last label. */
-export function labelledMilestones(
-  vitals: BrowserTimeline['vitals'],
-  durationUs: number,
-): Set<number> {
-  const out = new Set<number>();
-  let last = Number.NEGATIVE_INFINITY;
-  vitals.forEach((v, i) => {
-    if (v.name !== 'FCP' && v.name !== 'load') return;
-    const at = v.timeUs / durationUs;
-    if (at - last < LABEL_GAP) return;
-    out.add(i);
-    last = at;
-  });
-  return out;
-}
+/** Height of one row of milestone labels, and of the space above them for the long-task ticks. */
+const LABEL_ROW_PX = 15;
+const LABEL_TOP_PX = 10;
+const LANE_MIN_PX = 44;
 
 interface PageLaneProps {
   data: BrowserTimeline;
@@ -54,7 +41,7 @@ interface PageLaneProps {
  */
 export function PageLane({ data }: PageLaneProps) {
   const { dispatch } = useApp();
-  const labelled = useMemo(() => labelledMilestones(data.vitals, data.durationUs), [data]);
+  const marks = useMemo(() => milestones(data.vitals, data.durationUs), [data]);
   const left = (us: number): string => `${(us / data.durationUs) * 100}%`;
   const selectTask = (task: number): void =>
     dispatch({
@@ -71,7 +58,10 @@ export function PageLane({ data }: PageLaneProps) {
           <span className="lane-meta">{TEXT.meta}</span>
         </div>
       </div>
-      <div className="lane-plot-dom page-plot">
+      <div
+        className="lane-plot-dom page-plot"
+        style={{ height: Math.max(LANE_MIN_PX, LABEL_TOP_PX + marks.length * LABEL_ROW_PX + 4) }}
+      >
         <PausedBands data={data} />
         <LaneRange durationUs={data.durationUs} />
         <div aria-hidden="true">
@@ -82,12 +72,19 @@ export function PageLane({ data }: PageLaneProps) {
                 className="page-mark is-shift"
                 style={{ left: left(v.timeUs), height: `${Math.min(100, 20 + v.value * 300)}%` }}
               />
-            ) : (
-              <span key={i} className={`page-mark is-${v.name}`} style={{ left: left(v.timeUs) }}>
-                {labelled.has(i) ? <span className="page-mark-label">{v.name}</span> : null}
-              </span>
-            ),
+            ) : v.name === 'navigation' ? (
+              <span key={i} className="page-mark is-navigation" style={{ left: left(v.timeUs) }} />
+            ) : null,
           )}
+          {marks.map((m) => (
+            <span
+              key={m.kind}
+              className={`milestone-label is-${m.kind}${m.flip ? ' is-flipped' : ''}`}
+              style={{ left: left(m.timeUs), top: LABEL_TOP_PX + m.row * LABEL_ROW_PX }}
+            >
+              {TEXT.labelled(m.label, fmtSeconds(m.timeUs, 2))}
+            </span>
+          ))}
           {data.longTasks.map((t) => (
             <span
               key={t.task}

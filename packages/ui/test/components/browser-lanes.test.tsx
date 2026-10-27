@@ -54,6 +54,23 @@ describe('a browser session: lanes', () => {
     }
   });
 
+  it('names the loading milestones in words, each with when it happened', async () => {
+    open(browserModel('slow-click'), 'slow-click');
+    await ready();
+    const labels = await screen.findAllByText(/^First contentful paint \d+\.\d\d s$/);
+    expect(labels.length).toBe(1);
+    expect(screen.getAllByText(/^Page loaded \d+\.\d\d s$/).length).toBe(1);
+  });
+
+  it('draws one line per milestone across all the lanes, in its own color', async () => {
+    open(browserModel('slow-click'), 'slow-click');
+    await ready();
+    await screen.findAllByText(/^First contentful paint /);
+    const lines = document.querySelectorAll('.milestone-lines .milestone-line');
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(new Set([...lines].map((l) => l.className)).size).toBe(lines.length);
+  });
+
   it('shows frames as buttons that say when they were taken', async () => {
     open(browserModel('slow-click'), 'slow-click');
     await ready();
