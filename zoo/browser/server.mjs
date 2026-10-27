@@ -104,6 +104,6 @@ export async function startZoo() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const zoo = await startZoo();
   console.log(
-    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift, big-script, slow-load, slow-doc, late-hero)`,
+    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift, big-script, slow-load, slow-doc, late-hero, icon-dialog)`,
   );
 }

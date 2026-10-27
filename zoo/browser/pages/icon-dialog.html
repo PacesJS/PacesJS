@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>icon dialog</title>
+<!-- Not a bottleneck: a modal whose close button holds an SVG icon, closed by a click on the icon itself. -->
+<dialog id="modal">
+  <p>Sign in to see more</p>
+  <button id="dismiss" aria-label="Dismiss">
+    <svg class="icon-close" width="16" height="16">
+      <path d="M2 2L14 14M14 2L2 14" stroke="black" />
+    </svg>
+  </button>
+</dialog>
+<script>
+  const modal = document.getElementById('modal');
+  modal.showModal();
+  document.getElementById('dismiss').addEventListener('click', () => modal.close());
+  setTimeout(
+    () =>
+      document
+        .querySelector('#dismiss path')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+    500,
+  );
+</script>

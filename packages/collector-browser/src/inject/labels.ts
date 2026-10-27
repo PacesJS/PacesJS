@@ -4,7 +4,6 @@
 export interface ElementLike {
   tagName: string;
   id: string;
-  className: string;
   textContent: string | null;
   isContentEditable: boolean;
   parentElement: ElementLike | null;
@@ -42,7 +41,8 @@ export function describeElement(el: ElementLike, options: DescribeOptions): stri
       if (testId) out += '[data-testid=' + testId + ']';
     }
     if (node.id) return out + '#' + node.id;
-    const cls = (node.className || '').trim().split(/\s+/)[0];
+    // The class attribute, not `className`: on an SVG element that is an object, not a string.
+    const cls = (node.getAttribute('class') || '').trim().split(/\s+/)[0];
     return cls ? out + '.' + cls : out;
   };
 
