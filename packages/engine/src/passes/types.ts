@@ -1,9 +1,16 @@
 // Shared shapes between passes. Every pass is `(input, ctx) => output`.
 
 import type { AnalyzeOptions, Thresholds } from '../config.js';
-import type { Samples, EventTable } from '../model.js';
-import type { ScriptInfo, TimelineEvent, TrackInfo } from '../raw.js';
-import type { RunAdapter } from '../run/types.js';
+import type {
+  EventTable,
+  ExecutionModel,
+  Finding,
+  OriginId,
+  RunKind,
+  Samples,
+  TrackRole,
+} from '../model.js';
+import type { RawCapture, ScriptInfo, TimelineEvent, TrackInfo } from '../raw.js';
 import type { StringTable } from '../util/strings.js';
 
 /** One occurrence of something worth a warning; `analyze` folds drafts into one `ModelWarning` per kind. */
@@ -96,4 +103,51 @@ export interface IngestResult {
   durationUs: number;
   /** The monotonic clock reading that corresponds to `meta.startedAt`. */
   monoAtStartUs: number;
+}
+
+export interface TargetDetection {
+  /** Absolute entry script per track ('' when unknown), '/'-separated. */
+  entryAbs: string[];
+  /** Entry per track in model form: project-relative inside the root, absolute outside. */
+  entries: string[];
+  roles: TrackRole[];
+  primary: number;
+  spec: TargetSpec;
+  /** Package names reported in `ExecutionModel.target.packages`. */
+  packages: string[];
+  /** The primary process is a command: its entry is in node_modules or it has arguments. */
+  commandLike: boolean;
+}
+
+export type FindingRule = (model: ExecutionModel, th: Thresholds) => Finding[];
+
+export interface FrameFacts {
+  name: string;
+  file: string;
+  line: number;
+}
+
+export interface ClassifiedFunction {
+  origin: OriginId;
+  /** Package or host the function belongs to; '' for none. */
+  pkg: string;
+}
+
+/**
+ * The parts of an analysis that depend on what was profiled. A capture picks one adapter once, and the
+ * passes call it, so no pass asks "is this a browser?". Adding a kind of run adds an adapter.
+ */
+export interface RunAdapter {
+  /** The kind of run, when how it was captured already says (a page); otherwise it is worked out. */
+  fixedRunKind?: RunKind;
+  /** Which track is the program, and what counts as its own code. */
+  detectTarget(capture: RawCapture, ingest: IngestResult, ctx: PassContext): TargetDetection;
+  /** The origin of one function. `forced` is a caller's override, which wins over the rules. */
+  classifyFunction(
+    frame: FrameFacts,
+    target: TargetSpec | undefined,
+    forced: OriginId | undefined,
+  ): ClassifiedFunction;
+  /** The finding rules that apply to this kind of run. */
+  rules: readonly FindingRule[];
 }
