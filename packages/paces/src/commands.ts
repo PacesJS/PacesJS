@@ -28,7 +28,7 @@ import { appModeArgs, findBrowser, osOpen, planEditorOpen, run } from './launch.
 import { isHeadless, killTree, removeDetached } from '@pacesjs/shared';
 import { DEFAULT_GRACE_MS, waitForWindowClose } from './lifecycle.js';
 import { keysEnabled } from './keys.js';
-import { attachTerminal } from './terminal.js';
+import { attachTerminal, terminalOptions } from './terminal.js';
 import { serveMcp } from './mcp.js';
 import { createPacesServer } from './mcp-server.js';
 import { saveSession } from './save-session.js';
@@ -253,28 +253,18 @@ async function cmdProfile(p: Extract<Parsed, { kind: 'profile' }>, io: Io): Prom
     log: (l) => io.err(l),
     holdStdin: keysEnabled({ flag: p.flags.keys, isTTY }),
     attach: (controls) =>
-      attachTerminal({
-        controls,
-        flag: p.flags.keys,
-        input: process.stdin,
-        isTTY,
-        log: (l) => io.err(l),
-        title: (sequence) => {
-          if (process.stderr.isTTY) process.stderr.write(sequence);
-        },
-        panel:
-          process.stderr.isTTY && !p.flags.noPanel
-            ? {
-                color: !process.env['NO_COLOR'],
-                write: (s) => void process.stderr.write(s),
-                size: () => ({ rows: process.stderr.rows, cols: process.stderr.columns }),
-                onResize: (listener) => {
-                  process.stderr.on('resize', listener);
-                  return () => void process.stderr.off('resize', listener);
-                },
-              }
-            : undefined,
-      }),
+      attachTerminal(
+        terminalOptions({
+          controls,
+          flag: p.flags.keys,
+          noPanel: p.flags.noPanel,
+          isTTY,
+          input: process.stdin,
+          stderr: process.stderr,
+          env: process.env,
+          log: (l) => io.err(l),
+        }),
+      ),
   });
   const { capture } = result;
   const out = resolve(cwd, p.flags.out ?? defaultSessionPath(cwd));
@@ -333,28 +323,18 @@ async function cmdBrowser(p: Extract<Parsed, { kind: 'browser' }>, io: Io): Prom
 
   const run = await startRecording({ ...recordOptionsFor(flags, url, exe) });
   const isTTY = Boolean(process.stdin.isTTY);
-  const detach = attachTerminal({
-    controls: browserControls(run),
-    flag: flags.keys,
-    input: process.stdin,
-    isTTY,
-    log: (l) => io.err(l),
-    title: (sequence) => {
-      if (process.stderr.isTTY) process.stderr.write(sequence);
-    },
-    panel:
-      process.stderr.isTTY && !flags.noPanel
-        ? {
-            color: !process.env['NO_COLOR'],
-            write: (s) => void process.stderr.write(s),
-            size: () => ({ rows: process.stderr.rows, cols: process.stderr.columns }),
-            onResize: (listener) => {
-              process.stderr.on('resize', listener);
-              return () => void process.stderr.off('resize', listener);
-            },
-          }
-        : undefined,
-  });
+  const detach = attachTerminal(
+    terminalOptions({
+      controls: browserControls(run),
+      flag: flags.keys,
+      noPanel: flags.noPanel,
+      isTTY,
+      input: process.stdin,
+      stderr: process.stderr,
+      env: process.env,
+      log: (l) => io.err(l),
+    }),
+  );
   let interrupts = 0;
   const onSigint = (): void => {
     interrupts++;
