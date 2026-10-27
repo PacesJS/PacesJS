@@ -16,7 +16,7 @@ const TEXT = {
   stopping: 'paces: stopping and building the results...',
 } as const;
 
-interface TerminalOptions {
+export interface TerminalOptions {
   controls: ProfileControls;
   /** `--keys` / `--no-keys`; unset means on in a terminal. */
   flag: boolean | undefined;
@@ -31,6 +31,60 @@ interface TerminalOptions {
     size(): PanelSize;
     onResize(listener: () => void): () => void;
     color?: boolean;
+  };
+}
+
+interface TerminalEnvironment {
+  controls: ProfileControls;
+  flag: boolean | undefined;
+  /** `--no-panel`. */
+  noPanel: boolean | undefined;
+  isTTY: boolean;
+  input: KeyInput;
+  stderr: {
+    isTTY?: boolean;
+    rows?: number;
+    columns?: number;
+    write(s: string): unknown;
+    on(event: 'resize', listener: () => void): unknown;
+    off(event: 'resize', listener: () => void): unknown;
+  };
+  env: Record<string, string | undefined>;
+  log(line: string): void;
+}
+
+/** What a run on this machine's terminal needs: stderr is where the panel, the title and the lines go. */
+export function terminalOptions({
+  controls,
+  flag,
+  noPanel,
+  isTTY,
+  input,
+  stderr,
+  env,
+  log,
+}: TerminalEnvironment): TerminalOptions {
+  return {
+    controls,
+    flag,
+    input,
+    isTTY,
+    log,
+    title: (sequence) => {
+      if (stderr.isTTY) stderr.write(sequence);
+    },
+    panel:
+      stderr.isTTY && !noPanel
+        ? {
+            color: !env['NO_COLOR'],
+            write: (s) => void stderr.write(s),
+            size: () => ({ rows: stderr.rows ?? 0, cols: stderr.columns ?? 0 }),
+            onResize: (listener) => {
+              stderr.on('resize', listener);
+              return () => void stderr.off('resize', listener);
+            },
+          }
+        : undefined,
   };
 }
 
