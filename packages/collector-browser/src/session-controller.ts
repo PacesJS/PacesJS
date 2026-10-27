@@ -4,6 +4,9 @@ import type { ScreenshotResult } from './screenshot-store.js';
 import type { TraceEvent, TraceFilterStats } from './trace.js';
 import { EXCLUDED_CATEGORIES, createTraceFilter } from './trace-filter.js';
 
+/** Events older than the start marker by more than this are strays, not part of the segment. */
+const STRAY_US = 1_000_000;
+
 export type Phase = 'ready' | 'recording' | 'pausing' | 'paused' | 'stopping' | 'done';
 
 export interface ControllerOptions {
@@ -186,10 +189,36 @@ export function createSessionController(deps: ControllerDeps): SessionController
     }
   }
 
+  /**
+   * A browser sometimes hands over a few events stamped long before tracing started (frames of
+   * another process, left over from earlier). They would stretch the segment over time that was
+   * never recorded, so anything much older than the start marker is dropped.
+   */
+  function dropStrays(from: number, bounds: { start: number; end: number }): void {
+    let started = Number.POSITIVE_INFINITY;
+    for (let k = from; k < events.length; k++) {
+      const e = events[k];
+      if (e && e.name === 'TracingStartedInBrowser') started = Math.min(started, e.ts);
+    }
+    if (!Number.isFinite(started)) return;
+    const kept = events.slice(from).filter((e) => e.ph === 'M' || e.ts >= started - STRAY_US);
+    if (kept.length === events.length - from) return;
+    events.length = from;
+    bounds.start = Number.POSITIVE_INFINITY;
+    bounds.end = Number.NEGATIVE_INFINITY;
+    for (const e of kept) {
+      events.push(e);
+      if (e.ph === 'M') continue;
+      bounds.start = Math.min(bounds.start, e.ts);
+      bounds.end = Math.max(bounds.end, e.ts + (e.dur ?? 0));
+    }
+  }
+
   async function endSegment(): Promise<void> {
     const current = segment;
     if (!current) return;
     collecting = { read: 0, total: 0 };
+    const firstOfSegment = events.length;
     const bounds = { start: Number.POSITIVE_INFINITY, end: Number.NEGATIVE_INFINITY };
     const done = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(
@@ -216,6 +245,7 @@ export function createSessionController(deps: ControllerDeps): SessionController
       flush = undefined;
       collecting = undefined;
     }
+    dropStrays(firstOfSegment, bounds);
     current.startUs = Number.isFinite(bounds.start) ? bounds.start : 0;
     current.endUs = Number.isFinite(bounds.end) ? bounds.end : current.startUs;
     segments.push(current);

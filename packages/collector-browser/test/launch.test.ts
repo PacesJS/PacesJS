@@ -17,6 +17,10 @@ describe('browserArgs', () => {
     expect(browserArgs('/tmp/p')).toContain('--keep-alive-for-test');
   });
 
+  it('stops Edge from relaunching itself, which would leave paces holding a closed pipe', () => {
+    expect(browserArgs('/tmp/p')).toContain('--edge-skip-compat-layer-relaunch');
+  });
+
   it('never opens a TCP debugging port', () => {
     expect(browserArgs('/tmp/p').some((a) => a.startsWith('--remote-debugging-port'))).toBe(false);
   });

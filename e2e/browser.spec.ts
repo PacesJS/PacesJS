@@ -172,6 +172,7 @@ test.describe('paces browser: a real browser', () => {
         `--user-data-dir=${profile}`,
         '--no-first-run',
         '--no-default-browser-check',
+        '--edge-skip-compat-layer-relaunch',
         zoo.url('slow-click'),
       ],
       { stdio: 'ignore' },

@@ -33,6 +33,8 @@ export function browserArgs(profileDir: string, windowSize = '1440,900'): string
     '--disable-sync',
     // Closing the last window must not end the browser: the trace is still being handed over.
     '--keep-alive-for-test',
+    // Edge can start a second copy of itself and exit; the copy has none of our pipes.
+    '--edge-skip-compat-layer-relaunch',
     `--window-size=${windowSize}`,
     'about:blank',
   ];

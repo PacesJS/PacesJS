@@ -83,6 +83,20 @@ describe('createSessionController', () => {
     expect(recording.segments[0]).toMatchObject({ startUs: 50, endUs: 100 });
   });
 
+  it('leaves out events stamped long before tracing started, which are not part of the segment', async () => {
+    const { cdp, controller } = setup();
+    await controller.start();
+    cdp.nextTrace = [
+      ev('BeginFrame', 20_000, { ph: 'I', dur: 0 }),
+      ev('TracingStartedInBrowser', 10_000_000, { ph: 'I', dur: 0 }),
+      ev('Layout', 10_050_000),
+      ev('Paint', 10_090_000, { dur: 10_000 }),
+    ];
+    const recording = await controller.stop();
+    expect(recording.segments[0]).toMatchObject({ startUs: 10_000_000, endUs: 10_100_000 });
+    expect(recording.events.map((e) => e.name)).not.toContain('BeginFrame');
+  });
+
   it('pausing ends tracing and the controller reports paused only after the flush', async () => {
     const { cdp, controller, phases } = setup();
     await controller.start();
