@@ -2,7 +2,6 @@
 // (track, transform stack) and every view reads it through the pure query functions.
 
 import type { CallTree, FnId, NodeId, OriginId, Samples, TaskKindId } from '../model.js';
-import type { DeoptSite } from './deopts.js';
 
 /** Function ids >= `model.functions.length` are synthetic nodes made by "collapse package". */
 export type ViewFnId = number;
@@ -534,4 +533,12 @@ export interface ModelDiff {
   headChange: Int8Array;
   baseBusyUs: number;
   headBusyUs: number;
+}
+
+export interface DeoptSite {
+  reason: string;
+  kind: 'eager' | 'lazy' | 'soft' | 'other';
+  /** 1-based original line, 0 when unknown. */
+  line: number;
+  count: number;
 }
