@@ -77,7 +77,7 @@ function classifyBrowserFrame(
     return { origin: Origin.Dependency, pkg: `extension:${hostOfUrl(file)}` };
   }
   if (!SCHEME.test(file)) return { origin: Origin.User, pkg: '' };
-  if (isFirstParty(file, browser.launchedUrl, browser.firstParty)) {
+  if (isFirstParty(file, browser.launchedUrl, browser.firstParty, browser.appSites)) {
     return { origin: Origin.User, pkg: '' };
   }
   return { origin: Origin.Dependency, pkg: hostOfUrl(file) };

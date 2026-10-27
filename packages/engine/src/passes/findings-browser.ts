@@ -63,6 +63,9 @@ function ownerOf(
   return best;
 }
 
+/** A long task counts as blocking only when at least this share of it was sampled as busy. */
+const MIN_SAMPLED_SHARE = 0.25;
+
 const mainThreadBlocked: BrowserRule = (m, th) => {
   const limit = th.mainThreadBlockedMs * 1000;
   const long: Array<{ track: Track; task: number; dur: number }> = [];
@@ -70,7 +73,10 @@ const mainThreadBlocked: BrowserRule = (m, th) => {
     if (!isMainThread(track)) continue;
     for (let k = 0; k < track.tasks.length; k++) {
       const dur = (track.tasks.end[k] ?? 0) - (track.tasks.start[k] ?? 0);
-      if (dur > limit) long.push({ track, task: k, dur });
+      // A task the profiler barely saw (it was started or resumed during it) says nothing about the code.
+      if (dur > limit && (track.tasks.busy[k] ?? 0) >= MIN_SAMPLED_SHARE * dur) {
+        long.push({ track, task: k, dur });
+      }
     }
   }
   if (long.length === 0) return [];

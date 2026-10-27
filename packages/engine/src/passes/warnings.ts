@@ -63,6 +63,10 @@ const SUMMARY: Record<string, (n: number) => string> = {
     `${n} ${plural(n, 'file', 'files')} of the target ${plural(n, 'has', 'have')} no source map; showing generated names and lines.`,
   'target-package-source-map-missing': (n) =>
     `${n} ${plural(n, 'file', 'files')} of the target package ${plural(n, 'has', 'have')} no source map; names are generated names, which is expected for published packages.`,
+  'app-site-inferred': (n) =>
+    n === 1
+      ? 'Most of the code that ran came from one other site, so it is counted as your own code. Use --first-party to change that.'
+      : 'Most of the code that ran came from other sites, so it is counted as your own code. Use --first-party to change that.',
   'dependency-source-map-missing': (n) =>
     `${n} dependency ${plural(n, 'file has', 'files have')} no source map; names are generated names, which is expected.`,
 };
