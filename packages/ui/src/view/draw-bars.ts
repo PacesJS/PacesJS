@@ -3,7 +3,7 @@ import { roundedRectPath } from './draw-shapes';
 import { selfWidth } from './self-share';
 
 /** Diagonal stripes inside a rect: "below measurement precision". */
-export function hatch(
+function hatch(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,

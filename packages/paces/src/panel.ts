@@ -16,7 +16,7 @@ const CLEAR_LINE = `${ESC}[2K`;
 const CLEAR_BELOW = `${ESC}[J`;
 const NORMAL = `${ESC}[0m`;
 
-export type Tone = 'dim' | 'accent' | 'key' | 'warn';
+type Tone = 'dim' | 'accent' | 'key' | 'warn';
 const TONES: Record<Tone, string> = {
   dim: `${ESC}[2m`,
   accent: `${ESC}[1;36m`,
@@ -95,7 +95,7 @@ function keyRow(state: ProgressState): Segment[] {
 }
 
 /** The panel as styled segments, one array per row, none wider than the terminal. */
-export function panelRows(
+function panelRows(
   elapsedMs: number,
   tick: number,
   state: ProgressState,

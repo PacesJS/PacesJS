@@ -4,7 +4,7 @@ const TEXT = {
   smallTasks: (count: number) => `Small tasks (${count})`,
 } as const;
 
-export const TASK_GROUPS = [
+const TASK_GROUPS = [
   'Whole run',
   'Entry',
   'Requests',
