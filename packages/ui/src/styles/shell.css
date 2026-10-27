@@ -1879,7 +1879,8 @@
   pointer-events: none;
 }
 
-.source-formatted {
+.source-formatted,
+.source-fetch {
   margin: 0;
   padding: var(--sp-4) var(--sp-12);
   color: var(--c-muted);

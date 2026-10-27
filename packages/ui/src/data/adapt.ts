@@ -10,6 +10,7 @@ import {
   functionSource,
   nodePath,
   sandwich,
+  scriptCostFor,
   timelineLane,
   waterfallForRange,
   waterfallForRun,
@@ -661,6 +662,22 @@ export function egoNeighbourhood(model: ExecutionModel, s: Scoped, fn: number): 
 
 // ---- Source ----
 
+/** What the file cost to fetch, for a script the page loaded over the network. */
+function fetchOf(model: ExecutionModel, fn: number): Pick<SourceInfo, 'fetch'> {
+  const cost = scriptCostFor(model, fn);
+  if (!cost) return {};
+  return {
+    fetch: {
+      wireBytes: cost.wireBytes,
+      decodedBytes: cost.decodedBytes,
+      downloadUs: cost.downloadUs,
+      renderBlocking: cost.renderBlocking,
+      cached: cost.cached,
+      selfUs: cost.selfUs,
+    },
+  };
+}
+
 export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): SourceInfo | null {
   const engineFn = s.inn(fn);
   if (engineFn < 0 || engineFn >= model.functions.length) return null;
@@ -682,6 +699,7 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     loc: src.file ? fileLine(src.file, src.line) : '',
     lineStatus: src.lineInfo.status,
     lineReason: src.lineInfo.reason,
+    ...fetchOf(model, engineFn),
     deopts: src.deopts.map((d) => ({
       line: d.line,
       reason: d.reason,

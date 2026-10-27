@@ -346,6 +346,16 @@ export interface SourceInfo {
   mapMissing: boolean;
   mapped: boolean;
   loc: string;
+  /** Pages: what the file cost to fetch and to run; absent for code that was not fetched as a script. */
+  fetch?: {
+    wireBytes: number;
+    decodedBytes: number;
+    /** Request sent to body arrived, microseconds; -1 when unknown. */
+    downloadUs: number;
+    renderBlocking: boolean;
+    cached: boolean;
+    selfUs: number;
+  };
   /** The engine's verdict on line-level time, with one sentence for the user. */
   lineStatus: 'self-lines' | 'no-self-time' | 'no-line-data';
   lineReason: string;

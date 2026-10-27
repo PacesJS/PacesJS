@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { serializeModel } from '@pacesjs/engine';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -50,5 +50,38 @@ describe('the source of a script a page loaded', () => {
     open(null);
     await showTheHotFunction();
     expect(await screen.findByText(/not saved with the session/i)).toBeTruthy();
+  });
+});
+
+describe('what a script cost to fetch, in the source panel', () => {
+  const big = browserModel('big-script');
+
+  async function showVendorFunction(): Promise<HTMLElement> {
+    render(
+      <App
+        host={memoryHostAdapter({ model: serializeModel(big), meta: {} })}
+        inProcess
+        elk={nodeElk}
+      />,
+    );
+    await screen.findByRole('heading', { name: 'Findings' });
+    await userEvent.keyboard('4');
+    const rows = await screen.findAllByRole('row', { name: /vendorStep\d+/ });
+    await userEvent.click(rows[0] as HTMLElement);
+    return screen.findByRole('region', { name: 'Source' });
+  }
+
+  it('shows the size, the fetch time and the run time of the file beside its code', async () => {
+    const source = await showVendorFunction();
+    const note = await within(source).findByRole('note', { name: 'Fetch cost' });
+    expect(note.textContent).toMatch(/\d+ KB/);
+    expect(note.textContent).toMatch(/fetched in/);
+    expect(note.textContent).toMatch(/to run/);
+  });
+
+  it('says the file held up rendering when it did', async () => {
+    const source = await showVendorFunction();
+    const note = await within(source).findByRole('note', { name: 'Fetch cost' });
+    expect(note.textContent).toMatch(/render-blocking/i);
   });
 });
