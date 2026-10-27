@@ -116,6 +116,15 @@ test.describe('the duration tooltip', () => {
     const small = rowsOf(app).filter({ hasText: 'formatCurrency' }).first();
     await expect(small).toHaveAttribute('aria-description', /below sampling precision/);
   });
+
+  test('explains the white stripes on a bar as its own time, apart from the precision hatching', async ({
+    app,
+  }) => {
+    const footer = app.locator('.view-footer');
+    await expect(footer.getByText(/own time/i)).toBeVisible();
+    await expect(footer.getByText(/below sampling precision/)).toBeVisible();
+    await expect(footer.locator('.swatch-self')).toBeVisible();
+  });
 });
 
 /**

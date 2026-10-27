@@ -269,6 +269,14 @@
   background: repeating-linear-gradient(135deg, var(--c-origin-you) 0 2px, transparent 2px 5px);
 }
 
+.swatch-self {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--c-self-stripe) 0 2px,
+    var(--c-origin-you) 2px 5px
+  );
+}
+
 .swatch-wait {
   width: 22px;
   border-top: 2px dashed var(--c-wait);
