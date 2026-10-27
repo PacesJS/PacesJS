@@ -9,8 +9,7 @@ import { hotPaths } from '../query/paths.js';
 import { compareText } from '../util/compare.js';
 import { formatDuration, formatPercent, plural } from '../util/format.js';
 import { displayPath } from '../util/paths.js';
-import type { FindingRule } from '../run/types.js';
-import type { PassContext } from './types.js';
+import type { FindingRule, PassContext } from './types.js';
 import { lowerBound } from '../util/search.js';
 
 type Rule = FindingRule;

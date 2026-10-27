@@ -16,21 +16,7 @@ import {
 } from '../util/paths.js';
 import type { SiteUsage } from '../util/sites.js';
 import { inferAppSites, siteOf } from '../util/sites.js';
-import type { IngestResult, PassContext, TargetSpec } from './types.js';
-
-export interface TargetDetection {
-  /** Absolute entry script per track ('' when unknown), '/'-separated. */
-  entryAbs: string[];
-  /** Entry per track in model form: project-relative inside the root, absolute outside. */
-  entries: string[];
-  roles: TrackRole[];
-  primary: number;
-  spec: TargetSpec;
-  /** Package names reported in `ExecutionModel.target.packages`. */
-  packages: string[];
-  /** The primary process is a command: its entry is in node_modules or it has arguments. */
-  commandLike: boolean;
-}
+import type { IngestResult, PassContext, TargetDetection, TargetSpec } from './types.js';
 
 /** Launcher scripts by file name; `npm-prefix.js`, `npx-cli.js`, `pnpm.cjs`, `cross-env.js`. */
 const LAUNCHER_FILE =

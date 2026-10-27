@@ -5,9 +5,8 @@ import { Origin } from '../model.js';
 import type { OriginId } from '../model.js';
 import { isPacesInstrumentation, packageNameFromPath } from '../util/paths.js';
 import { hostOfUrl, isFirstParty } from '../util/sites.js';
-import type { ClassifiedFunction, FrameFacts } from '../run/types.js';
 import type { MappedFunctions } from './source-maps.js';
-import type { PassContext, TargetSpec } from './types.js';
+import type { ClassifiedFunction, FrameFacts, PassContext, TargetSpec } from './types.js';
 
 export interface Classification {
   origin: Uint8Array;

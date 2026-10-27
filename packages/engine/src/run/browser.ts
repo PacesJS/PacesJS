@@ -2,7 +2,7 @@ import { classifyBrowserFunction } from '../passes/classification.js';
 import { BROWSER_RULES } from '../passes/findings-browser.js';
 import { gcPressure, hotFunction, hotPath } from '../passes/findings.js';
 import { detectBrowserTarget } from '../passes/target.js';
-import type { RunAdapter } from './types.js';
+import type { RunAdapter } from '../passes/types.js';
 
 /**
  * A web page: the launched site (and the site serving its app) is the target. A page has no event
