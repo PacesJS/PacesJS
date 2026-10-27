@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyze } from '../../src/analyze.js';
 import { TaskKind } from '../../src/model.js';
 import type { ExecutionModel } from '../../src/model.js';
+import { profileOf } from '../../src/query/run-profile.js';
 import { smallTaskLimitUs, trivialTasks, waterfallForRun } from '../../src/query/waterfall.js';
 import { recordingToCapture } from '../../src/trace/trace-to-capture.js';
 import { cloneInput } from '../helpers/browser-fixtures.js';
@@ -97,5 +98,15 @@ describe('the whole-run waterfall of a page', () => {
     const wf = waterfallForRun(m, m.primaryTrack);
     expect(wf.rows.filter((r) => r.kind === 'summary').length).toBeGreaterThanOrEqual(0);
     expect(trivialTasks(m, m.primaryTrack).size).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('the profile of a run', () => {
+  it('has a profile for every kind of run, so the waterfall never has to ask which it is', () => {
+    const kinds = ['server', 'cli', 'script', 'page'] as const;
+    for (const kind of kinds) {
+      const m = { ...loadModel('hot-regex'), target: { ...loadModel('hot-regex').target, kind } };
+      expect(profileOf(m).groupGapUs).toBeGreaterThan(0);
+    }
   });
 });
