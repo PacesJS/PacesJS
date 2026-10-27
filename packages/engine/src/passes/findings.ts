@@ -2,19 +2,18 @@
 // thresholds; the thresholds are echoed in the finding's `rule` text so users can see why it fired.
 
 import { DEFAULT_SUPPRESS_FOR_CLI } from '../config.js';
-import type { Thresholds } from '../config.js';
 import { Origin, TASK_KIND_NAMES, TaskKind } from '../model.js';
 import { functionName } from '../frames.js';
 import type { ExecutionModel, Finding, FindingKind, FnId, Severity, Track } from '../model.js';
 import { hotPaths } from '../query/paths.js';
-import { BROWSER_RULES } from './findings-browser.js';
 import { compareText } from '../util/compare.js';
 import { formatDuration, formatPercent, plural } from '../util/format.js';
 import { displayPath } from '../util/paths.js';
+import type { FindingRule } from '../run/types.js';
 import type { PassContext } from './types.js';
 import { lowerBound } from '../util/search.js';
 
-type Rule = (model: ExecutionModel, th: Thresholds) => Finding[];
+type Rule = FindingRule;
 
 const KIND_ORDER: FindingKind[] = [
   'event-loop-blocked',
@@ -289,7 +288,7 @@ function effectiveUserSelf(m: ExecutionModel): Map<FnId, { us: number; track: nu
   return out;
 }
 
-const hotFunction: Rule = (m, th) => {
+export const hotFunction: Rule = (m, th) => {
   const busy = totalBusy(m);
   if (busy / m.meta.precisionUs < th.minSamples) return [];
   const found = [...effectiveUserSelf(m).entries()]
@@ -390,7 +389,7 @@ const hotDependency: Rule = (m, th) => {
     });
 };
 
-const gcPressure: Rule = (m, th) => {
+export const gcPressure: Rule = (m, th) => {
   let best: { track: Track; share: number; pause: number; at: number; total: number } | undefined;
   for (const [ti, t] of m.tracks.entries()) {
     if (!isTargetTrack(m, ti)) continue;
@@ -652,7 +651,7 @@ const eventLoopLag: Rule = (m, th) => {
   ];
 };
 
-const hotPath: Rule = (m, th) => {
+export const hotPath: Rule = (m, th) => {
   // On a server hot-function already names the culprit; chains matter for commands and scripts.
   if (m.meta.runKind === 'server') return [];
   const track = m.tracks[m.primaryTrack];
@@ -762,7 +761,7 @@ const v8Deopt: Rule = (m, th) => {
     }));
 };
 
-const RULES: Rule[] = [
+export const NODE_RULES: Rule[] = [
   eventLoopBlocked,
   syncIo,
   hotFunction,
@@ -779,10 +778,7 @@ const RULES: Rule[] = [
 export function findIssues(model: ExecutionModel, ctx: PassContext): Finding[] {
   const suppressed =
     model.meta.runKind === 'server' ? [] : (ctx.options.suppressForCli ?? DEFAULT_SUPPRESS_FOR_CLI);
-  // A page has no event loop, synchronous I/O or module loading; it has its own rules.
-  const rules =
-    model.target.kind === 'page' ? [...BROWSER_RULES, hotFunction, hotPath, gcPressure] : RULES;
-  const all = rules
+  const all = ctx.run.rules
     .flatMap((rule) => rule(model, ctx.thresholds))
     .filter((f) => !suppressed.includes(f.kind));
   return all.sort(

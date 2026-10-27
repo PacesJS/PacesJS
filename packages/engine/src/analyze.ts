@@ -22,7 +22,8 @@ import { detectPlumbing } from './passes/plumbing.js';
 import { resolveSourceMaps } from './passes/source-maps.js';
 import { reconstructSpans } from './passes/spans.js';
 import { segmentTasks } from './passes/tasks.js';
-import { detectTarget, processName, runKindOf } from './passes/target.js';
+import { processName, runKindOf } from './passes/target.js';
+import { adapterFor } from './run/index.js';
 import type { TargetDetection } from './passes/target.js';
 import type { IngestResult, PassContext, WarningDraft } from './passes/types.js';
 import { buildWarnings, lostTrackDrafts } from './passes/warnings.js';
@@ -244,6 +245,7 @@ function missingMapDrafts(functions: FunctionTable, ctx: PassContext): WarningDr
 
 export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): ExecutionModel {
   const ctx: PassContext = {
+    run: adapterFor(capture),
     thresholds: { ...DEFAULT_THRESHOLDS, ...options.thresholds },
     options,
     strings: createStringTable(),
@@ -256,7 +258,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
     options.bridgeRuntimeSamples === false
       ? ingested
       : bridgeRuntimeSamples(ingested, ctx.strings.strings);
-  const detection = detectTarget(capture, ing, ctx);
+  const detection = ctx.run.detectTarget(capture, ing, ctx);
   ctx.target = detection.spec;
   const sm = resolveSourceMaps({ capture, ingest: ing }, ctx);
   const classification = classify(sm.functions, ctx);
@@ -333,7 +335,7 @@ export function analyze(capture: RawCapture, options: AnalyzeOptions = {}): Exec
   });
   const runKind = runKindOf({
     override: options.runKind,
-    browser: capture.browser !== undefined,
+    fixed: ctx.run.fixedRunKind,
     hasRequests: ing.tracks.some(
       (t, i) => detection.roles[i] === 'target' && t.events.requests.time.length > 0,
     ),

@@ -1,3 +1,4 @@
+import { NODE_RUN } from '../../src/run/index.js';
 import { classify } from '../../src/passes/classification.js';
 import { ingest } from '../../src/passes/ingest.js';
 import { detectPlumbing } from '../../src/passes/plumbing.js';
@@ -11,6 +12,7 @@ import { createStringTable } from '../../src/util/strings.js';
 
 export function runPasses(capture: RawCapture, options: AnalyzeOptions = {}) {
   const ctx = {
+    run: NODE_RUN,
     thresholds: DEFAULT_THRESHOLDS,
     options,
     strings: createStringTable(),
