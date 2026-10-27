@@ -1,6 +1,7 @@
-// "Same site" for browser code, without a public-suffix list: the last two labels of a host.
-// `--first-party` is the override for the sites this misjudges (co.uk and friends).
+// "Same site" for browser code: the registrable domain, by the public suffix list (bbc.co.uk, not
+// co.uk). `--first-party` is the override for the sites this still misjudges.
 
+import { getDomain } from 'tldts';
 import { globToRegExp } from './paths.js';
 
 const PARTS = /^([a-z][a-z0-9+.-]*):\/\/(?:[^/?#@]*@)?(\[[^\]]*\]|[^/?#:]*)/i;
@@ -17,7 +18,8 @@ export function siteOf(url: string): string {
     return `${scheme}://${host}`;
   }
   if (IPV4.test(host) || host.startsWith('[') || !host.includes('.')) return host;
-  return host.split('.').slice(-2).join('.');
+  // Private suffixes count too, so alice.github.io and bob.github.io are different sites.
+  return getDomain(host, { allowPrivateDomains: true }) ?? host;
 }
 
 /** True when a script belongs to the site the run started on, an inferred app site, or matches an extra glob. */

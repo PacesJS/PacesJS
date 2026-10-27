@@ -24,6 +24,10 @@ describe('siteOf', () => {
     ['http://127.0.0.1:3000/', '127.0.0.1'],
     ['file:///C:/site/index.html', 'file://'],
     ['app://bundle/main.js', 'app://bundle'],
+    ['https://www.bbc.co.uk/news', 'bbc.co.uk'],
+    ['https://static.files.bbci.co.uk/a.js', 'bbci.co.uk'],
+    ['https://shop.example.com.au/', 'example.com.au'],
+    ['https://alice.github.io/app/', 'alice.github.io'],
   ])('reduces %s to %s', (url, site) => {
     expect(siteOf(url)).toBe(site);
   });
