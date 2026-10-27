@@ -41,7 +41,7 @@
 .filmstrip-frame,
 .filmstrip-gap {
   position: relative;
-  min-height: 44px;
+  min-height: 72px;
   aspect-ratio: 16 / 10;
   border: 1px solid var(--c-line);
   border-radius: var(--r-ctl);
@@ -76,6 +76,30 @@
   background: var(--c-surface);
   padding: 0 var(--sp-4);
   border-radius: var(--r-chip);
+}
+
+.filmstrip-zoom {
+  position: fixed;
+  z-index: 30;
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-ctl);
+  background: var(--c-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  pointer-events: none;
+}
+
+.filmstrip-zoom img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.filmstrip-zoom figcaption {
+  padding-top: var(--sp-4);
+  color: var(--c-muted);
+  font-size: var(--fs-11);
 }
 
 .filmstrip-empty {

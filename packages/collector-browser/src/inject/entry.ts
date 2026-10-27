@@ -241,9 +241,15 @@ export function injectedMain(config: InjectConfig, helpers: InjectHelpers): void
       });
       root.appendChild(pill);
     };
+    // Redrawing replaces the buttons. A press that moves focus or the pointer (focusin, mouseenter)
+    // must not do that between mouse-down and mouse-up, or the click is lost: only redraw when
+    // what is shown has changed.
+    const shown = (s: OverlayState): string =>
+      JSON.stringify(helpers.overlayView({ ...s, host: { ...s.host, elapsedMs: 0 } }));
     const dispatch = (action: OverlayAction): void => {
+      const before = shown(state);
       state = helpers.reduceOverlay(state, action);
-      draw();
+      if (shown(state) !== before) draw();
     };
     renderOverlay = (host) => {
       receivedAt = performance.now();

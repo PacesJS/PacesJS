@@ -1,4 +1,5 @@
 import type { BrowserTimeline } from '@pacesjs/engine';
+import { useMemo } from 'react';
 import { useApp } from '../app/context';
 import { fmtDuration, fmtSeconds } from '../util/format';
 import { LaneRange } from './LaneRange';
@@ -23,6 +24,26 @@ const NAMES: Record<string, string> = {
   LCP: 'Largest contentful paint',
 };
 
+/** Marks wider apart than this (as a share of the run) can both carry a label. */
+const LABEL_GAP = 0.06;
+
+/** Which marks get a label: FCP and load, skipping one that would sit on top of the last label. */
+export function labelledMilestones(
+  vitals: BrowserTimeline['vitals'],
+  durationUs: number,
+): Set<number> {
+  const out = new Set<number>();
+  let last = Number.NEGATIVE_INFINITY;
+  vitals.forEach((v, i) => {
+    if (v.name !== 'FCP' && v.name !== 'load') return;
+    const at = v.timeUs / durationUs;
+    if (at - last < LABEL_GAP) return;
+    out.add(i);
+    last = at;
+  });
+  return out;
+}
+
 interface PageLaneProps {
   data: BrowserTimeline;
 }
@@ -33,6 +54,7 @@ interface PageLaneProps {
  */
 export function PageLane({ data }: PageLaneProps) {
   const { dispatch } = useApp();
+  const labelled = useMemo(() => labelledMilestones(data.vitals, data.durationUs), [data]);
   const left = (us: number): string => `${(us / data.durationUs) * 100}%`;
   const selectTask = (task: number): void =>
     dispatch({
@@ -62,9 +84,7 @@ export function PageLane({ data }: PageLaneProps) {
               />
             ) : (
               <span key={i} className={`page-mark is-${v.name}`} style={{ left: left(v.timeUs) }}>
-                {v.name === 'FCP' || v.name === 'load' ? (
-                  <span className="page-mark-label">{v.name}</span>
-                ) : null}
+                {labelled.has(i) ? <span className="page-mark-label">{v.name}</span> : null}
               </span>
             ),
           )}

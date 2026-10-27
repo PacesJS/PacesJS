@@ -1317,6 +1317,8 @@
 }
 
 .callee-time {
+  max-height: 140px;
+  overflow-y: auto;
   list-style: none;
   margin: var(--sp-8) 0 0;
   padding: 0;

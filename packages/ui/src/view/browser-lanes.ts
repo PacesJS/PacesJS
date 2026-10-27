@@ -122,9 +122,6 @@ export interface FilmstripSlot {
   reason: 'frame' | 'paused' | 'none';
 }
 
-/** A frame older than this is not what the page looked like at the slot's time. */
-const STALE_US = 3_000_000;
-
 /**
  * What each slot of the strip shows: the last frame taken at or before it. A slot inside a pause, or
  * far from any frame, says so instead of showing nothing.
@@ -144,7 +141,8 @@ export function filmstripSlots(
     }
     let at = -1;
     for (let k = 0; k < shots.time.length; k++) if ((shots.time[k] ?? 0) <= timeUs) at = k;
-    const stale = at < 0 || timeUs - (shots.time[at] ?? 0) > STALE_US;
+    // The screencast only emits when the page changes, so the last frame stays true until the next one.
+    const stale = at < 0;
     out.push(
       stale
         ? { timeUs, frame: null, reason: 'none' }

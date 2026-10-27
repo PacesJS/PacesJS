@@ -1,6 +1,6 @@
 import { DEFAULT_TRANSFORMS as ENGINE_DEFAULTS } from '@pacesjs/engine';
 import { describe, expect, it } from 'vitest';
-import { modelCtx, scopeView, toEngineStack, trackIndexOf } from '../../src/data/scope';
+import { locationOf, modelCtx, scopeView, toEngineStack, trackIndexOf } from '../../src/data/scope';
 import { DEFAULT_TRANSFORMS } from '../../src/state/types';
 import { ordersModel } from '../helpers/real-model';
 
@@ -109,5 +109,18 @@ describe('classification by the engine', () => {
 
   it('finds ajv, json-schema-traverse and fast-uri as dependencies', () => {
     expect(ctx.depPkgs).toEqual(['ajv', 'fast-uri', 'json-schema-traverse']);
+  });
+});
+
+describe('where a collapsed package says it is', () => {
+  const pkg = (name: string) =>
+    ({ synthetic: true, pkg: name, file: '', line: 0 }) as Parameters<typeof locationOf>[0];
+
+  it('names an npm package under node_modules', () => {
+    expect(locationOf(pkg('fast-levenshtein'))).toBe('node_modules/fast-levenshtein');
+  });
+
+  it('names a page third party by its host alone', () => {
+    expect(locationOf(pkg('static.licdn.com'))).toBe('static.licdn.com');
   });
 });
