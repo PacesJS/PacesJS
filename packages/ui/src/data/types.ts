@@ -336,6 +336,7 @@ export interface SourceInfo {
   startLine: number;
   /** Line of the function's definition: the selection highlight and the scroll target. */
   definitionLine: number;
+  definitionCol: number;
   lineSelf: Array<{ line: number; selfUs: number }>;
   hottestLine: number;
   /** Activity per time bin across the run, 0..1 relative to the busiest bin. */

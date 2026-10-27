@@ -1878,3 +1878,11 @@
   border-left: 1px dashed var(--c-accent-ink);
   pointer-events: none;
 }
+
+.source-formatted {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-12);
+  color: var(--c-muted);
+  font-size: var(--fs-11);
+  line-height: var(--lh-16);
+}

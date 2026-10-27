@@ -379,6 +379,8 @@ export interface FunctionSourceInfo {
   line: number;
   /** 1-based line of the function's definition in the original file (0 for collapsed packages). */
   definitionLine: number;
+  /** 0-based column of the definition, which tells functions apart on one minified line. */
+  definitionCol: number;
   selfUs: number;
   totalUs: number;
   /** Lines with self time, ascending by line. */

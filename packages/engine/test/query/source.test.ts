@@ -214,3 +214,15 @@ describe('deopt marks in function source info', () => {
     expect(functionSource(orders, v, fnId(orders, 'lineTotal')).deopts).toEqual([]);
   });
 });
+
+describe('the column of a definition', () => {
+  const orders = loadModel('orders-server');
+  it('is reported with the line, so a function in a one-line bundle can be found', () => {
+    const fn = [...Array(orders.functions.length).keys()].find(
+      (k) => orders.functions.line[k] > 0 && orders.functions.col[k] > 0,
+    ) as number;
+    const info = functionSource(orders, applyTransforms(orders, 0, []), fn);
+    expect(info.definitionCol).toBe(orders.functions.col[fn]);
+    expect(info.definitionCol).toBeGreaterThanOrEqual(0);
+  });
+});

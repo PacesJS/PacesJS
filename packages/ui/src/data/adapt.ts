@@ -671,6 +671,7 @@ export function sourceInfo(model: ExecutionModel, s: Scoped, fn: number): Source
     path: src.file,
     startLine: src.line,
     definitionLine: src.definitionLine || src.line,
+    definitionCol: src.definitionCol,
     lineSelf: src.lines.map((l) => ({ line: l.line, selfUs: l.selfUs })),
     hottestLine: src.hottestLine,
     spark: Array.from(src.sparkline, (v) => v / peak),
