@@ -32,6 +32,8 @@ export interface SourceState {
   fileTexts: string[];
   /** The text was minified and has been laid out for reading: line numbers are not the file's. */
   formatted: boolean;
+  /** Pages: what the file cost to fetch and to run. */
+  fetch: SourceInfo['fetch'] | null;
   /** The file changed on disk since the session was recorded. */
   changed: boolean;
   selfByLine: Map<number, number>;
@@ -222,6 +224,7 @@ export function useSource({ whole, mode = 'all' }: Options): SourceState {
     lines,
     fileTexts: allLines,
     formatted: layout !== null,
+    fetch: info?.fetch ?? null,
     changed: file?.exists === true && file.changedSinceProfile,
     selfByLine,
     deoptsByLine,

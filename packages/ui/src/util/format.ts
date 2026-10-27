@@ -43,6 +43,12 @@ export function fmtShare(fraction: number): string {
   return TEXT.percent((fraction * 100).toFixed(1));
 }
 
+/** Size on the wire, e.g. "143 KB" or "2.4 MB". */
+export function fmtBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** Estimated count, e.g. "~1,340". */
 export function fmtCount(n: number, approx = true): string {
   return `${approx ? TEXT.approx : ''}${Math.round(n).toLocaleString('en-US')}`;
