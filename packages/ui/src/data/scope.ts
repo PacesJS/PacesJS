@@ -167,9 +167,13 @@ export function fileLine(file: string, line: number): string {
   return line > 0 ? `${file}:${line}` : file;
 }
 
-/** `file:line`, `node_modules/pkg` for a collapsed package, or '' when there is no file. */
+/** A page's third party is named by its host, which an npm package name never looks like. */
+const HOST =
+  /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|net|org|io|dev|co|app|cloud|ai|me|tv|ly|us|uk|de|fr|jp|cn|ru|in|br)$/;
+
+/** `file:line`, `node_modules/pkg` for a collapsed package (the host alone for a page's), or '' when there is no file. */
 export function locationOf(info: FunctionInfo): string {
-  if (info.synthetic) return `node_modules/${info.pkg}`;
+  if (info.synthetic) return HOST.test(info.pkg) ? info.pkg : `node_modules/${info.pkg}`;
   if (!info.file) return '';
   return fileLine(info.file, info.line);
 }

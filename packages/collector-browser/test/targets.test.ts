@@ -225,4 +225,21 @@ describe('createTargetManager', () => {
     parsed('https://a.test/b.js?v=2', '3');
     expect(seen).toEqual(['https://a.test/a.js', 'https://a.test/b.js']);
   });
+
+  it('sets a session up once, however many times it hears of it', async () => {
+    const { cdp, manager } = setup();
+    await manager.configure('s1', 'page', false, 't-s1');
+    attached(cdp, 's1', 'page', false);
+    await manager.idle();
+    const adds = cdp.calls.filter((c) => c.method === 'Runtime.addBinding' && c.sessionId === 's1');
+    expect(adds).toHaveLength(1);
+  });
+
+  it('still resumes a target that is waiting, when it was already configured', async () => {
+    const { cdp, manager } = setup();
+    await manager.configure('s1', 'iframe', false);
+    attached(cdp, 's1', 'iframe', true);
+    await manager.idle();
+    expect(methodsOn(cdp, 's1')).toContain('Runtime.runIfWaitingForDebugger');
+  });
 });

@@ -87,6 +87,18 @@ describe('a browser session: lanes', () => {
     expect(document.activeElement).toBe(frames[0]);
   });
 
+  it('shows a large copy of a frame while it is hovered', async () => {
+    open(browserModel('paused-resume'), 'paused-resume');
+    await ready();
+    const strip = await screen.findByRole('group', { name: 'Filmstrip' });
+    const frames = await within(strip).findAllByRole('button');
+    await waitFor(() => expect(strip.querySelector('img')).not.toBeNull());
+    await userEvent.hover(frames[0] as HTMLElement);
+    await waitFor(() => expect(document.querySelector('.filmstrip-zoom')).not.toBeNull());
+    await userEvent.unhover(frames[0] as HTMLElement);
+    await waitFor(() => expect(document.querySelector('.filmstrip-zoom')).toBeNull());
+  });
+
   it('labels the gap of a pause in the strip instead of leaving it blank', async () => {
     open(browserModel('paused-resume'), 'paused-resume');
     await ready();

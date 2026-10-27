@@ -13,7 +13,7 @@ import type {
   TimeRanges,
   VitalTable,
 } from '../model.js';
-import type { BrowserInfo, CaptureMeta, TimelineEvent } from '../raw.js';
+import type { BrowserInfo, CaptureMeta, PageEvent, TimelineEvent } from '../raw.js';
 import { lowerBound } from '../util/search.js';
 import type { PassContext } from './types.js';
 
@@ -164,6 +164,42 @@ const VITAL_OF: Record<string, number> = {
   LayoutShift: 5,
 };
 
+/** Two navigation or load events this close are one: a document and its initial blank one. */
+const SAME_MOMENT_US = 50_000;
+const ONCE_PER_DOCUMENT = new Set(['navigationStart', 'domContentLoadedEventEnd', 'loadEventEnd']);
+
+/**
+ * The milestones of the page itself: its main frame only (an iframe or an ad has its own loading story),
+ * each once, and only the last largest-paint candidate of a navigation, since earlier ones were replaced.
+ */
+function milestoneEvents(events: PageEvent[]): PageEvent[] {
+  const all = events.filter((e) => VITAL_OF[e.name] !== undefined);
+  const main = all.find((e) => e.name === 'navigationStart')?.arg;
+  const own = all.filter((e) => main === undefined || e.arg === undefined || e.arg === main);
+  const out: PageEvent[] = [];
+  const lastOf = new Map<string, number>();
+  const navigations = own.filter((e) => e.name === 'navigationStart').map((e) => e.ts);
+  const navigationOf = (ts: number): number => {
+    let at = -1;
+    for (const n of navigations) if (n <= ts) at = n;
+    return at;
+  };
+  const lcp = new Map<number, PageEvent>();
+  for (const e of own) {
+    if (e.name === 'largestContentfulPaint::Candidate') {
+      lcp.set(navigationOf(e.ts), e);
+      continue;
+    }
+    if (ONCE_PER_DOCUMENT.has(e.name)) {
+      const before = lastOf.get(e.name);
+      if (before !== undefined && e.ts - before < SAME_MOMENT_US) continue;
+      lastOf.set(e.name, e.ts);
+    }
+    out.push(e);
+  }
+  return [...out, ...lcp.values()];
+}
+
 /** Frames, loading milestones, the filmstrip and the stretches that were and were not recorded. */
 export function buildPageTimeline(
   browser: BrowserInfo,
@@ -190,8 +226,7 @@ export function buildPageTimeline(
     frames.dropped[i] = dropped.some((d) => d > previous && d <= end) ? 1 : 0;
   });
 
-  const vitalRows = mine
-    .filter((e) => VITAL_OF[e.name] !== undefined)
+  const vitalRows = milestoneEvents(mine)
     .map((e) => ({ time: rel(e.ts), kind: VITAL_OF[e.name] ?? 0, value: e.n ?? 0 }))
     .sort((a, b) => a.time - b.time || a.kind - b.kind);
   const vitals: VitalTable = {

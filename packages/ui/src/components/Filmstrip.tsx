@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { BrowserTimeline } from '@pacesjs/engine';
 import { useApp } from '../app/context';
@@ -19,7 +19,9 @@ const TEXT = {
 } as const;
 
 /** Width of one thumbnail, including its gap. */
-const THUMB_PX = 72;
+const THUMB_PX = 120;
+/** Width of the enlarged frame shown while a thumbnail is hovered or focused. */
+const ZOOM_PX = 480;
 /** A moment either side of a frame, when it is chosen. */
 const AROUND_US = 150_000;
 
@@ -45,6 +47,17 @@ export function Filmstrip({ data }: FilmstripProps) {
     [slots],
   );
   const urls = useScreenshots(ids);
+  const [zoom, setZoom] = useState<{ id: number; at: number; left: number; top: number } | null>(
+    null,
+  );
+  const showZoom = (id: number, at: number, el: HTMLElement): void => {
+    const r = el.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(8, r.left + r.width / 2 - ZOOM_PX / 2),
+      window.innerWidth - ZOOM_PX - 8,
+    );
+    setZoom({ id, at, left, top: r.bottom + 8 });
+  };
   const timeOf = useMemo(() => {
     const m = new Map<number, number>();
     data.screenshots.id.forEach((id, i) => m.set(id, data.screenshots.time[i] ?? 0));
@@ -112,6 +125,10 @@ export function Filmstrip({ data }: FilmstripProps) {
                   aria-label={frameLabel(at)}
                   title={TEXT.showMoment(fmtSeconds(at, 2))}
                   onClick={() => choose(at)}
+                  onMouseEnter={(e) => showZoom(slot.frame ?? 0, at, e.currentTarget)}
+                  onFocus={(e) => showZoom(slot.frame ?? 0, at, e.currentTarget)}
+                  onMouseLeave={() => setZoom(null)}
+                  onBlur={() => setZoom(null)}
                 >
                   {url ? <img src={url} alt="" draggable={false} /> : null}
                 </button>
@@ -119,6 +136,15 @@ export function Filmstrip({ data }: FilmstripProps) {
             })}
           </div>
         )}
+        {zoom && urls.get(zoom.id) ? (
+          <figure
+            className="filmstrip-zoom"
+            style={{ left: zoom.left, top: zoom.top, width: ZOOM_PX }}
+          >
+            <img src={urls.get(zoom.id)} alt="" />
+            <figcaption>{fmtSeconds(zoom.at, 2)}</figcaption>
+          </figure>
+        ) : null}
         <LaneRange durationUs={data.durationUs} />
       </div>
     </div>

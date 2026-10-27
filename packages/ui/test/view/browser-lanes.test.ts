@@ -126,10 +126,10 @@ describe('filmstripSlots', () => {
     expect(slots[2]?.frame).toBeNull();
   });
 
-  it('marks a slot that is a long way from any frame as having none, rather than blank', () => {
+  it('keeps showing the last frame while the page does not change', () => {
     const sparse = { time: Float64Array.from([100_000]), id: Uint32Array.from([0]) };
     const slots = filmstripSlots(sparse, [], DUR, 5);
-    expect(slots[4]).toMatchObject({ frame: null, reason: 'none' });
+    expect(slots[4]).toMatchObject({ frame: 0, reason: 'frame' });
   });
 
   it('gives a slot nothing before the first frame', () => {

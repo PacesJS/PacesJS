@@ -190,8 +190,17 @@ export function Waterfall() {
       onToggle(r.id);
       return;
     }
+    if (r.kind === 'summary' && r.summaryTasks.length > 1) {
+      // A row standing for many small tasks selects the stretch they cover, not one arbitrary task.
+      const from = Math.round(r.start);
+      const to = Math.round(Math.max(r.end, r.start + 1));
+      dispatch({
+        type: 'go',
+        patch: { range: [from, to], selection: { kind: 'range', from, to } },
+      });
+      return;
+    }
     if (r.kind === 'summary' && r.summaryTasks[0] !== undefined) {
-      // A row standing for small tasks opens the first of them.
       dispatch({
         type: 'go',
         patch: { selection: { kind: 'task', track: data.trackId, task: r.summaryTasks[0] } },

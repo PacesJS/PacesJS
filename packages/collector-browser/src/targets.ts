@@ -44,6 +44,7 @@ export function createTargetManager(deps: TargetManagerDeps): TargetManager {
   const seen = new Set<string>();
   const pending = new Set<Promise<void>>();
   const targets = new Map<string, { type: string; targetId?: string }>();
+  const configured = new Set<string>();
 
   // A target can vanish while it is configured; the only thing that matters then is not to hang.
   const attempt = async (method: string, params: object, session: string): Promise<void> => {
@@ -60,6 +61,12 @@ export function createTargetManager(deps: TargetManagerDeps): TargetManager {
     waiting: boolean,
     targetId?: string,
   ): Promise<void> {
+    // A session is announced by the attach event and also set up by whoever attached it.
+    if (configured.has(session)) {
+      if (waiting) await attempt('Runtime.runIfWaitingForDebugger', {}, session);
+      return;
+    }
+    configured.add(session);
     targets.set(session, { type, ...(targetId ? { targetId } : {}) });
     const isFrame = FRAME_TYPES.has(type);
     if (isFrame || WORKER_TYPES.has(type)) {

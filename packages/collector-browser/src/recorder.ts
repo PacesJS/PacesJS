@@ -63,6 +63,8 @@ export interface BrowserRecording extends Recording {
 
 export interface BrowserRun {
   controller: SessionController;
+  /** The debugging session of the first page, for tests that need to act on it. */
+  pageSession: string;
   /** The browser's debugging pipe, for tests that need to do what a user does (close the window). */
   cdp: CdpLike;
   /** Ends the run as the user asked; resolves with the recording once the browser is closed. */
@@ -494,7 +496,7 @@ export async function startRecording(options: RecordOptions): Promise<BrowserRun
     });
     const limit = options.durationMs ?? (options.until ? UNTIL_LIMIT_MS : undefined);
     if (limit !== undefined) setTimeout(() => stopRequested('duration'), limit).unref();
-    return { controller, cdp, stop, done, kill: cleanup };
+    return { controller, cdp, pageSession: sessionId, stop, done, kill: cleanup };
   } catch (error) {
     cleanup();
     throw error;
