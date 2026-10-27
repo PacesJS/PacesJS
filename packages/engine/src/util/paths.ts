@@ -25,7 +25,7 @@ function isAbsolutePath(path: string): boolean {
 }
 
 /** Resolves `.` and `..` segments of a '/'-separated path. */
-export function collapseDots(path: string): string {
+function collapseDots(path: string): string {
   const prefix = DRIVE.test(path) ? path.slice(0, 3) : path.startsWith('/') ? '/' : '';
   const out: string[] = [];
   for (const part of path.slice(prefix.length).split('/')) {
@@ -38,7 +38,7 @@ export function collapseDots(path: string): string {
   return prefix + out.join('/');
 }
 
-export function dirnameOf(path: string): string {
+function dirnameOf(path: string): string {
   const i = path.lastIndexOf('/');
   return i < 0 ? '' : path.slice(0, i);
 }

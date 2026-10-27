@@ -1,6 +1,6 @@
 import type { TraceEvent, TraceFilterStats } from './trace.js';
 
-export const TRACE_FILTER_VERSION = 1;
+const TRACE_FILTER_VERSION = 1;
 
 /** Categories that carry only the browser's scheduling and IPC bookkeeping. */
 export const EXCLUDED_CATEGORIES = ['toplevel', 'base', 'mojom'];
@@ -39,7 +39,7 @@ export const TRACE_NOISE_NAMES: readonly string[] = [
 ];
 
 /** Families of loader and cache bookkeeping events, dropped by prefix. */
-export const TRACE_NOISE_PREFIXES: readonly string[] = [
+const TRACE_NOISE_PREFIXES: readonly string[] = [
   'FrameLoader:',
   'DocumentLoader::',
   'BackForwardCache',
@@ -47,7 +47,7 @@ export const TRACE_NOISE_PREFIXES: readonly string[] = [
 ];
 
 /** A task shorter than this tells nothing about where time went. */
-export const MIN_RUN_TASK_US = 100;
+const MIN_RUN_TASK_US = 100;
 
 /** Events kept from processes that are not renderers: the frame pipeline and the filmstrip. */
 const OTHER_PROCESS_ALLOWLIST = new Set([

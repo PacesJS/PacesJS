@@ -22,7 +22,7 @@ function findingsOf(summary: AgentSummary): FindingLike[] {
   return Array.isArray(f) ? (f as FindingLike[]) : [];
 }
 
-export function where(loc: Loc | undefined): string {
+function where(loc: Loc | undefined): string {
   if (!loc || (!loc.name && !loc.file)) return '';
   const place = loc.file ? `${loc.file}${loc.line ? `:${loc.line}` : ''}` : '';
   return `${loc.name || '(anonymous)'}${place ? ` (${place})` : ''}`;
