@@ -1,4 +1,22 @@
-import { expect, settled, test } from './fixtures';
+import type { Page } from '@playwright/test';
+import { expect, openFixture, settled, test } from '../fixtures';
+
+// The visual suite: one screenshot per view, light and dark, 1440 px wide. These compare pixels to
+// the boards and are not end-to-end tests of behavior.
+
+// A page recorded in a real browser (engine/test/fixtures/browser), served by the dev host.
+const BROWSER_PAGE = 'browser:slow-click';
+
+async function picturesLoaded(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const images = [...document.querySelectorAll<HTMLImageElement>('.filmstrip-frame img')];
+        return images.length > 0 && images.every((i) => i.complete && i.naturalWidth > 0);
+      }),
+    )
+    .toBe(true);
+}
 
 const VIEWS = [
   { key: '1', name: 'waterfall' },
@@ -20,6 +38,14 @@ for (const scheme of ['light', 'dark'] as const) {
       await settled(app);
       await app.mouse.move(0, 0);
       await expect(app).toHaveScreenshot(`source-panel-${scheme}.png`, { fullPage: true });
+    });
+
+    test('browser session: lanes and header', async ({ page, serve }) => {
+      await openFixture(page, serve, BROWSER_PAGE);
+      await settled(page);
+      await picturesLoaded(page);
+      await page.mouse.move(0, 0);
+      await expect(page).toHaveScreenshot(`browser-lanes-${scheme}.png`, { fullPage: true });
     });
 
     for (const v of VIEWS) {

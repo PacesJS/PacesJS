@@ -18,13 +18,25 @@ pnpm workspace + Turborepo, TypeScript, ESM everywhere.
 | `packages/ui`                | React 19 + Vite view bundle, `HostAdapter`                            | Talks to the host only through `HostAdapter`                     |
 | `packages/paces`             | Published CLI; bundles everything via tsup                            | Runtime deps must be pure JS; no native binaries, no postinstall |
 | `zoo/`                       | Bottleneck zoo: tiny apps, one planted problem each                   | Deliberately naive code; excluded from lint                      |
-| `e2e/`                       | Playwright + CLI end-to-end tests                                     |                                                                  |
+| `e2e/`                       | The few live end-to-end tests (cap: 10) and the visual suite          | See "Test strategy"                                              |
 
 Data flows one way: raw chunks (target) → finished model (CLI) → queries (UI worker). Packages depend downward only; import another package only through its public entry. Code needed by more than one package (CLI, Node, browser, future Electron) goes in `packages/shared`, never copied.
 
 ## Commands
 
-`pnpm build` · `pnpm test` · `pnpm typecheck` · `pnpm lint` (eslint + boundary check) · `pnpm format` · `pnpm test:e2e` · `pnpm coverage [package...]` (V8 unit-test coverage table, HTML in `packages/<name>/coverage/`; counts only code run in the test process, so the CLI and collectors undercount, and set `PACES_BROWSER` to include the real-browser tests). One package: `pnpm --filter @pacesjs/engine test`. Before saying work is done, build, typecheck, lint and test all pass.
+`pnpm build` · `pnpm test` · `pnpm typecheck` · `pnpm lint` (eslint + boundary check) · `pnpm format` · `pnpm test:e2e` (live tests) · `pnpm test:visual` (screenshots) · `pnpm coverage [package...]` (V8 unit-test coverage table, HTML in `packages/<name>/coverage/`; counts only code run in the test process, so the CLI and collectors undercount, and set `PACES_BROWSER` to include the real-browser tests). One package: `pnpm --filter @pacesjs/engine test`. Before saying work is done, build, typecheck, lint and test all pass.
+
+## Test strategy: live tests only where nothing lower can check
+
+An end-to-end test runs the built CLI, a real browser or a real terminal. **At most 10 exist, across Node, browser and UI.** A new one needs a behavior no lower test can see: that collection still works against a real Node or Chromium, that a report opens, that the injected script works in a real page, that a typed secret or cookie never reaches a session, a real console's Ctrl+C, real layout. Everything else goes down:
+
+1. **Unit**: pure logic, with clocks, spawn, platform and filesystem injected. The packages' coverage is read with `pnpm coverage`.
+2. **Fixture integration**: engine passes and findings on committed captures (`packages/engine/test/fixtures`, including `browser/`); the UI over a real model in jsdom (`packages/ui/test`, `helpers/open-app.tsx`); the collectors against a fake CDP pipe (`helpers/fake-cdp.ts`) and the injected script in jsdom; the CLI through `main()` and `runProfile()` with real child programs (`packages/paces/test`).
+3. **Live (`e2e/`)**: the cap above. Today: Node profile, open report, Ctrl+C, browser record, browser privacy, browser attach, UI layout; plus two real-browser package tests (`recorder.test.ts` window close, `overlay.test.ts` real mouse), run with `PACES_BROWSER`.
+
+The visual suite (`e2e/ui/visual`, light and dark, one screenshot per view) compares pixels and is not counted.
+
+When adding a feature, say which tier proves it. Do not add a live test for a finding, a rule, a label or a state change: plant it in a fixture (`pnpm fixtures`, `pnpm fixtures:browser`) and assert it in the engine or UI tests.
 
 ## Workflow: TDD, always
 
@@ -62,7 +74,7 @@ Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bar
 - **The profiled program is first-party.** When the entry script lives in `node_modules` (e.g. `npx eslint .`), that package is the _target_: its functions are origin `User`, not `Dependency`. Otherwise collapse-dependencies folds the whole program into one node. Its plugins and libraries stay dependencies. Wrapper processes (npx, npm) are `support` tracks; the default track is the target.
 - Test the tool on real third-party CLIs, not only the zoo. `paces -- npx eslint .` is the reference scenario: you must be able to name ESLint's own hot paths and the slow plugin functions from the UI and from `paces mcp`.
 - Warnings are aggregated (one note per kind); never print one line per file.
-- Live zoo runs vary with machine load: assert committed captures exactly (engine tests), assert only the planted finding's presence on live runs (e2e).
+- Live zoo runs vary with machine load: assert committed captures exactly (engine tests), assert only the planted finding's presence on the one live run (e2e).
 - **Cached models carry a column fingerprint** (`packages/engine/src/model-shape.ts`). Any added model column is picked up automatically; never ship a model change with a stale cache still loadable. UI query failures must log their stack (`console.error` in `app/hooks.ts`).
 - **Verify on a real session, not only fixtures.** Fixtures analyze fresh and hide cache, scale and shape problems. Before calling UI work done, open a real `.paces` of `npx eslint .` through the built CLI (`paces open <file> --no-open`) and look at it.
 - **Heartbeat silence is not a closed window.** Minimized or hidden windows have throttled timers (once a minute after a few minutes), so the host only treats a goodbye beacon (`pagehide`), the launched browser exiting, or a long stale threshold (`PACES_STALE_HEARTBEAT_MS`, default 5 min) as "closed". A host that exits behind a background window turns every later request into "Failed to fetch".
@@ -91,7 +103,7 @@ Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bar
 - **A covered window stops painting.** Windows' occlusion tracking and background throttling froze paint in a window behind others, so a recording lost its click-to-paint latency, its largest paint and its screenshots (four real-browser tests failed with nothing wrong in the code). The launch flags keep it painting; a window you cannot see must profile the same as one you can.
 - **Judge compression by bytes, not by headers.** `encodedDataLength` against `decodedBodyLength` says whether a text file shrank. A missing `content-encoding` in a trace is not proof: a header-based count on bbc.com wrongly called six compressed scripts plain text.
 - **Sites are registrable domains from the public suffix list** (`tldts`), so `bbc.co.uk` is not `co.uk`.
-- **Never record what was typed.** Events are structure only; the privacy e2e types a secret into a page and fails if it appears anywhere in the unzipped session.
+- **Never record what was typed.** Events are structure only; the privacy e2e types a secret into a page that also loads a script whose response sets a cookie, and fails if either appears anywhere in the unzipped session; the injected script is also tested in jsdom for the same rule.
 - Real-browser tests are skipped unless `PACES_BROWSER` points at a Chromium executable. Measure with `node scripts/bench-browser.mjs`.
 
 ## Git
