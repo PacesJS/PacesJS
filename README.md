@@ -210,7 +210,8 @@ pnpm workspace with Turborepo and TypeScript.
 pnpm install
 pnpm build
 pnpm test          # unit and integration
-pnpm test:e2e      # CLI and UI end-to-end, including screenshot tests
+pnpm test:e2e      # the few live end-to-end tests (set PACES_BROWSER for the browser ones)
+pnpm test:visual   # screenshot tests, light and dark
 pnpm lint
 pnpm coverage [package...]   # V8 coverage table; HTML in packages/<name>/coverage/ (set PACES_BROWSER to include the real-browser tests)
 pnpm fixtures      # regenerate engine fixtures from the zoo

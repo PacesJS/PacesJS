@@ -22,7 +22,8 @@
     "format:check": "prettier --check .",
     "bench:browser": "node scripts/bench-browser.mjs",
     "fixtures:browser": "pnpm --filter @pacesjs/collector-browser build && node scripts/gen-browser-fixtures.mjs",
-    "fixtures": "pnpm --filter @pacesjs/collector-node build && node scripts/gen-fixtures.mjs"
+    "fixtures": "pnpm --filter @pacesjs/collector-node build && node scripts/gen-fixtures.mjs",
+    "test:visual": "pnpm build && playwright test -c e2e/ui/visual/playwright.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
