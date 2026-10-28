@@ -106,10 +106,22 @@ describe('the call graph', () => {
     }
   });
 
+  /** The zoom level once it has stopped changing: the fit arrives with the layout. */
+  async function settledLevel(): Promise<string | null> {
+    let last = level().textContent;
+    for (let same = 0; same < 5;) {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const now = level().textContent;
+      same = now === last ? same + 1 : 0;
+      last = now;
+    }
+    return last;
+  }
+
   it('zooms toward the cursor, pans by dragging and returns with Fit', async () => {
     await open();
     await userEvent.click(screen.getByRole('button', { name: 'Fit' }));
-    const fitted = level().textContent;
+    const fitted = await settledLevel();
     const area = el('.cg-scroll');
     const box = rect(area);
     area.dispatchEvent(
