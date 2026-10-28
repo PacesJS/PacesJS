@@ -31,9 +31,19 @@ export const keepsSelection = (el: Element | null): boolean => Boolean(el?.close
 export function onScrollbar(el: Element, x: number, y: number): boolean {
   const box = el as HTMLElement;
   if (typeof box.offsetWidth !== 'number') return false;
+  // Only a container that scrolls has gutters. Borders make the offset box larger than the client
+  // box, and an inline element has an empty client box: neither has a scrollbar to press.
+  const style = getComputedStyle(el);
+  const scrolls = (overflow: string): boolean => /auto|scroll|overlay/.test(overflow);
   const rect = el.getBoundingClientRect();
-  const vertical = box.offsetWidth > box.clientWidth && x >= rect.left + box.clientWidth;
-  const horizontal = box.offsetHeight > box.clientHeight && y >= rect.top + box.clientHeight;
+  const vertical =
+    scrolls(style.overflowY) &&
+    box.offsetWidth > box.clientWidth &&
+    x >= rect.left + box.clientWidth;
+  const horizontal =
+    scrolls(style.overflowX) &&
+    box.offsetHeight > box.clientHeight &&
+    y >= rect.top + box.clientHeight;
   return vertical || horizontal;
 }
 

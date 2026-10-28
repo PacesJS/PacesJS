@@ -2,7 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { appReady, openApp } from '../helpers/open-app';
-import { fixtureModel } from '../helpers/real-model';
+import { fixtureModel, preload } from '../helpers/real-model';
+
+await preload('orders-server', 'eslint-cli', 'eslint-cli-wrapped');
 
 // Clarity: which numbers cover one call and which cover every call, elapsed against CPU time, and
 // rows whose callees are hidden by the minimum duration.

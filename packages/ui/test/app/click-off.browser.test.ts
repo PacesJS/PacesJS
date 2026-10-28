@@ -116,25 +116,27 @@ describe('a click that clears the selection', () => {
 });
 
 describe('scrollbars', () => {
+  /** A real scroll container at a known place: its gutters are the browser's own. */
   function scroller(): HTMLElement {
     const el = document.createElement('div');
-    Object.defineProperties(el, {
-      offsetWidth: { value: 300 },
-      clientWidth: { value: 285 },
-      offsetHeight: { value: 200 },
-      clientHeight: { value: 185 },
-    });
-    el.getBoundingClientRect = () =>
-      ({ left: 100, top: 50, right: 400, bottom: 250, width: 300, height: 200 }) as DOMRect;
+    el.style.cssText =
+      'position:fixed;left:100px;top:50px;width:300px;height:200px;overflow:scroll;';
+    const content = document.createElement('div');
+    content.style.cssText = 'width:1000px;height:1000px;';
+    el.append(content);
+    document.body.append(el);
     return el;
   }
 
   it('recognizes a press in the vertical scrollbar gutter', () => {
-    expect(onScrollbar(scroller(), 392, 120)).toBe(true);
+    const el = scroller();
+    expect(el.offsetWidth, 'this browser draws classic scrollbars').toBeGreaterThan(el.clientWidth);
+    expect(onScrollbar(el, 100 + el.clientWidth + 2, 120)).toBe(true);
   });
 
   it('recognizes a press in the horizontal scrollbar gutter', () => {
-    expect(onScrollbar(scroller(), 200, 245)).toBe(true);
+    const el = scroller();
+    expect(onScrollbar(el, 200, 50 + el.clientHeight + 2)).toBe(true);
   });
 
   it('does not mistake a press in the content', () => {
@@ -143,6 +145,24 @@ describe('scrollbars', () => {
 
   it('knows an element without scrollbars has none', () => {
     const plain = document.createElement('div');
+    document.body.append(plain);
     expect(onScrollbar(plain, 1, 1)).toBe(false);
+  });
+
+  it('knows a block that only looks wider than its client box has none, since it does not scroll', () => {
+    const el = document.createElement('div');
+    el.style.cssText = 'width:300px;height:100px;border:10px solid;overflow:visible;';
+    document.body.append(el);
+    expect(el.offsetWidth).toBeGreaterThan(el.clientWidth);
+    expect(onScrollbar(el, el.getBoundingClientRect().right - 2, 20)).toBe(false);
+  });
+
+  it('does not take inline text for a scrollbar: its client box is empty', () => {
+    const text = document.createElement('span');
+    text.textContent = 'sorted by self time, high to low';
+    document.body.append(text);
+    const box = text.getBoundingClientRect();
+    expect(text.clientWidth).toBe(0);
+    expect(onScrollbar(text, box.left + box.width / 2, box.top + box.height / 2)).toBe(false);
   });
 });

@@ -31,8 +31,10 @@ Data flows one way: raw chunks (target) → finished model (CLI) → queries (UI
 An end-to-end test runs the built CLI, a real browser or a real terminal. **At most 10 exist, across Node, browser and UI.** A new one needs a behavior no lower test can see: that collection still works against a real Node or Chromium, that a report opens, that the injected script works in a real page, that a typed secret or cookie never reaches a session, a real console's Ctrl+C, real layout. Everything else goes down:
 
 1. **Unit**: pure logic, with clocks, spawn, platform and filesystem injected. The packages' coverage is read with `pnpm coverage`.
-2. **Fixture integration**: engine passes and findings on committed captures (`packages/engine/test/fixtures`, including `browser/`); the UI over a real model in jsdom (`packages/ui/test`, `helpers/open-app.tsx`); the collectors against a fake CDP pipe (`helpers/fake-cdp.ts`) and the injected script in jsdom; the CLI through `main()` and `runProfile()` with real child programs (`packages/paces/test`).
-3. **Live (`e2e/`)**: the cap above. Today: Node profile, open report, Ctrl+C, browser record, browser privacy, browser attach, UI layout; plus two real-browser package tests (`recorder.test.ts` window close, `overlay.test.ts` real mouse), run with `PACES_BROWSER`.
+2. **Fixture integration**: engine passes and findings on committed captures (`packages/engine/test/fixtures`, including `browser/`); the UI over a real model, rendered with Testing Library in a real Chromium through Vitest browser mode (`packages/ui/test`, `*.test.tsx`; `helpers/open-app.tsx`; the app's own CSS is loaded, so layout is real; `await preload(...)` the fixtures a file uses); the collectors against a fake CDP pipe (`helpers/fake-cdp.ts`) and the injected script in a real page (`*.browser.test.ts`); the CLI through `main()` and `runProfile()` with real child programs (`packages/paces/test`).
+3. **Live (`e2e/`)**: the cap above. Today: Node profile, open report, Ctrl+C, browser record, browser privacy, browser attach; plus two real-browser package tests (`recorder.test.ts` window close, `overlay.test.ts` real mouse), run with `PACES_BROWSER`.
+
+Do not use jsdom: browser-mode tests (`*.test.tsx`, `*.browser.test.ts`) run in Chromium, pure logic (`*.test.ts`) in Node. Regenerate a golden with `GOLDEN_WRITE=1` only on unchanged code.
 
 The visual suite (`e2e/ui/visual`, light and dark, one screenshot per view) compares pixels and is not counted.
 
@@ -103,7 +105,7 @@ Sampled timings are estimates: prefix `~`, label precision (`±1 ms`), hatch bar
 - **A covered window stops painting.** Windows' occlusion tracking and background throttling froze paint in a window behind others, so a recording lost its click-to-paint latency, its largest paint and its screenshots (four real-browser tests failed with nothing wrong in the code). The launch flags keep it painting; a window you cannot see must profile the same as one you can.
 - **Judge compression by bytes, not by headers.** `encodedDataLength` against `decodedBodyLength` says whether a text file shrank. A missing `content-encoding` in a trace is not proof: a header-based count on bbc.com wrongly called six compressed scripts plain text.
 - **Sites are registrable domains from the public suffix list** (`tldts`), so `bbc.co.uk` is not `co.uk`.
-- **Never record what was typed.** Events are structure only; the privacy e2e types a secret into a page that also loads a script whose response sets a cookie, and fails if either appears anywhere in the unzipped session; the injected script is also tested in jsdom for the same rule.
+- **Never record what was typed.** Events are structure only; the privacy e2e types a secret into a page that also loads a script whose response sets a cookie, and fails if either appears anywhere in the unzipped session; the injected script is also tested in a real page for the same rule.
 - Real-browser tests are skipped unless `PACES_BROWSER` points at a Chromium executable. Measure with `node scripts/bench-browser.mjs`.
 
 ## Git

@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import loopText from '../../../../zoo/apps/deopt-loop.cjs?raw';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { serializeModel } from '@pacesjs/engine';
@@ -10,7 +9,9 @@ import { createQueries } from '../../src/data/queries';
 import { memoryHostAdapter } from '../../src/host/memory';
 import { DEFAULT_TRANSFORMS } from '../../src/state/types';
 import { nodeElk } from '../helpers/node-elk';
-import { fixtureModel, ordersModel } from '../helpers/real-model';
+import { fixtureModel, ordersModel, preload } from '../helpers/real-model';
+
+await preload('orders-server', 'deopt-loop', 'eslint-cli', 'eslint-cli-wrapped', 'sync-io');
 
 const orders = ordersModel();
 const [top] = orders.findings;
@@ -144,7 +145,9 @@ describe('paces screen', () => {
     await ready();
     await userEvent.click(screen.getByRole('button', { name: 'Remove Merge plumbing' }));
     expect(screen.queryByRole('button', { name: 'Rewind to Merge plumbing' })).toBeNull();
-    expect(decodeURIComponent(location.hash)).toContain('t=stitch,collapse-deps,drop-idle');
+    await waitFor(() =>
+      expect(decodeURIComponent(location.hash)).toContain('t=stitch,collapse-deps,drop-idle'),
+    );
   });
 
   it('rewinds the stack when a chip is clicked', async () => {
@@ -168,7 +171,9 @@ describe('paces screen', () => {
     await ready();
     const index = orders.findings.findIndex((f) => f.showMe.track === orders.tracks[1]?.id);
     await userEvent.click(showMe(index));
-    expect(decodeURIComponent(location.hash)).toContain(`tr=${orders.tracks[1]?.id}`);
+    await waitFor(() =>
+      expect(decodeURIComponent(location.hash)).toContain(`tr=${orders.tracks[1]?.id}`),
+    );
   });
 
   it('opens the shortcut sheet with ? and closes it with Escape', async () => {
@@ -237,7 +242,7 @@ describe('Show me contract', () => {
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(announced()).toBeUndefined());
     expect(showMe(0).closest('li')?.getAttribute('aria-current')).toBeNull();
-    expect(decodeURIComponent(location.hash)).not.toContain('sel=');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).not.toContain('sel='));
   });
 
   it('clears with the visible Clear selection chip', async () => {
@@ -269,8 +274,8 @@ describe('Show me contract', () => {
       .lastIndexOf('hot-dependency');
     if (showMe(index).getAttribute('aria-pressed') !== 'true') await userEvent.click(showMe(index));
     expect(current(/Call graph/)).toBe('page');
-    expect(decodeURIComponent(location.hash)).toMatch(/sel=fn:\d+/);
-    expect(decodeURIComponent(location.hash)).toMatch(/rev:\d+/);
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toMatch(/sel=fn:\d+/));
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toMatch(/rev:\d+/));
   });
 });
 
@@ -393,7 +398,7 @@ describe('waterfall', () => {
     const before = await waitFor(() => rowsOf().length);
     await userEvent.keyboard('p');
     await waitFor(() => expect(rowsOf().length).toBeLessThan(before));
-    expect(decodeURIComponent(location.hash)).toContain('cpo:1');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('cpo:1'));
     expect(rowsOf().every((r) => /critical path/.test(r.getAttribute('aria-label') ?? ''))).toBe(
       true,
     );
@@ -443,7 +448,9 @@ describe('waterfall rows and columns', () => {
     const selected = rowsOf().filter((r) => r.getAttribute('aria-selected') === 'true');
     expect(selected).toHaveLength(1);
     expect(selected[0]).toBe(lines[1]);
-    expect(decodeURIComponent(location.hash)).toMatch(/sel=node:[^:&]+:[\d.]+:\d+/);
+    await waitFor(() =>
+      expect(decodeURIComponent(location.hash)).toMatch(/sel=node:[^:&]+:[\d.]+:\d+/),
+    );
   });
 
   it('gives every name cell a title with the full text, so truncated text is still readable', async () => {
@@ -491,7 +498,7 @@ describe('waterfall rows and columns', () => {
   it('sorts siblings by duration and keeps the choice in the URL', async () => {
     await openWaterfall();
     await userEvent.selectOptions(screen.getByLabelText('Order'), 'duration');
-    expect(decodeURIComponent(location.hash)).toContain('wsort:duration');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('wsort:duration'));
     expect(rowsOf()[0]?.getAttribute('aria-label')).toMatch(/^request · GET \/orders,/);
   });
 
@@ -500,7 +507,7 @@ describe('waterfall rows and columns', () => {
     const before = rowsOf().length;
     await userEvent.selectOptions(screen.getByLabelText('Min duration'), String(20_000));
     await waitFor(() => expect(rowsOf().length).toBeLessThan(before));
-    expect(decodeURIComponent(location.hash)).toContain('mind:20000');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('mind:20000'));
   });
 });
 
@@ -686,7 +693,7 @@ describe('source dock', () => {
     expect(within(lines).getAllByRole('listitem').length).toBe(30);
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Source, maximized' })).toBeNull();
-    expect(decodeURIComponent(location.hash)).toContain('sel=fn');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('sel=fn'));
   });
 
   it('jumps to another function of the file from the maximized outline', async () => {
@@ -746,7 +753,7 @@ describe('selection line in the source', () => {
     await lines();
     await waitFor(async () => expect(flagged(await lines())).toHaveLength(1));
     await userEvent.click(await screen.findByRole('button', { name: /Jump to hottest line/ }));
-    expect(decodeURIComponent(location.hash)).toMatch(/line:\d+/);
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toMatch(/line:\d+/));
     expect(flagged(await lines())[0]?.textContent).toContain('lineTotal');
   });
 });
@@ -791,7 +798,9 @@ describe('functions without line time', () => {
     await ready();
     const list = await screen.findByRole('list', { name: 'Time in callees' });
     await userEvent.click(within(list).getAllByRole('button')[0] as HTMLElement);
-    expect(decodeURIComponent(location.hash)).not.toContain(`sel=fn:${wrapper?.fn}`);
+    await waitFor(() =>
+      expect(decodeURIComponent(location.hash)).not.toContain(`sel=fn:${wrapper?.fn}`),
+    );
   });
 });
 
@@ -801,6 +810,8 @@ describe('call graph navigation', () => {
     open();
     await ready();
     await screen.findByRole('group', { name: /^Call graph with/ });
+    // The layout arrives after the frame; a zoom made before it is overwritten by the fit.
+    await waitFor(() => expect(document.querySelectorAll('.cg-node').length).toBeGreaterThan(0));
   };
   const level = () => screen.getByLabelText('Zoom level').textContent;
 
@@ -880,9 +891,9 @@ describe('task picker', () => {
       /GET \/orders/.test(o.textContent ?? ''),
     );
     await userEvent.selectOptions(picker, request?.value ?? '');
-    expect(decodeURIComponent(location.hash)).toMatch(/task:\d+/);
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toMatch(/task:\d+/));
     await userEvent.selectOptions(picker, '-1');
-    expect(decodeURIComponent(location.hash)).not.toMatch(/task:\d+/);
+    await waitFor(() => expect(decodeURIComponent(location.hash)).not.toMatch(/task:\d+/));
   });
 });
 
@@ -938,7 +949,7 @@ describe('whole-run waterfall noise', () => {
     await waitFor(() => expect(rowsOf(table).length).toBeGreaterThan(3));
     const isFold = (r: HTMLElement): boolean =>
       /^node bootstrap,|rows? under .* hidden,/.test(r.getAttribute('aria-label') ?? '');
-    const at = rowsOf(table).findIndex(isFold);
+    const at = rowsOf(table).findIndex((r, i) => i > 0 && isFold(r));
     expect(at).toBeGreaterThan(0);
     await userEvent.click(rowsOf(table)[at - 1] as HTMLElement);
     (document.activeElement as HTMLElement).blur();
@@ -952,15 +963,23 @@ describe('whole-run waterfall noise', () => {
     expect((rowsOf(table)[at] as HTMLElement).getAttribute('aria-selected')).toBe('false');
     expect((rowsOf(table)[at + 1] as HTMLElement).getAttribute('aria-selected')).toBe('true');
 
+    // Opening a fold replaces it with the rows it held (the list is windowed, so its length is no clue).
+    const label = onFold.getAttribute('aria-label');
+    const foldedRow = (): HTMLElement | undefined =>
+      rowsOf(table).find(
+        (r) =>
+          r.getAttribute('aria-label') === label && r.getAttribute('aria-expanded') === 'false',
+      );
+    expect(foldedRow()).toBeDefined();
     await userEvent.keyboard('{ArrowUp}{Enter}');
-    expect((rowsOf(table)[at] as HTMLElement).getAttribute('aria-expanded')).toBe('true');
+    await waitFor(() => expect(foldedRow()).toBeUndefined());
   });
 
   it('shows every row when Any is chosen, and the chip goes away', async () => {
     await openRun();
     await userEvent.selectOptions(screen.getByLabelText('Min duration'), '0');
     expect(screen.queryByText(/Hiding rows under/)).toBeNull();
-    expect(decodeURIComponent(location.hash)).toContain('mind:0');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('mind:0'));
   });
 
   it('shows everything from the chip', async () => {
@@ -988,7 +1007,7 @@ describe('click-off deselects', () => {
     const table = await screen.findByRole('table', { name: 'Waterfall rows' });
     const row = (await within(table).findAllByRole('row'))[0] as HTMLElement;
     await userEvent.click(row);
-    expect(decodeURIComponent(location.hash)).toContain('sel=node');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('sel=node'));
   });
 
   it('clears the selection when empty space in the flame graph is clicked', async () => {
@@ -1021,7 +1040,7 @@ describe('Show filter', () => {
     await ready();
     await userEvent.click(await screen.findByRole('button', { name: /Native/ }));
     expect(chip(/Native/).getAttribute('aria-pressed')).toBe('false');
-    expect(decodeURIComponent(location.hash)).toContain('hide:4');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('hide:4'));
     expect(await screen.findByText(/hiding Native: ~?[\d.]+ (ms|s)/)).toBeTruthy();
   });
 
@@ -1031,7 +1050,7 @@ describe('Show filter', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Native/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Show all' }));
     expect(chip(/Native/).getAttribute('aria-pressed')).toBe('true');
-    expect(decodeURIComponent(location.hash)).not.toContain('hide:');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).not.toContain('hide:'));
   });
 
   it('restores a hidden origin from the URL', async () => {
@@ -1058,7 +1077,7 @@ describe('functions filters and hot paths', () => {
     await screen.findByRole('row', { name: /readFileUtf8/ });
     await userEvent.click(screen.getByRole('switch', { name: /Target only/ }));
     await waitFor(() => expect(screen.queryByRole('row', { name: /readFileUtf8/ })).toBeNull());
-    expect(decodeURIComponent(location.hash)).toContain('tonly:1');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('tonly:1'));
     expect(screen.getByRole('row', { name: /lineTotal/ })).toBeTruthy();
   });
 
@@ -1067,7 +1086,7 @@ describe('functions filters and hot paths', () => {
     await screen.findByRole('row', { name: /lineTotal/ });
     await userEvent.selectOptions(screen.getByLabelText('Package'), 'ajv');
     await waitFor(() => expect(screen.queryByRole('row', { name: /lineTotal/ })).toBeNull());
-    expect(decodeURIComponent(location.hash)).toContain('fpkg:ajv');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('fpkg:ajv'));
   });
 
   it('lists hot paths and opens one zoomed in the flame graph', async () => {
@@ -1076,7 +1095,7 @@ describe('functions filters and hot paths', () => {
     const first = await within(panel).findAllByRole('button');
     await userEvent.click(first[0] as HTMLElement);
     expect(current(/Flame graph/)).toBe('page');
-    expect(decodeURIComponent(location.hash)).toMatch(/zp:\d+(\.\d+)+/);
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toMatch(/zp:\d+(\.\d+)+/));
   });
 });
 
@@ -1122,7 +1141,6 @@ describe('finding fixes', () => {
 describe('deopt marks in the source panel', () => {
   const loop = fixtureModel('deopt-loop');
   const loopFile = 'zoo/apps/deopt-loop.cjs';
-  const loopText = readFileSync(resolve(process.cwd(), '../../', loopFile), 'utf8');
   const fnNamed = (name: string): number =>
     Array.from({ length: loop.functions.length }, (_, f) => f).find(
       (f) => loop.strings[loop.functions.name[f] ?? 0] === name,

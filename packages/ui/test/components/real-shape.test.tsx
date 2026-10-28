@@ -2,7 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { appReady, openApp } from '../helpers/open-app';
-import { fixtureModel } from '../helpers/real-model';
+import { fixtureModel, preload } from '../helpers/real-model';
+
+await preload('eslint-cli', 'eslint-cli-wrapped');
 
 // Real-shape sessions: the eslint captures are a CLI run of a large dependency tree, nothing like
 // the zoo servers. Every view must open on them without failing, and the first screen of the

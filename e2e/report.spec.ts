@@ -9,6 +9,7 @@ test('opens a report: the host serves the UI bundle and API to a browser with ze
   const out = join(dir, 'host.paces');
   const failures: string[] = [];
   const seen = new Set<string>();
+  const external: string[] = [];
   let title = '';
   try {
     const run = await runPaces(
@@ -19,6 +20,9 @@ test('opens a report: the host serves the UI bundle and API to a browser with ze
           try {
             const page = await browser.newPage();
             page.on('requestfailed', (r) => failures.push(`failed ${r.url()}`));
+            page.on('request', (r) => {
+              if (new URL(r.url()).origin !== new URL(url).origin) external.push(r.url());
+            });
             page.on('response', (r) => {
               seen.add(new URL(r.url()).pathname);
               if (r.status() >= 400) failures.push(`${r.status()} ${r.url()}`);
@@ -39,6 +43,8 @@ test('opens a report: the host serves the UI bundle and API to a browser with ze
     );
     expect(run.code, run.stderr).toBe(0);
     expect(failures).toEqual([]);
+    // The UI loads nothing from the network beyond the host that served it.
+    expect(external).toEqual([]);
     expect(title).toBe('paces');
     expect([...seen]).toEqual(
       expect.arrayContaining(['/', '/api/session', '/api/model', '/api/heartbeat']),

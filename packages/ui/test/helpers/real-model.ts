@@ -60,3 +60,9 @@ export function browserModelWith(
   };
   return analyze(recordingToCapture({ ...input, ...over }));
 }
+
+/** Parity with the browser helper, which loads fixtures asynchronously: nothing to wait for here. */
+export function preload(...names: string[]): Promise<void> {
+  void names;
+  return Promise.resolve();
+}

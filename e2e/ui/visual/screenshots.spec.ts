@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, openFixture, settled, test } from '../fixtures';
+import { expect, openFixture, settled, test } from './fixtures';
 
 // The visual suite: one screenshot per view, light and dark, 1440 px wide. These compare pixels to
 // the boards and are not end-to-end tests of behavior.

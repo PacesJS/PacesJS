@@ -2,7 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { appReady, openApp } from '../helpers/open-app';
-import { fixtureModel } from '../helpers/real-model';
+import { fixtureModel, preload } from '../helpers/real-model';
+
+await preload('orders-server', 'eslint-cli-wrapped');
 
 // Waterfall polish: the bar says how long it took, in words and on hover, and very deep chains say
 // how deep they are. What needs real layout (the highlight sitting behind the bars, the name column

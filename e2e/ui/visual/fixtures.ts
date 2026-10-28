@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-const UI_DIR = resolve(import.meta.dirname, '../../packages/ui');
+const UI_DIR = resolve(import.meta.dirname, '../../../packages/ui');
 const VITE_BIN = resolve(UI_DIR, 'node_modules/vite/bin/vite.js');
 
 /** A free port per server: a fixed one collides when Playwright restarts a worker. */

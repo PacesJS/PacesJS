@@ -20,11 +20,11 @@ const cleared = async (): Promise<void> => {
 };
 
 describe.each([
-  ['1', 'waterfall'],
-  ['2', 'flame graph'],
-  ['3', 'call graph'],
-  ['4', 'functions'],
-])('click-off in the %s view (%s)', (key) => {
+  ['1', 'waterfall', '.axis-caption'],
+  ['2', 'flame graph', '.axis-caption'],
+  ['3', 'call graph', '.axis-caption'],
+  ['4', 'functions', '.fn-status'],
+])('click-off in the %s view (%s)', (key, _name, captionSelector) => {
   it('clears when the page background is clicked', async () => {
     await withSelection(key);
     await userEvent.click(document.body);
@@ -39,7 +39,7 @@ describe.each([
 
   it('clears when a caption is clicked', async () => {
     await withSelection(key);
-    const caption = document.querySelector('.axis-caption, .fn-status');
+    const caption = document.querySelector(captionSelector);
     await userEvent.click(caption as Element);
     await cleared();
   });
@@ -57,21 +57,21 @@ describe('click-off keeps the selection', () => {
   it('when a toolbar button is clicked', async () => {
     await withSelection('3');
     await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
-    expect(hasSelection()).toBe(true);
+    await waitFor(() => expect(hasSelection()).toBe(true));
   });
 
   it('when a tab is clicked', async () => {
     await withSelection('1');
     const views = screen.getByRole('navigation', { name: 'Views' });
     await userEvent.click(within(views).getByRole('button', { name: /Flame/ }));
-    expect(hasSelection()).toBe(true);
+    await waitFor(() => expect(hasSelection()).toBe(true));
   });
 
   it('when a switch or a select is used', async () => {
     await withSelection('1');
     await userEvent.click(screen.getByRole('switch', { name: /Critical path$/ }));
     await userEvent.selectOptions(document.querySelector('#wf-sort') as Element, 'duration');
-    expect(hasSelection()).toBe(true);
+    await waitFor(() => expect(hasSelection()).toBe(true));
   });
 
   it('when the source dock or the details drawer is clicked', async () => {
@@ -80,7 +80,7 @@ describe('click-off keeps the selection', () => {
     await userEvent.click(dock.querySelector('.source-title') as Element);
     await userEvent.click(dock.querySelector('.source-head') as Element);
     await userEvent.click(details().querySelector('.stat-grid') as Element);
-    expect(hasSelection()).toBe(true);
+    await waitFor(() => expect(hasSelection()).toBe(true));
   });
 });
 
@@ -100,6 +100,6 @@ describe('click-off and the escape routes', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add transform' }));
     await userEvent.click(document.body);
     expect(screen.queryByRole('menu', { name: 'Add transform' })).toBeNull();
-    expect(hasSelection()).toBe(true);
+    await waitFor(() => expect(hasSelection()).toBe(true));
   });
 });

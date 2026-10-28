@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../src/app/App';
 import { memoryHostAdapter } from '../../src/host/memory';
 import { nodeElk } from '../helpers/node-elk';
-import { browserModel } from '../helpers/real-model';
+import { browserModel, preload } from '../helpers/real-model';
+
+await preload('browser:slow-click', 'browser:big-script');
 
 afterEach(cleanup);
 
