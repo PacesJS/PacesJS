@@ -110,9 +110,21 @@ describe('normalizeTarget', () => {
     expect(normalizeTarget('example.com', none)).toBe('https://example.com/');
   });
 
-  it('turns a path to an existing file into a file URL', () => {
-    expect(normalizeTarget('C:\\site\\index.html', () => true)).toBe('file:///C:/site/index.html');
-  });
+  it.runIf(process.platform === 'win32')(
+    'turns a path to an existing file into a file URL (Windows path)',
+    () => {
+      expect(normalizeTarget('C:\\site\\index.html', () => true)).toBe(
+        'file:///C:/site/index.html',
+      );
+    },
+  );
+
+  it.runIf(process.platform !== 'win32')(
+    'turns a path to an existing file into a file URL (POSIX path)',
+    () => {
+      expect(normalizeTarget('/site/index.html', () => true)).toBe('file:///site/index.html');
+    },
+  );
 });
 
 describe('recordOptionsFor', () => {

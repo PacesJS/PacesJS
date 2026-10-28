@@ -416,8 +416,13 @@ describe('source resolver results', () => {
       '../../etc/passwd',
     ];
     const slashBase = base.replaceAll('\\', '/');
+    // A POSIX base starts with a slash, so its file URL has two where a Windows drive path has three.
     const label = (t: string): string =>
-      t.replaceAll(base, '<base>').replaceAll(slashBase, '<base>').replaceAll('\\', '/');
+      t
+        .replaceAll(base, '<base>')
+        .replaceAll(slashBase, '<base>')
+        .replaceAll('\\', '/')
+        .replaceAll('file://<base>', 'file:///<base>');
     for (const ask of asks) {
       const res = r.resolve(ask);
       const norm = JSON.stringify({ ...res, hash: res.hash ? 'set' : '' });

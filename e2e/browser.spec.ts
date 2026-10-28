@@ -277,8 +277,11 @@ test.describe('paces browser: a real browser', () => {
       // The user's browser is still there.
       expect((await fetch(`http://127.0.0.1:${port}/json/version`)).ok).toBe(true);
     } finally {
-      if (child.pid !== undefined)
-        spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      if (child.pid !== undefined) {
+        if (process.platform === 'win32')
+          spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+        else child.kill('SIGKILL');
+      }
       await new Promise((r) => setTimeout(r, 500));
       rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
       removeDir(dir);
