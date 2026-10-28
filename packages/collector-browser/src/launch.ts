@@ -35,6 +35,12 @@ export function browserArgs(profileDir: string, windowSize = '1440,900'): string
     '--keep-alive-for-test',
     // Edge can start a second copy of itself and exit; the copy has none of our pipes.
     '--edge-skip-compat-layer-relaunch',
+    // A covered or background window must paint and run timers as a visible one does, or the
+    // profile shows what the window manager did rather than what the page did.
+    '--disable-features=CalculateNativeWinOcclusion',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
     `--window-size=${windowSize}`,
     'about:blank',
   ];
