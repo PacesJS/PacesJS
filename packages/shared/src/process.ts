@@ -2,12 +2,44 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 
-/** Ends a process and everything it started. On Windows `child.kill()` only ends the root. */
+/** Every descendant of `root`, found from one table of (pid, parent pid) so none is missed. */
+function descendants(root: number): number[] {
+  const table = spawnSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' });
+  if (table.status !== 0) return [];
+  const children = new Map<number, number[]>();
+  for (const line of table.stdout.split('\n')) {
+    const [pid, parent] = line.trim().split(/\s+/).map(Number);
+    if (pid === undefined || parent === undefined || Number.isNaN(pid + parent)) continue;
+    children.set(parent, [...(children.get(parent) ?? []), pid]);
+  }
+  const found: number[] = [];
+  for (let queue = [root]; queue.length > 0;) {
+    queue = queue.flatMap((pid) => children.get(pid) ?? []);
+    found.push(...queue);
+  }
+  return found;
+}
+
+/**
+ * Ends a process and everything it started. `child.kill()` only ends the root, on every platform:
+ * a browser's renderer and GPU processes would outlive it and keep its profile directory busy.
+ */
 export function killTree(child: ChildProcess): void {
   if (child.pid === undefined) return;
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-  } else child.kill('SIGKILL');
+    return;
+  }
+  // Listed before the root dies: once it does, its children are handed to init and lose the link.
+  const below = descendants(child.pid);
+  child.kill('SIGKILL');
+  for (const pid of below) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already gone.
+    }
+  }
 }
 
 /**
