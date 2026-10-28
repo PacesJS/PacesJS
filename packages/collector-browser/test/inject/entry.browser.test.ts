@@ -1,7 +1,6 @@
-// Runs the real injected script text in a DOM, the way the browser runs it, with the bridge binding
-// replaced by a recorder. What the real browser adds (that CDP injects it, that V8 reports its URL)
-// is covered by the real-browser tests; what the script does on a page is covered here.
-import { JSDOM } from 'jsdom';
+// Runs the real injected script text in a real page (an iframe of Chromium), the way the browser runs
+// it, with the bridge binding replaced by a recorder. What CDP adds (that it injects the script, that
+// V8 reports its URL) is covered by the real-browser tests; what the script does on a page is here.
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildInjectedSource } from '../../src/inject/entry.js';
 import type { InjectConfig } from '../../src/inject/entry.js';
@@ -12,7 +11,7 @@ interface Sent {
 }
 
 interface Page {
-  window: JSDOM['window'] & Record<string, unknown>;
+  window: Window & typeof globalThis & Record<string, unknown>;
   sent: Sent[];
   stamps: string[];
   install(config?: Partial<InjectConfig>): void;
@@ -20,15 +19,20 @@ interface Page {
 }
 
 const ALL: InjectConfig = { overlay: true, eventMarks: true, eventText: false };
-const pages: JSDOM[] = [];
+const windows: Window[] = [];
 
 function page(html = '<!doctype html><body></body>'): Page {
-  const dom = new JSDOM(html, {
-    url: 'https://example.test/app?token=abc#frag',
-    runScripts: 'outside-only',
-  });
-  pages.push(dom);
-  const window = dom.window as Page['window'];
+  // A window of its own, because the script behaves differently in a frame (no overlay): the test
+  // page itself runs inside one.
+  const opened = globalThis.open('', '_blank');
+  if (!opened) throw new Error('the browser did not open a window for the page under test');
+  windows.push(opened);
+  const window = opened as Page['window'];
+  window.document.open();
+  window.document.write(html);
+  window.document.close();
+  // A document opened by script takes our address, so it can be given a page address to report.
+  window.history.replaceState(null, '', '/app?token=abc#frag');
   const sent: Sent[] = [];
   const stamps: string[] = [];
   window['__pacesBridge'] = (payload: string) => sent.push(JSON.parse(payload) as Sent);
@@ -53,7 +57,7 @@ const keydown = (p: Page, init: KeyboardEventInit): KeyboardEvent => {
 };
 
 afterEach(() => {
-  for (const dom of pages.splice(0)) dom.window.close();
+  for (const opened of windows.splice(0)) opened.close();
 });
 
 describe('installing', () => {
@@ -62,7 +66,7 @@ describe('installing', () => {
     p.install();
     p.install();
     expect(p.sent.filter((m) => m.t === 'hello')).toEqual([
-      { t: 'hello', frame: 'top', url: 'https://example.test/app' },
+      { t: 'hello', frame: 'top', url: `${location.origin}/app` },
     ]);
   });
 

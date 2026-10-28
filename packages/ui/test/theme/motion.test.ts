@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 // Motion: a small set of tokens, used for the dock, popovers, tabs and chips, and switched off
 // entirely when the user asks for reduced motion. Read from the stylesheets themselves, since the
-// browser's computed style is what this checks and jsdom cannot compute it.
+// browser's computed style is what this checks; reading the source keeps it a fast Node test.
 
 const src = resolve(import.meta.dirname, '../../src');
 const read = (file: string): string => readFileSync(join(src, file), 'utf8');

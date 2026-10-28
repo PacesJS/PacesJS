@@ -66,7 +66,7 @@ describe('the dock follows the selection', () => {
   it('starts collapsed from a URL without a selection and extended from one with it', async () => {
     await opened('#v=functions');
     await expectRail();
-    expect(hasSelection()).toBe(false);
+    await waitFor(() => expect(hasSelection()).toBe(false));
   });
 
   it('starts extended from a URL that holds a selection', async () => {

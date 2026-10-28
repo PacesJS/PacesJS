@@ -10,7 +10,7 @@ describe('adding a transform', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add transform' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Invert call tree' }));
     expect(await screen.findByRole('button', { name: 'Rewind to Invert' })).toBeTruthy();
-    expect(decodeURIComponent(location.hash)).toContain('invert');
+    await waitFor(() => expect(decodeURIComponent(location.hash)).toContain('invert'));
     await userEvent.click(screen.getByRole('button', { name: 'Rewind to Collapse dependencies' }));
     expect(screen.queryByRole('button', { name: 'Rewind to Invert' })).toBeNull();
   });

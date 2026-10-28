@@ -1,7 +1,6 @@
 // Characterization of what the canvas views draw: every 2D-context call and property write of the last paint
 // of each canvas, with a fixed canvas size. Pins the drawing code (bars, hatching, lanes, flame) without
 // pixels. See golden.ts.
-import { resolve } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { serializeModel } from '@pacesjs/engine';
@@ -10,10 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { App } from '../../src/app/App';
 import { memoryHostAdapter } from '../../src/host/memory';
 import { nodeElk } from '../helpers/node-elk';
-import { fixtureModel, ordersModel } from '../helpers/real-model';
-import { goldenFile } from './golden';
+import { fixtureModel, ordersModel, preload } from '../helpers/real-model';
+import expected from './canvas-golden.json';
+import { goldenFile } from './golden.browser';
 
-const g = goldenFile(resolve(process.cwd(), 'test/baseline/canvas-golden.json'));
+await preload('orders-server', 'eslint-cli', 'async-chain');
+
+const g = goldenFile('canvas-golden.json', expected);
 const orders = ordersModel();
 const eslint = fixtureModel('eslint-cli');
 const asyncChain = fixtureModel('async-chain');
@@ -160,5 +162,5 @@ describe('canvas golden masters', () => {
     snap('lanes-callgraph');
   });
 
-  it('finishes', () => g.finish());
+  it('finishes', async () => g.finish());
 });

@@ -2,7 +2,9 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { appReady, openApp } from '../helpers/open-app';
-import { fixtureModel } from '../helpers/real-model';
+import { fixtureModel, preload } from '../helpers/real-model';
+
+await preload('orders-server', 'sync-io');
 
 describe('differential mode with a baseline session', () => {
   it('enables Compare with… and colors the flame graph by change from the baseline', async () => {

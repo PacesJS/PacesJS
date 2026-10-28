@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/app/App';
 import { memoryHostAdapter } from '../../src/host/memory';
 import { nodeElk } from '../helpers/node-elk';
-import { ordersModel } from '../helpers/real-model';
+import { ordersModel, preload } from '../helpers/real-model';
+
+await preload('orders-server');
 
 const orders = ordersModel();
 
@@ -14,7 +16,17 @@ async function openGraph(): Promise<HTMLElement> {
   const host = memoryHostAdapter({ model: serializeModel(orders), meta: {} });
   render(<App host={host} inProcess elk={nodeElk} />);
   await screen.findByRole('heading', { name: 'Findings' }, { timeout: 15000 });
-  return screen.findByRole('group', { name: /^Call graph with/ }, { timeout: 15000 });
+  const graph = await screen.findByRole('group', { name: /^Call graph with/ }, { timeout: 15000 });
+  // The fit arrives with the layout; an action made before it is overwritten.
+  let last = '';
+  let same = 0;
+  while (same < 5) {
+    await new Promise((r) => setTimeout(r, 60));
+    const now = layer().style.transform;
+    same = now === last && document.querySelector('.cg-node') ? same + 1 : 0;
+    last = now;
+  }
+  return graph;
 }
 
 const layer = (): HTMLElement => {
@@ -73,7 +85,8 @@ describe('call graph viewport (baseline)', { timeout: 30000 }, () => {
     graph.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
     await screen.findByLabelText('Zoom level');
-    expect(placement().k).toBeCloseTo(before.k * Math.exp(0.3), 6);
+    // A real browser keeps five decimals of a scale in style.transform.
+    expect(placement().k).toBeCloseTo(before.k * Math.exp(0.3), 4);
     expect(layer().className).not.toContain('is-easing');
   });
 
@@ -85,7 +98,7 @@ describe('call graph viewport (baseline)', { timeout: 30000 }, () => {
       new WheelEvent('wheel', { deltaY: -10, ctrlKey: true, cancelable: true, bubbles: true }),
     );
     await screen.findByLabelText('Zoom level');
-    expect(placement().k).toBeCloseTo(before.k * Math.exp(0.1), 6);
+    expect(placement().k).toBeCloseTo(before.k * Math.exp(0.1), 4);
   });
 
   it('pans by the pointer distance once a drag passes the threshold, then swallows the click', async () => {

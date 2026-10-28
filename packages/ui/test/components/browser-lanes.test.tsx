@@ -11,10 +11,21 @@ import {
   browserModelWith,
   browserScreenshots,
   fixtureModel,
+  preload,
 } from '../helpers/real-model';
 
+await preload(
+  'hot-regex',
+  'browser:forced-layout',
+  'browser:layout-shift',
+  'browser:paused-resume',
+  'browser:slow-click',
+  'browser:slow-load',
+  'browser:worker-and-iframe',
+);
+
 beforeAll(() => {
-  // jsdom has no object URLs; the strip only needs something to point an <img> at.
+  // The strip only needs something to point an <img> at.
   vi.stubGlobal(
     'URL',
     Object.assign(URL, { createObjectURL: () => 'blob:frame', revokeObjectURL: () => {} }),

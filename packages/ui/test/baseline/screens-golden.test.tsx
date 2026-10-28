@@ -1,6 +1,5 @@
 // Characterization of the rendered markup (the whole document body) of every view and panel state, driven
 // the way a user would. The hash of body.innerHTML pins the DOM and the accessibility tree. See golden.ts.
-import { resolve } from 'node:path';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { serializeModel } from '@pacesjs/engine';
@@ -9,10 +8,13 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/app/App';
 import { memoryHostAdapter } from '../../src/host/memory';
 import { nodeElk } from '../helpers/node-elk';
-import { fixtureModel, ordersModel } from '../helpers/real-model';
-import { goldenFile } from './golden';
+import { fixtureModel, ordersModel, preload } from '../helpers/real-model';
+import expected from './screens-golden.json';
+import { goldenFile } from './golden.browser';
 
-const g = goldenFile(resolve(process.cwd(), 'test/baseline/screens-golden.json'));
+await preload('orders-server', 'eslint-cli', 'rxjs-chain', 'async-chain');
+
+const g = goldenFile('screens-golden.json', expected);
 const orders = ordersModel();
 const eslint = fixtureModel('eslint-cli');
 const rxjs = fixtureModel('rxjs-chain');
@@ -218,7 +220,8 @@ describe('screens golden masters', () => {
         await userEvent.hover(hit);
         const tipEl = (): Element | null => document.querySelector('.tooltip-title');
         await waitFor(() => expect(tipEl()).not.toBeNull(), { timeout: 6000 });
-        out.push(tipEl()?.closest('[role="tooltip"]')?.outerHTML ?? '(none)');
+        // The words, not the markup: the markup carries the pixel position of the bar it points at.
+        out.push(tipEl()?.closest('[role="tooltip"]')?.textContent ?? '(none)');
         await userEvent.unhover(hit);
         await waitFor(() => expect(tipEl()).toBeNull(), { timeout: 6000 });
       }
@@ -240,5 +243,5 @@ describe('screens golden masters', () => {
     g.check('tips-async', await collect());
   }, 300_000);
 
-  it('finishes', () => g.finish());
+  it('finishes', async () => g.finish());
 });

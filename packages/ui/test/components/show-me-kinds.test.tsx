@@ -2,7 +2,17 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { appReady, hashParams, openApp } from '../helpers/open-app';
-import { fixtureModel } from '../helpers/real-model';
+import { fixtureModel, preload } from '../helpers/real-model';
+
+await preload(
+  'orders-server',
+  'hot-regex',
+  'sync-io',
+  'late-require',
+  'gc-heavy',
+  'eslint-cli-wrapped',
+  'rxjs-chain',
+);
 
 // The Show me contract for every kind of finding the zoo captures produce: it opens the view that
 // proves the finding, selects the target, announces "Showing: ...", and can be cleared with Escape
