@@ -74,15 +74,7 @@ describe('runProfile with --v8', () => {
 });
 
 describe('runProfile and killed processes', () => {
-  const killed = resolve(
-    import.meta.dirname,
-    '..',
-    '..',
-    '..',
-    'e2e',
-    'fixtures',
-    'killed-children.cjs',
-  );
+  const killed = resolve(import.meta.dirname, 'fixtures', 'killed-children.cjs');
 
   it('records the processes and workers that were killed before they could write a profile', async () => {
     const r = await runProfile({ ...base, command: ['node', killed], flags: flags() });

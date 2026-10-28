@@ -8,6 +8,9 @@
   <input id="pass" name="pass" type="password" placeholder="password" />
   <button type="submit">Sign in</button>
 </form>
+<!-- Also loads a script whose response sets a cookie, so one run proves neither the typed value nor the
+     response header reaches the session. -->
+<script src="vendor.js"></script>
 <script>
   const secret = ['h', 'u', 'n', 't', 'e', 'r', '2'].join('');
   document.getElementById('login').addEventListener('submit', (e) => e.preventDefault());

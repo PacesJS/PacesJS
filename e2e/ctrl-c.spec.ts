@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { readSession } from '../packages/format/dist/index.js';
 import { PACES_CLI, ROOT, openAndClose, removeDir, tempDir, waitFor } from './helpers/cli.js';
-import { engineReady } from './helpers/engine.js';
 import { startPacesInConsole } from './helpers/console.js';
 
 const SERVER = join(ROOT, 'e2e', 'fixtures', 'server.mjs');
@@ -22,42 +21,37 @@ function loadSession(file: string) {
 test.describe('Ctrl+C on a long-running server, Windows console', () => {
   test.skip(process.platform !== 'win32', 'real console Ctrl+C is Windows-specific here');
 
-  for (const mode of ['graceful', 'plain'] as const) {
-    const expected = mode === 'graceful' ? 0 : 130;
-    test(`${mode} app: flushes the profile, saves a session and exits ${expected}`, async () => {
-      const dir = tempDir();
-      const out = join(dir, 'session.paces');
-      const run = startPacesInConsole(
-        dir,
-        ['--no-open', '--out', fwd(out), '--', 'node', fwd(SERVER)],
-        {
-          MODE: mode,
-          PACES_GRACE_MS: '300',
-        },
-      );
-      try {
-        await waitFor(() => existsSync(run.files.ready), 30_000, 'the server to listen');
-        // Let a few samples accumulate before interrupting.
-        await waitFor(() => run.stdout().includes('listening'), 5_000, 'the listening line');
-        run.ctrlC();
-        // With the engine present the CLI goes on to serve the UI; closing it ends the run.
-        if (await engineReady()) {
-          await waitFor(() => urlOf(run.stderr()) !== undefined, 30_000, 'the UI URL');
-          await openAndClose(urlOf(run.stderr()) as string);
-        }
-        const code = await run.exitCode();
-        expect(code, `${run.stdout()}\n${run.stderr()}`).toBe(expected);
-        expect(existsSync(out)).toBe(true);
-        const session = loadSession(out);
-        expect(session.manifest.endedBy).toBe('sigint');
-        expect(session.capture.tracks[0]?.cpuProfile?.samples.length ?? 0).toBeGreaterThan(0);
-        if (mode === 'graceful') expect(run.stdout()).toContain('SIGINT handler ran');
-      } finally {
-        run.kill();
-        removeDir(dir);
-      }
-    });
-  }
+  // The exit-130 path of an app with no handler is tested in the preload's own tests.
+  test('flushes the profile, runs the app SIGINT handler and saves a session', async () => {
+    const dir = tempDir();
+    const out = join(dir, 'session.paces');
+    const run = startPacesInConsole(
+      dir,
+      ['--no-open', '--out', fwd(out), '--', 'node', fwd(SERVER)],
+      {
+        MODE: 'graceful',
+        PACES_GRACE_MS: '300',
+      },
+    );
+    try {
+      await waitFor(() => existsSync(run.files.ready), 30_000, 'the server to listen');
+      // Let a few samples accumulate before interrupting.
+      await waitFor(() => run.stdout().includes('listening'), 5_000, 'the listening line');
+      run.ctrlC();
+      await waitFor(() => urlOf(run.stderr()) !== undefined, 30_000, 'the UI URL');
+      await openAndClose(urlOf(run.stderr()) as string);
+      const code = await run.exitCode();
+      expect(code, `${run.stdout()}\n${run.stderr()}`).toBe(0);
+      expect(existsSync(out)).toBe(true);
+      const session = loadSession(out);
+      expect(session.manifest.endedBy).toBe('sigint');
+      expect(session.capture.tracks[0]?.cpuProfile?.samples.length ?? 0).toBeGreaterThan(0);
+      expect(run.stdout()).toContain('SIGINT handler ran');
+    } finally {
+      run.kill();
+      removeDir(dir);
+    }
+  });
 });
 
 // POSIX: signal the CLI only (a terminal would also signal the target), which exercises the
@@ -85,10 +79,8 @@ test.describe('Ctrl+C on a long-running server, POSIX', () => {
     try {
       await waitFor(() => existsSync(ready), 30_000, 'the server to listen');
       child.kill('SIGINT');
-      if (await engineReady()) {
-        await waitFor(() => urlOf(stderr) !== undefined, 30_000, 'the UI URL');
-        await openAndClose(urlOf(stderr) as string);
-      }
+      await waitFor(() => urlOf(stderr) !== undefined, 30_000, 'the UI URL');
+      await openAndClose(urlOf(stderr) as string);
       expect(await exited).toBe(0);
       expect(stdout).toContain('SIGINT handler ran');
       expect(loadSession(out).manifest.endedBy).toBe('sigint');
