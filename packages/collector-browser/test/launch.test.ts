@@ -21,6 +21,14 @@ describe('browserArgs', () => {
     expect(browserArgs('/tmp/p')).toContain('--edge-skip-compat-layer-relaunch');
   });
 
+  it('keeps a covered or background window painting and running timers, so the profile is of the page', () => {
+    const args = browserArgs('/tmp/p');
+    expect(args).toContain('--disable-features=CalculateNativeWinOcclusion');
+    expect(args).toContain('--disable-backgrounding-occluded-windows');
+    expect(args).toContain('--disable-renderer-backgrounding');
+    expect(args).toContain('--disable-background-timer-throttling');
+  });
+
   it('never opens a TCP debugging port', () => {
     expect(browserArgs('/tmp/p').some((a) => a.startsWith('--remote-debugging-port'))).toBe(false);
   });
