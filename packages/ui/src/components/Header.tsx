@@ -42,6 +42,9 @@ const TEXT = {
   entry: 'Entry',
   sampledTitle: 'Sampled profile: timings are estimates',
   sampled: (interval: string, precision: string) => `Sampled · ${interval} · ±${precision}`,
+  pageSampledTitle:
+    'Function times are sampled estimates. Tasks, rendering, input and loading milestones are exact: they come from trace events.',
+  pageSampled: (interval: string, precision: string) => `JS sampled · ${interval} · ±${precision}`,
   ms: (value: string) => `${value} ms`,
   tracks: 'Tracks',
   supporting: 'supporting',
@@ -127,9 +130,15 @@ export function Header({ searchRef, sessionPath }: HeaderProps) {
             </div>
           ) : null}
         </dl>
-        <span className="precision-badge" title={TEXT.sampledTitle}>
+        <span
+          className="precision-badge"
+          title={summary.browser ? TEXT.pageSampledTitle : TEXT.sampledTitle}
+        >
           <Icon name="clock" size={14} />
-          {TEXT.sampled(fmtMsPlain(intervalMs), fmtMsPlain(precisionMs))}
+          {(summary.browser ? TEXT.pageSampled : TEXT.sampled)(
+            fmtMsPlain(intervalMs),
+            fmtMsPlain(precisionMs),
+          )}
         </span>
         {summary.browser ? (
           <ul className="header-chips" aria-label="Recording options">

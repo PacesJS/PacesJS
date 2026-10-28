@@ -69,7 +69,6 @@
   color: var(--c-muted);
   font-size: var(--fs-11);
   line-height: var(--lh-16);
-  background: repeating-linear-gradient(135deg, var(--c-paused-hatch) 0 4px, transparent 4px 8px);
 }
 
 .filmstrip-gap span {
@@ -119,16 +118,6 @@
 
 .lane-range {
   z-index: 1;
-}
-
-.paused-band {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: repeating-linear-gradient(135deg, var(--c-paused-hatch) 0 4px, transparent 4px 8px);
-  border-left: 1px dashed var(--c-border-strong);
-  border-right: 1px dashed var(--c-border-strong);
-  pointer-events: none;
 }
 
 /* Page lane */
@@ -222,14 +211,20 @@
 /* Interaction lane */
 .input-block {
   position: absolute;
-  top: 6px;
-  height: 22px;
-  min-width: 10px;
-  border-radius: var(--r-chip);
+  top: 9px;
+  height: 26px;
+  min-width: 26px;
+  box-sizing: border-box;
+  padding: 0 var(--sp-6);
+  gap: var(--sp-4);
+  border-radius: 13px;
   background: var(--c-origin-dependency);
+  color: var(--c-on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 0 0 2px var(--c-surface);
+  cursor: pointer;
 }
 .input-block.kind-key,
 .input-block.kind-typing {
@@ -240,24 +235,51 @@
 }
 .input-block.kind-navigate {
   background: var(--c-ink);
+  color: var(--c-surface);
 }
 .input-block.kind-submit,
 .input-block.kind-change {
   background: var(--c-origin-framework);
 }
+.input-block.kind-visibility,
+.input-block.kind-more {
+  background: var(--c-muted);
+}
 .input-block.is-slow {
-  outline: 2px solid var(--c-sev-medium);
-  outline-offset: 1px;
+  box-shadow:
+    0 0 0 2px var(--c-surface),
+    0 0 0 4px var(--c-sev-medium);
 }
 
 .input-count {
-  font-size: var(--fs-11);
+  font-size: var(--fs-12);
   line-height: var(--lh-16);
-  color: var(--c-on-accent);
   font-weight: var(--fw-semi);
+}
+
+/* Recording was paused: a dashed line between a pause mark and a resume mark, nothing wider. */
+.pause-span {
+  position: absolute;
+  top: 21px;
+  height: 0;
+  border-top: 2px dashed var(--c-border-strong);
+  pointer-events: none;
+}
+
+.pause-mark {
+  position: absolute;
+  top: 11px;
+  width: 22px;
+  height: 22px;
+  margin-left: -11px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--c-border-strong);
+  border-radius: 50%;
   background: var(--c-surface);
-  border-radius: var(--r-chip);
-  padding: 0 var(--sp-4);
+  color: var(--c-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -292,71 +314,65 @@
   background: var(--ms-color);
 }
 
-/* A flag on its line: the label sits beside the line it names and takes its color. */
-.milestone-label {
+/* A hover target around a line, with a dot per milestone at its top. The words are in the tooltip. */
+.milestone-hit {
   position: absolute;
-  padding: 0 var(--sp-6);
-  border-left: 3px solid var(--ms-color);
-  font-size: var(--fs-11);
-  line-height: var(--lh-16);
-  color: var(--c-ink);
-  background: var(--c-surface);
-  white-space: nowrap;
-  pointer-events: none;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  transform: translateX(-8px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2px;
+  padding-top: var(--sp-4);
+  box-sizing: border-box;
+  cursor: help;
   z-index: 3;
 }
 
-.milestone-label.is-flipped {
-  transform: translateX(-100%);
-  border-left: 0;
-  border-right: 3px solid var(--ms-color);
+.milestone-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ms-color);
+  border: 2px solid var(--c-surface);
+  box-sizing: content-box;
 }
 
 .milestone-line.is-FCP,
-.milestone-label.is-FCP {
+.milestone-dot.is-FCP {
   --ms-color: var(--c-ms-fcp);
 }
 .milestone-line.is-DOMContentLoaded,
-.milestone-label.is-DOMContentLoaded {
+.milestone-dot.is-DOMContentLoaded {
   --ms-color: var(--c-ms-dcl);
 }
 .milestone-line.is-LCP,
-.milestone-label.is-LCP {
+.milestone-dot.is-LCP {
   --ms-color: var(--c-ms-lcp);
 }
 .milestone-line.is-load,
-.milestone-label.is-load {
+.milestone-dot.is-load {
   --ms-color: var(--c-ms-load);
 }
 
-/* Waiting lane: idle time by cause, and the page's requests under it. */
+/* Waiting lane: per slice of the run, how long the main thread was idle, by cause. */
 .waiting-plot {
   cursor: crosshair;
 }
 
-.idle-block {
+.waiting-chart {
   position: absolute;
-  top: var(--sp-4);
-  height: 10px;
-  border-radius: 2px;
-  cursor: pointer;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
-.idle-block.cause-requests {
-  background: var(--c-wait-requests);
+.waiting-chart .cause-requests {
+  fill: var(--c-wait-requests);
 }
 
-/* Dotted, so the two causes differ by pattern as well as by color. */
-.idle-block.cause-nothing {
-  border: 1px dotted var(--c-muted);
-  background: color-mix(in srgb, var(--c-muted) 14%, transparent);
-}
-
-.request-bar {
-  position: absolute;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--c-request);
-  opacity: 0.85;
-  cursor: pointer;
+.waiting-chart .cause-nothing {
+  fill: color-mix(in srgb, var(--c-muted) 45%, transparent);
 }

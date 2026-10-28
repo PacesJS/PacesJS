@@ -143,7 +143,6 @@
   --c-render-composite: var(--c-origin-node);
   --c-render-parse: var(--c-origin-gc);
   --c-render-script: var(--c-wait);
-  --c-paused-hatch: color-mix(in srgb, var(--c-border-strong) 35%, transparent);
   --c-grid: #e8eaf1;
   --c-cpu-line: #ff8a1f;
   --c-cpu-fill: rgba(255, 138, 31, 0.28);

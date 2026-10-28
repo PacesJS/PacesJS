@@ -725,6 +725,10 @@
   pointer-events: none;
 }
 
+.tooltip.is-wrapping {
+  white-space: normal;
+}
+
 .tooltip-title {
   font-size: var(--fs-13);
   line-height: var(--lh-18);

@@ -54,11 +54,11 @@ test.describe('browser session, behaviour', () => {
     await expect(page.getByRole('group', { name: /^Selected range / })).toBeVisible();
   });
 
-  test('a paused run shows its gap as paused, not blank', async ({ page, serve }) => {
+  test('a paused run marks the pause as a small event, not a block', async ({ page, serve }) => {
     await openFixture(page, serve, 'browser:paused-resume');
-    await expect(
-      page.getByRole('group', { name: 'Filmstrip' }).getByText('paused').first(),
-    ).toBeVisible();
+    await expect(page.locator('.interaction-plot .pause-mark')).toHaveCount(2);
+    await expect(page.getByRole('group', { name: 'Filmstrip' }).getByText('paused')).toHaveCount(0);
+    await expect(page.locator('.paused-band')).toHaveCount(0);
     await expect(page.getByText('Paused 1×')).toBeVisible();
   });
 
