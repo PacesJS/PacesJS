@@ -24,7 +24,7 @@ Data flows one way: raw chunks (target) → finished model (CLI) → queries (UI
 
 ## Commands
 
-`pnpm build` · `pnpm test` · `pnpm typecheck` · `pnpm lint` (eslint + boundary check) · `pnpm format` · `pnpm test:e2e`. One package: `pnpm --filter @pacesjs/engine test`. Before saying work is done, build, typecheck, lint and test all pass.
+`pnpm build` · `pnpm test` · `pnpm typecheck` · `pnpm lint` (eslint + boundary check) · `pnpm format` · `pnpm test:e2e` · `pnpm coverage [package...]` (V8 unit-test coverage table, HTML in `packages/<name>/coverage/`; counts only code run in the test process, so the CLI and collectors undercount, and set `PACES_BROWSER` to include the real-browser tests). One package: `pnpm --filter @pacesjs/engine test`. Before saying work is done, build, typecheck, lint and test all pass.
 
 ## Workflow: TDD, always
 
