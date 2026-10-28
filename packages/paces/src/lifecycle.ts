@@ -17,7 +17,9 @@ export interface CloseOptions {
   /**
    * Heartbeat silence that alone means the window is gone. Long on purpose: minimized or hidden
    * windows have their timers throttled (to once a minute after a few minutes), so a short gap
-   * says nothing. Explicit goodbyes and the browser process exiting are the fast signals.
+   * says nothing. Explicit goodbyes and the browser process exiting are the fast signals. Used
+   * only when there is no browser process to watch: a frozen window or a sleeping laptop is silent
+   * too, and closing the host behind it empties every later request.
    */
   staleHeartbeatMs?: number;
   /** Resolves when the browser process we launched has exited. */
@@ -40,6 +42,11 @@ export function waitForWindowClose(
   const now = options.now ?? Date.now;
   const staleHeartbeatMs = options.staleHeartbeatMs ?? DEFAULT_STALE_HEARTBEAT_MS;
   const poll = options.pollMs ?? Math.max(10, Math.min(500, options.graceMs / 4));
+  const watchesBrowser = options.browserExited !== undefined;
+  // Ticks this far apart mean the whole process was suspended (sleep, hibernation), not the page.
+  const suspendedGapMs = Math.max(poll * 20, 2000);
+  let lastTickAt = now();
+  let resumedAt = 0;
   let browserGoneAt: number | undefined;
   void options.browserExited?.then(() => {
     browserGoneAt = now();
@@ -50,13 +57,17 @@ export function waitForWindowClose(
       resolve(r);
     };
     const timer = setInterval(() => {
+      if (now() - lastTickAt >= suspendedGapMs) resumedAt = now();
+      lastTickAt = now();
       const last = Math.max(host.lastRequestAt(), browserGoneAt ?? 0);
       const quiet = now() - last >= options.graceMs;
       const beat = host.lastHeartbeatAt();
       const goodbye = host.lastGoodbyeAt?.();
       // A goodbye only counts until the page is heard from again (a reload says goodbye too).
       const saidGoodbye = goodbye !== undefined && goodbye >= (beat ?? 0);
-      const heartbeatsStale = beat !== undefined && now() - beat >= staleHeartbeatMs;
+      const heardAt = Math.max(beat ?? 0, resumedAt);
+      const heartbeatsStale =
+        !watchesBrowser && beat !== undefined && now() - heardAt >= staleHeartbeatMs;
       const gone = browserGoneAt !== undefined || saidGoodbye || heartbeatsStale;
       if (quiet && gone) finish('closed');
     }, poll);
