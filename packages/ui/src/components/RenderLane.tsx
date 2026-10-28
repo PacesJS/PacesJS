@@ -5,7 +5,6 @@ import { useWidth } from '../app/useWidth';
 import { fmtDuration } from '../util/format';
 import { lodRender } from '../view/browser-lanes';
 import { LaneRange } from './LaneRange';
-import { PausedBands } from './PausedBands';
 
 const TEXT = {
   title: 'Rendering',
@@ -52,7 +51,6 @@ export function RenderLane({ data }: RenderLaneProps) {
         </div>
       </div>
       <div ref={plot} className="lane-plot-dom render-plot">
-        <PausedBands data={data} />
         <LaneRange durationUs={data.durationUs} />
         <div className="render-frames" aria-hidden="true">
           {Array.from(data.frames.end, (end, i) => (

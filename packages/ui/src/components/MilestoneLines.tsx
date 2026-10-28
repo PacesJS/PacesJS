@@ -4,8 +4,8 @@ import { milestones } from '../view/milestones';
 
 /**
  * One line per loading milestone, from the top of the page lane to the bottom of the last lane, so
- * what happened at that moment can be read straight down every track. The labels are in the page
- * lane; the lines carry only their color.
+ * what happened at that moment can be read straight down every track. What each line is shows when
+ * it is hovered in the page lane; the lines carry only their color.
  */
 export function MilestoneLines() {
   const data = useBrowserData();
@@ -15,7 +15,7 @@ export function MilestoneLines() {
     <div className="milestone-lines" aria-hidden="true">
       {marks.map((m) => (
         <span
-          key={m.kind}
+          key={`${m.kind}-${m.timeUs}`}
           className={`milestone-line is-${m.kind}`}
           style={{ left: `${(m.timeUs / data.durationUs) * 100}%` }}
         />

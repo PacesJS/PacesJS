@@ -34,6 +34,14 @@ function open(model: ExecutionModel, page?: string) {
 
 const ready = () => screen.findByRole('heading', { name: 'Findings' });
 
+/** The tooltip of a lane's hover target (other parts of the app have tooltips of their own). */
+const laneTip = () =>
+  waitFor(() => {
+    const tip = document.querySelector('.tooltip.is-wrapping');
+    if (!tip) throw new Error('no lane tooltip is showing');
+    return tip;
+  });
+
 describe('a Node session', () => {
   it('has none of the browser lanes', async () => {
     open(fixtureModel('hot-regex'));
@@ -54,20 +62,28 @@ describe('a browser session: lanes', () => {
     }
   });
 
-  it('names the loading milestones in words, each with when it happened', async () => {
+  it('keeps the milestone words out of the lanes and shows them when a line is hovered', async () => {
     open(browserModel('slow-click'), 'slow-click');
     await ready();
-    const labels = await screen.findAllByText(/^First contentful paint \d+\.\d\d s$/);
-    expect(labels.length).toBe(1);
-    expect(screen.getAllByText(/^Page loaded \d+\.\d\d s$/).length).toBe(1);
+    await waitFor(() =>
+      expect(document.querySelectorAll('.milestone-hit').length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText(/^First contentful paint \d/)).toBeNull();
+    await userEvent.hover(document.querySelector('.milestone-hit') as Element);
+    const tip = await laneTip();
+    expect(tip.textContent).toMatch(/DOM ready|First contentful paint|Page loaded/);
+    expect(tip.textContent).toMatch(/after the page began loading/);
   });
 
   it('draws one line per milestone across all the lanes, in its own color', async () => {
     open(browserModel('slow-click'), 'slow-click');
     await ready();
-    await screen.findAllByText(/^First contentful paint /);
+    await waitFor(() =>
+      expect(document.querySelectorAll('.milestone-lines .milestone-line').length).toBeGreaterThan(
+        2,
+      ),
+    );
     const lines = document.querySelectorAll('.milestone-lines .milestone-line');
-    expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(new Set([...lines].map((l) => l.className)).size).toBe(lines.length);
   });
 
@@ -79,13 +95,26 @@ describe('a browser session: lanes', () => {
     expect(within(list).getAllByText(/waiting on slow-hero\.svg/).length).toBeGreaterThan(0);
   });
 
-  it('draws a block for each idle stretch and a bar for each request', async () => {
+  it('draws the idle time as a chart, by cause, with no bar per request', async () => {
     open(browserModel('slow-load'), 'slow-load');
     await ready();
     await screen.findAllByText('Waiting');
-    expect(document.querySelectorAll('.idle-block.cause-requests').length).toBeGreaterThan(0);
-    expect(document.querySelectorAll('.idle-block.cause-nothing').length).toBeGreaterThan(0);
-    expect(document.querySelectorAll('.request-bar').length).toBeGreaterThan(1);
+    const waiting = document.querySelector('.waiting-chart .cause-requests')?.getAttribute('d');
+    const nothing = document.querySelector('.waiting-chart .cause-nothing')?.getAttribute('d');
+    expect(waiting?.length).toBeGreaterThan(0);
+    expect(nothing?.length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.request-bar, .idle-block').length).toBe(0);
+  });
+
+  it('says which requests were in flight where the waiting lane is hovered', async () => {
+    open(browserModel('slow-load'), 'slow-load');
+    await ready();
+    await screen.findAllByText('Waiting');
+    const plot = document.querySelector('.waiting-plot') as HTMLElement;
+    plot.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 60);
+    await userEvent.pointer({ target: plot, coords: { clientX: 500, clientY: 30 } });
+    const tip = await laneTip();
+    expect(tip.textContent).toMatch(/in flight/);
   });
 
   it('shows frames as buttons that say when they were taken', async () => {
@@ -133,11 +162,23 @@ describe('a browser session: lanes', () => {
     await waitFor(() => expect(document.querySelector('.filmstrip-zoom')).toBeNull());
   });
 
-  it('labels the gap of a pause in the strip instead of leaving it blank', async () => {
+  it('does not fill a pause with hatched bands or "paused" tiles', async () => {
     open(browserModel('paused-resume'), 'paused-resume');
     await ready();
     const strip = await screen.findByRole('group', { name: 'Filmstrip' });
-    expect(within(strip).getAllByText('paused').length).toBeGreaterThan(0);
+    expect(within(strip).queryByText('paused')).toBeNull();
+    expect(document.querySelectorAll('.paused-band').length).toBe(0);
+  });
+
+  it('marks a pause with a small pause and resume event in the interactions lane', async () => {
+    open(browserModel('paused-resume'), 'paused-resume');
+    await ready();
+    await waitFor(() =>
+      expect(document.querySelectorAll('.interaction-plot .pause-mark').length).toBe(2),
+    );
+    const marks = document.querySelectorAll('.interaction-plot .pause-mark');
+    expect(marks[0]?.getAttribute('title')).toMatch(/^Recording paused for/);
+    expect(marks[1]?.getAttribute('title')).toBe('Recording resumed');
   });
 
   it('says so when the run kept no screenshots', async () => {
@@ -200,6 +241,14 @@ describe('a browser session: lanes', () => {
 });
 
 describe('a browser session: header', () => {
+  it('says that only the function times are sampled, since the rest of a page run is exact', async () => {
+    open(browserModel('slow-click'), 'slow-click');
+    await ready();
+    const badge = screen.getByText(/^JS sampled · .* ms · ±.* ms$/);
+    expect(badge.getAttribute('title')).toMatch(/exact/);
+    expect(screen.queryByText(/^Sampled · /)).toBeNull();
+  });
+
   it('shows the command as paces browser <url>, and how the run ended', async () => {
     open(browserModel('slow-click'), 'slow-click');
     await ready();

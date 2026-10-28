@@ -4,8 +4,9 @@ import { useApp } from '../app/context';
 import { useWidth } from '../app/useWidth';
 import { fmtDuration, fmtSeconds } from '../util/format';
 import { clusterInputs } from '../view/browser-lanes';
+import { Icon } from './Icon';
+import type { IconName } from './Icon';
 import { LaneRange } from './LaneRange';
-import { PausedBands } from './PausedBands';
 
 const TEXT = {
   title: 'Interactions',
@@ -15,10 +16,27 @@ const TEXT = {
     `${kind} ${label} at ${at}${wait}`,
   wait: (dur: string) => `, ${dur} to show a result`,
   empty: 'No interactions were recorded',
+  paused: (dur: string) => `Recording paused for ${dur}: nothing was captured`,
+  resumed: 'Recording resumed',
 } as const;
+
+const ICON_OF: Record<string, IconName> = {
+  click: 'click',
+  submit: 'submit',
+  change: 'submit',
+  key: 'key',
+  typing: 'key',
+  scroll: 'scroll',
+  navigate: 'navigate',
+  visibility: 'eye',
+  more: 'more',
+};
 
 /** A wait for a result longer than this is drawn as slow (the slow-interaction finding's limit). */
 const SLOW_US = 200_000;
+/** A marker is at least this wide; one that says how many, wide enough for its icon and the count. */
+const MARK_MIN_PX = 26;
+const GROUP_MIN_PX = 46;
 
 interface InteractionLaneProps {
   data: BrowserTimeline;
@@ -60,20 +78,45 @@ export function InteractionLane({ data }: InteractionLaneProps) {
         </div>
       </div>
       <div ref={plot} className="lane-plot-dom interaction-plot">
-        <PausedBands data={data} />
         <LaneRange durationUs={data.durationUs} />
         <div aria-hidden="true">
+          {data.paused.map((p, i) => (
+            <span key={`pause-${i}`}>
+              <span
+                className="pause-span"
+                style={{
+                  left: `${(p.startUs / data.durationUs) * 100}%`,
+                  width: `${((p.endUs - p.startUs) / data.durationUs) * 100}%`,
+                }}
+              />
+              <span
+                className="pause-mark"
+                title={TEXT.paused(fmtDuration(p.endUs - p.startUs, { approx: false }))}
+                style={{ left: `${(p.startUs / data.durationUs) * 100}%` }}
+              >
+                <Icon name="pause" size={12} strokeWidth={2.25} />
+              </span>
+              <span
+                className="pause-mark is-resume"
+                title={TEXT.resumed}
+                style={{ left: `${(p.endUs / data.durationUs) * 100}%` }}
+              >
+                <Icon name="play" size={12} strokeWidth={2.25} />
+              </span>
+            </span>
+          ))}
           {clusters.map((c, i) => (
             <span
               key={i}
-              className={`input-block kind-${c.kind}${c.slowestUs > SLOW_US ? ' is-slow' : ''}`}
+              className={`input-block kind-${c.kind}${c.slowestUs > SLOW_US ? ' is-slow' : ''}${c.count > 1 ? ' is-group' : ''}`}
               title={`${c.label} · ${fmtSeconds(c.startUs, 2)}`}
               style={{
                 left: `${(c.startUs / data.durationUs) * 100}%`,
-                width: `max(${((c.endUs - c.startUs) / data.durationUs) * 100}%, 10px)`,
+                width: `max(${((c.endUs - c.startUs) / data.durationUs) * 100}%, ${c.count > 1 ? GROUP_MIN_PX : MARK_MIN_PX}px)`,
               }}
               onClick={() => choose(c)}
             >
+              <Icon name={ICON_OF[c.kind] ?? 'more'} size={14} strokeWidth={2.25} />
               {c.count > 1 ? <span className="input-count">{c.count}</span> : null}
             </span>
           ))}

@@ -1,10 +1,12 @@
 import type { BrowserTimeline } from '@pacesjs/engine';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useApp } from '../app/context';
 import { fmtDuration, fmtSeconds } from '../util/format';
-import { milestones } from '../view/milestones';
+import { useHoverTip } from '../app/useHoverTip';
+import { useWidth } from '../app/useWidth';
+import { clusterMilestones, clusterTip, milestones } from '../view/milestones';
 import { LaneRange } from './LaneRange';
-import { PausedBands } from './PausedBands';
+import { LaneTip } from './LaneTip';
 
 const TEXT = {
   title: 'Milestones',
@@ -12,7 +14,6 @@ const TEXT = {
   milestones: 'Page milestones',
   longTasks: 'Long tasks',
   at: (name: string, when: string) => `${name} at ${when}`,
-  labelled: (name: string, when: string) => `${name} ${when}`,
   shift: (score: string, when: string) => `Layout shift ${score} at ${when}`,
   longTask: (dur: string, when: string) => `Long task, ${dur}, at ${when}`,
   navigation: 'Navigation',
@@ -26,11 +27,6 @@ const NAMES: Record<string, string> = {
   LCP: 'Largest contentful paint',
 };
 
-/** Height of one row of milestone labels, and of the space above them for the long-task ticks. */
-const LABEL_ROW_PX = 15;
-const LABEL_TOP_PX = 10;
-const LANE_MIN_PX = 44;
-
 interface PageLaneProps {
   data: BrowserTimeline;
 }
@@ -41,7 +37,13 @@ interface PageLaneProps {
  */
 export function PageLane({ data }: PageLaneProps) {
   const { dispatch } = useApp();
-  const marks = useMemo(() => milestones(data.vitals, data.durationUs), [data]);
+  const plot = useRef<HTMLDivElement | null>(null);
+  const width = useWidth(plot);
+  const { tip, show, hide } = useHoverTip();
+  const groups = useMemo(
+    () => clusterMilestones(milestones(data.vitals, data.durationUs), data.durationUs, width),
+    [data, width],
+  );
   const left = (us: number): string => `${(us / data.durationUs) * 100}%`;
   const selectTask = (task: number): void =>
     dispatch({
@@ -58,11 +60,7 @@ export function PageLane({ data }: PageLaneProps) {
           <span className="lane-meta">{TEXT.meta}</span>
         </div>
       </div>
-      <div
-        className="lane-plot-dom page-plot"
-        style={{ height: Math.max(LANE_MIN_PX, LABEL_TOP_PX + marks.length * LABEL_ROW_PX + 4) }}
-      >
-        <PausedBands data={data} />
+      <div ref={plot} className="lane-plot-dom page-plot">
         <LaneRange durationUs={data.durationUs} />
         <div aria-hidden="true">
           {data.vitals.map((v, i) =>
@@ -76,15 +74,6 @@ export function PageLane({ data }: PageLaneProps) {
               <span key={i} className="page-mark is-navigation" style={{ left: left(v.timeUs) }} />
             ) : null,
           )}
-          {marks.map((m) => (
-            <span
-              key={m.kind}
-              className={`milestone-label is-${m.kind}${m.flip ? ' is-flipped' : ''}`}
-              style={{ left: left(m.timeUs), top: LABEL_TOP_PX + m.row * LABEL_ROW_PX }}
-            >
-              {TEXT.labelled(m.label, fmtSeconds(m.timeUs, 2))}
-            </span>
-          ))}
           {data.longTasks.map((t) => (
             <span
               key={t.task}
@@ -96,7 +85,21 @@ export function PageLane({ data }: PageLaneProps) {
             />
           ))}
         </div>
+        {groups.map((g) => (
+          <span
+            key={`${g[0]?.kind}-${g[0]?.timeUs}`}
+            className="milestone-hit"
+            style={{ left: left(g[0]?.timeUs ?? 0) }}
+            onMouseEnter={(e) => show(e.currentTarget, clusterTip(g))}
+            onMouseLeave={hide}
+          >
+            {g.map((m) => (
+              <span key={`${m.kind}-${m.timeUs}`} className={`milestone-dot is-${m.kind}`} />
+            ))}
+          </span>
+        ))}
       </div>
+      <LaneTip tip={tip} />
       <ul className="sr-only" aria-label={TEXT.milestones}>
         {data.vitals.map((v, i) => (
           <li key={i}>

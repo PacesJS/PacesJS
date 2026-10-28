@@ -12,7 +12,6 @@ const TEXT = {
   title: 'Filmstrip',
   frames: (n: number) => `${n} ${n === 1 ? 'frame' : 'frames'}`,
   none: 'no frame',
-  paused: 'paused',
   empty: 'No screenshots were recorded',
   noShots: 'Recorded with --no-screenshots',
   showMoment: (at: string) => `Show ${at}`,
@@ -109,9 +108,11 @@ export function Filmstrip({ data }: FilmstripProps) {
           >
             {slots.map((slot, i) => {
               if (slot.frame === null) {
+                // Nothing was recorded during a pause: the strip leaves that stretch empty.
+                if (slot.reason === 'paused') return <div key={i} aria-hidden="true" />;
                 return (
-                  <div key={i} className={`filmstrip-gap is-${slot.reason}`}>
-                    <span>{slot.reason === 'paused' ? TEXT.paused : TEXT.none}</span>
+                  <div key={i} className="filmstrip-gap is-none">
+                    <span>{TEXT.none}</span>
                   </div>
                 );
               }
