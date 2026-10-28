@@ -24,9 +24,9 @@ function descendants(root: number): number[] {
  * Ends a process and everything it started. `child.kill()` only ends the root, on every platform:
  * a browser's renderer and GPU processes would outlive it and keep its profile directory busy.
  */
-export function killTree(child: ChildProcess): void {
+export function killTree(child: ChildProcess, platform: string = process.platform): void {
   if (child.pid === undefined) return;
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
     return;
   }
