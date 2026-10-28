@@ -410,7 +410,7 @@ function splitLoad(m: ExecutionModel, from: number, to: number): LoadSplit {
     const span = s.end - s.start;
     if (s.cause === 'busy') split.busy += span;
     else if (s.cause === 'requests') split.waiting += span;
-    else split.nothing += span;
+    else if (s.cause === 'nothing') split.nothing += span;
   }
   return split;
 }
@@ -443,10 +443,22 @@ const slowestRequestBefore = (m: ExecutionModel, from: number, to: number) => {
 const requesterText = (by: RequestInitiator | null): string =>
   by ? `, requested by ${by.fn} (${displayPath(by.script)}:${by.line})` : '';
 
-const slowLoad: BrowserRule = (m, th) => {
-  const lcp = lastVital(m, VITAL_LCP);
-  if (lcp < th.slowLoadMs * 1000) return [];
-  const from = Math.max(0, lastVital(m, VITAL_NAVIGATION, lcp));
+/**
+ * One page load: from its navigation to its largest content. A load whose navigation began while
+ * recording was paused is not judged (-1): measuring it from an earlier page would blame this one for
+ * the time the recording was off.
+ */
+function slowLoadOf(
+  m: ExecutionModel,
+  th: Parameters<BrowserRule>[1],
+  navigation: number,
+  at: number,
+  nth: number,
+): Finding[] {
+  const took = at - navigation;
+  if (navigation < 0 || took < th.slowLoadMs * 1000) return [];
+  const from = navigation;
+  const lcp = at;
   const split = splitLoad(m, from, lcp);
   const slowest = slowestRequestBefore(m, from, lcp + 50_000);
   const dominant = Math.max(split.busy, split.waiting, split.nothing);
@@ -463,14 +475,14 @@ const slowLoad: BrowserRule = (m, th) => {
       : '';
   return [
     {
-      id: 'slow-load',
+      id: nth === 0 ? 'slow-load' : `slow-load-${nth + 1}`,
       kind: 'slow-load',
-      severity: severityBy(lcp, 4_000_000, th.slowLoadMs * 1000),
+      severity: severityBy(took, 4_000_000, th.slowLoadMs * 1000),
       title: 'Slow load',
-      summary: `Largest content appeared at ${seconds(lcp)}. Until then the main thread was busy ${seconds(split.busy)}, idle with requests in flight ${seconds(split.waiting)} and idle with nothing in flight ${seconds(split.nothing)}.${slowestText}`,
+      summary: `Largest content appeared ${seconds(took)} after the page began loading. Until then the main thread was busy ${seconds(split.busy)}, idle with requests in flight ${seconds(split.waiting)} and idle with nothing in flight ${seconds(split.nothing)}.${slowestText}`,
       ...(hint ? { hint } : {}),
-      rule: `The last largest-contentful-paint of the page came after ${th.slowLoadMs} ms.`,
-      impact: Math.min(1, lcp / 10_000_000),
+      rule: `The largest content of a page load appeared more than ${th.slowLoadMs} ms after its navigation began.`,
+      impact: Math.min(1, took / 10_000_000),
       showMe: {
         view: 'timeline',
         ...(primary ? { track: primary.id } : {}),
@@ -480,6 +492,16 @@ const slowLoad: BrowserRule = (m, th) => {
       ...(primary ? { track: primary.id } : {}),
     },
   ];
+}
+
+const slowLoad: BrowserRule = (m, th) => {
+  const v = m.page?.vitals;
+  const found: Finding[] = [];
+  for (let i = 0; v && i < v.length; i++) {
+    if (v.kind[i] !== VITAL_LCP) continue;
+    found.push(...slowLoadOf(m, th, v.navigation[i] ?? -1, v.time[i] ?? 0, found.length));
+  }
+  return found;
 };
 
 /** A navigation is taken to be the cause of a document request that starts within this long of it. */

@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>hop</title>
+<!-- Not a bottleneck: a page that moves to another document when the server says so, to be recorded
+     with a pause in between so that the second page's loading is seen without its start. -->
+<h1>Moving on</h1>
+<script>
+  fetch('/hop-signal').then(() => {
+    location.href = 'held-load.html';
+  });
+</script>

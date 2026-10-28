@@ -39,6 +39,13 @@ function heroSvg() {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** A promise and the function that settles it, for requests the server holds until told. */
+function gate() {
+  let open;
+  const opened = new Promise((resolve) => (open = resolve));
+  return { opened, open };
+}
+
 function serveFile(res, file) {
   if (file === 'slow-hero.svg') {
     // The one slow request of slow-load.html.
@@ -74,8 +81,22 @@ function serveFile(res, file) {
 export async function startZoo() {
   const second = await listen((req, res) => serveFile(res, req.url.split('?')[0].slice(1)));
   const secondOrigin = `http://localhost:${second.address().port}`;
+  // hop.html asks to move on, and held-load.html asks for its image: neither is answered until the
+  // caller opens the gate, so a recording can be paused, resumed and still see the content arrive.
+  const gates = { hop: gate(), hero: gate() };
   const first = await listen((req, res) => {
     const name = req.url.split('?')[0].slice(1) || 'index.html';
+    if (name === 'hop-signal') {
+      void gates.hop.opened.then(() => res.writeHead(204).end());
+      return;
+    }
+    if (name === 'held-hero.svg') {
+      void gates.hero.opened.then(() => {
+        res.writeHead(200, { 'content-type': 'image/svg+xml' });
+        res.end(heroSvg());
+      });
+      return;
+    }
     if (name.endsWith('.html')) {
       // The server takes its time answering for this page (slow-doc.html).
       const wait = name === 'slow-doc.html' ? sleep(1300) : Promise.resolve();
@@ -97,6 +118,8 @@ export async function startZoo() {
     origin,
     secondOrigin,
     url: (page) => `${origin}/${page}.html`,
+    /** Lets the page held on `hop` move on, or the image held on `hero` arrive. */
+    release: (which) => gates[which].open(),
     close: () => Promise.all([first, second].map((s) => new Promise((r) => s.close(r)))),
   };
 }
@@ -104,6 +127,6 @@ export async function startZoo() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const zoo = await startZoo();
   console.log(
-    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift, big-script, slow-load, slow-doc, late-hero, icon-dialog)`,
+    `browser zoo on ${zoo.origin}/ (pages: forced-layout, slow-click, third-party, worker-and-iframe, layout-shift, big-script, slow-load, slow-doc, late-hero, icon-dialog, hop, held-load)`,
   );
 }

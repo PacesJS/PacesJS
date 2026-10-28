@@ -75,3 +75,24 @@ describe('browserTimeline: the idle stretches and requests of the lane', () => {
     expect(hero?.endUs).toBeGreaterThan(hero?.startUs ?? Infinity);
   });
 });
+
+describe('stretches: time that was not recorded', () => {
+  it('calls the stretch where recording was paused paused, not idle', () => {
+    const m = model('paused-resume');
+    const gap = m.page?.paused;
+    expect(gap?.length).toBe(1);
+    const out = stretches(m, 0, m.meta.durationUs).filter((s) => s.cause === 'paused');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.start).toBe(gap?.start[0]);
+    expect(out[0]?.end).toBe(gap?.end[0]);
+  });
+
+  it('keeps paused time out of the idle stretches the lane draws', () => {
+    const m = model('paused-resume');
+    const gap = m.page?.paused;
+    const t = browserTimeline(m);
+    const from = gap?.start[0] ?? 0;
+    const to = gap?.end[0] ?? 0;
+    expect((t?.idle ?? []).filter((s) => s.startUs < to && s.endUs > from)).toEqual([]);
+  });
+});

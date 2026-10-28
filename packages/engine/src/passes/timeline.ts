@@ -171,16 +171,24 @@ const SAME_MOMENT_US = 50_000;
 /** A navigation is ready and loaded once; a blank document before the page's own reports it too, so the last counts. */
 const LAST_PER_NAVIGATION = new Set(['domContentLoadedEventEnd', 'loadEventEnd']);
 
+/** A milestone, and when the navigation it belongs to began (-1: that start was not recorded). */
+interface Milestone {
+  event: PageEvent;
+  navigation: number;
+}
+
 /**
  * The milestones of the page itself: its main frame only (an iframe or an ad has its own loading story),
  * each once, and only the last largest-paint candidate of a navigation, since earlier ones were replaced.
+ * A navigation that began while recording was paused has no start we saw: what it reported afterwards
+ * belongs to it, not to the page before the pause, and is kept apart from that page's milestones.
  */
-function milestoneEvents(events: PageEvent[]): PageEvent[] {
+function milestoneEvents(events: PageEvent[], gaps: ReadonlyArray<[number, number]>): Milestone[] {
   const all = events.filter((e) => VITAL_OF[e.name] !== undefined);
   const main = all.find((e) => e.name === 'navigationStart')?.arg;
   // An event with no frame cannot be this page's (frames a script creates fire a hundred of them).
   const own = all.filter((e) => main === undefined || e.arg === main);
-  const out: PageEvent[] = [];
+  const out: Milestone[] = [];
   const lastOf = new Map<string, number>();
   const navigations: number[] = [];
   for (const e of own) {
@@ -188,28 +196,34 @@ function milestoneEvents(events: PageEvent[]): PageEvent[] {
     const before = navigations[navigations.length - 1];
     if (before === undefined || e.ts - before >= SAME_MOMENT_US) navigations.push(e.ts);
   }
-  const navigationOf = (ts: number): number => {
-    let at = -1;
-    for (const n of navigations) if (n <= ts) at = n;
-    return at;
+  const navigationOf = (ts: number): { key: string; start: number } => {
+    let start = -1;
+    for (const n of navigations) if (n <= ts) start = n;
+    const lost = start < 0 || gaps.some(([from, to]) => from >= start && to <= ts);
+    if (!lost) return { key: String(start), start };
+    return { key: `lost|${gaps.filter(([, to]) => to <= ts).length}`, start: -1 };
   };
-  const lcp = new Map<number, PageEvent>();
-  const ready = new Map<string, PageEvent>();
+  const lcp = new Map<string, Milestone>();
+  const ready = new Map<string, Milestone>();
   for (const e of own) {
     if (e.name === 'largestContentfulPaint::Candidate') {
-      lcp.set(navigationOf(e.ts), e);
+      const n = navigationOf(e.ts);
+      lcp.set(n.key, { event: e, navigation: n.start });
       continue;
     }
     if (LAST_PER_NAVIGATION.has(e.name)) {
-      ready.set(`${e.name}|${navigationOf(e.ts)}`, e);
+      const n = navigationOf(e.ts);
+      ready.set(`${e.name}|${n.key}`, { event: e, navigation: n.start });
       continue;
     }
     if (e.name === 'navigationStart') {
       const before = lastOf.get(e.name);
       if (before !== undefined && e.ts - before < SAME_MOMENT_US) continue;
       lastOf.set(e.name, e.ts);
+      out.push({ event: e, navigation: e.ts });
+      continue;
     }
-    out.push(e);
+    out.push({ event: e, navigation: navigationOf(e.ts).start });
   }
   return [...out, ...ready.values(), ...lcp.values()];
 }
@@ -241,14 +255,25 @@ export function buildPageTimeline(
     frames.dropped[i] = dropped.some((d) => d > previous && d <= end) ? 1 : 0;
   });
 
-  const vitalRows = milestoneEvents(mine)
-    .map((e) => ({ time: rel(e.ts), kind: VITAL_OF[e.name] ?? 0, value: e.n ?? 0 }))
+  const segs = [...browser.segments].sort((a, b) => a.startUs - b.startUs);
+  const rawGaps: Array<[number, number]> = [];
+  for (let i = 1; i < segs.length; i++) {
+    rawGaps.push([segs[i - 1]?.endUs ?? 0, segs[i]?.startUs ?? 0]);
+  }
+  const vitalRows = milestoneEvents(mine, rawGaps)
+    .map(({ event: e, navigation }) => ({
+      time: rel(e.ts),
+      kind: VITAL_OF[e.name] ?? 0,
+      value: e.n ?? 0,
+      navigation: navigation < 0 ? -1 : rel(navigation),
+    }))
     .sort((a, b) => a.time - b.time || a.kind - b.kind);
   const vitals: VitalTable = {
     length: vitalRows.length,
     time: Float64Array.from(vitalRows, (v) => v.time),
     kind: Uint8Array.from(vitalRows, (v) => v.kind),
     value: Float64Array.from(vitalRows, (v) => v.value),
+    navigation: Float64Array.from(vitalRows, (v) => v.navigation),
   };
 
   const shots = [...browser.screenshots].sort((a, b) => a.tsUs - b.tsUs || a.id - b.id);
@@ -258,20 +283,15 @@ export function buildPageTimeline(
     id: Uint32Array.from(shots, (s) => s.id),
   };
 
-  const segs = [...browser.segments].sort((a, b) => a.startUs - b.startUs);
   const recorded: TimeRanges = {
     length: segs.length,
     start: Float64Array.from(segs, (s) => rel(s.startUs)),
     end: Float64Array.from(segs, (s) => rel(s.endUs)),
   };
-  const gaps: Array<[number, number]> = [];
-  for (let i = 1; i < segs.length; i++) {
-    gaps.push([rel(segs[i - 1]?.endUs ?? 0), rel(segs[i]?.startUs ?? 0)]);
-  }
   const paused: TimeRanges = {
-    length: gaps.length,
-    start: Float64Array.from(gaps, (g) => g[0]),
-    end: Float64Array.from(gaps, (g) => g[1]),
+    length: rawGaps.length,
+    start: Float64Array.from(rawGaps, (g) => rel(g[0])),
+    end: Float64Array.from(rawGaps, (g) => rel(g[1])),
   };
   const requests = buildRequests(browser.requests ?? [], monoAtStartUs, strings);
   return { frames, requests, vitals, screenshots, recorded, paused };

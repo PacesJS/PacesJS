@@ -66,4 +66,22 @@ describe('the page milestones', () => {
   it('keeps the layout shifts of the page', () => {
     expect(count(names('layout-shift'), 'shift')).toBe(1);
   });
+
+  it('says which navigation each milestone belongs to, by when that navigation began', () => {
+    const t = browserTimeline(analyze(recordingToCapture(cloneInput('slow-click'))));
+    const nav = t?.vitals.find((v) => v.name === 'navigation');
+    const lcp = t?.vitals.find((v) => v.name === 'LCP');
+    expect(nav?.navigationUs).toBe(nav?.timeUs);
+    expect(lcp?.navigationUs).toBe(nav?.timeUs);
+  });
+
+  it('does not know when a page load began if that happened while recording was paused', () => {
+    const t = browserTimeline(analyze(recordingToCapture(cloneInput('navigate-while-paused'))));
+    const vitals = t?.vitals ?? [];
+    expect(t?.paused.length).toBe(1);
+    // One largest paint for each page: the first with its navigation, the second without.
+    const lcp = vitals.filter((v) => v.name === 'LCP');
+    expect(lcp.map((v) => v.navigationUs >= 0)).toEqual([true, false]);
+    expect(vitals.filter((v) => v.name === 'navigation')).toHaveLength(1);
+  });
 });
