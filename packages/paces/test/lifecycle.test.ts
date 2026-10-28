@@ -32,14 +32,21 @@ describe('waitForWindowClose', () => {
   });
 
   it('stays open when requests keep arriving within the grace period (a reload)', async () => {
-    const a = activity({ request: Date.now() });
-    const keepAlive = setInterval(() => (a.state.request = Date.now()), 15);
-    const outcome = await Promise.race([
-      waitForWindowClose(a, { graceMs: 80, browserExited: Promise.resolve(), pollMs: 10 }),
-      new Promise<string>((r) => setTimeout(() => r('still open'), 300)),
-    ]);
-    clearInterval(keepAlive);
-    expect(outcome).toBe('still open');
+    // The clock is the test's, so a loaded machine cannot stretch the gap between two requests.
+    let clock = 1_000_000;
+    const a = activity({ request: clock });
+    const waiting = waitForWindowClose(a, {
+      graceMs: 80,
+      browserExited: Promise.resolve(),
+      pollMs: 10,
+      now: () => clock,
+    });
+    for (let i = 0; i < 20; i++) {
+      clock += 20;
+      a.state.request = clock;
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    expect(await Promise.race([waiting, Promise.resolve('still open')])).toBe('still open');
   });
 
   it('does not mistake a throttled background window for a closed one', async () => {
@@ -60,6 +67,50 @@ describe('waitForWindowClose', () => {
     expect(await waitForWindowClose(a, { graceMs: 30, staleHeartbeatMs: 80, pollMs: 5 })).toBe(
       'closed',
     );
+  });
+
+  it('does not close on heartbeat silence alone when it holds the browser process', async () => {
+    // A frozen or sleeping window sends nothing; the process we launched is the better witness.
+    const t = Date.now();
+    const a = activity({ request: t - 1000, heartbeat: t - 1000 });
+    const outcome = await Promise.race([
+      waitForWindowClose(a, {
+        graceMs: 30,
+        staleHeartbeatMs: 80,
+        pollMs: 5,
+        browserExited: new Promise<void>(() => {}),
+      }),
+      new Promise<string>((r) => setTimeout(() => r('still open'), 200)),
+    ]);
+    expect(outcome).toBe('still open');
+  });
+
+  it('does not count the time the machine was asleep as heartbeat silence', async () => {
+    let skew = 0;
+    const now = (): number => Date.now() + skew;
+    const a = activity({ request: now(), heartbeat: now() });
+    const waiting = waitForWindowClose(a, {
+      graceMs: 30,
+      staleHeartbeatMs: 80,
+      pollMs: 5,
+      now,
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    skew += 10 * 60_000;
+    // The page's own timer fires a moment after the machine wakes.
+    await new Promise((r) => setTimeout(r, 25));
+    a.state.heartbeat = now();
+    a.state.request = now();
+    const keepBeating = setInterval(() => {
+      a.state.heartbeat = now();
+      a.state.request = now();
+    }, 10);
+    const outcome = await Promise.race([
+      waiting,
+      new Promise<string>((r) => setTimeout(() => r('still open'), 250)),
+    ]);
+    clearInterval(keepBeating);
+    expect(outcome).toBe('still open');
   });
 
   it('closes after an explicit goodbye once the grace period passes quietly', async () => {
