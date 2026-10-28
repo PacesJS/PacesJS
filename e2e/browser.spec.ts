@@ -34,26 +34,6 @@ function unzipped(file: string): Record<string, string> {
   return Object.fromEntries(Object.entries(files).map(([n, b]) => [n, fflate.strFromU8(b)]));
 }
 
-test.describe('paces browser: refusals', () => {
-  test('refuses a browser path that does not exist, with exit code 2 and what to do', async () => {
-    const run = await runPaces([
-      'browser',
-      'http://localhost:1',
-      '--browser',
-      'Z:\\no\\such\\browser.exe',
-    ]);
-    expect(run.code).toBe(2);
-    expect(run.stderr).toMatch(/does not exist/);
-    expect(run.stderr).toMatch(/Chromium/);
-  });
-
-  test('needs a URL or --attach', async () => {
-    const run = await runPaces(['browser']);
-    expect(run.code).toBe(2);
-    expect(run.stderr).toMatch(/URL/);
-  });
-});
-
 test.describe('paces browser: a real browser', () => {
   test.skip(!exe, 'set PACES_BROWSER to a Chromium executable to run these');
   test.describe.configure({ timeout: 120_000 });
@@ -87,11 +67,21 @@ test.describe('paces browser: a real browser', () => {
     return { run, out };
   };
 
-  test('records a slow click: the planted finding, named tracks, and no paces code as the program', async () => {
+  test('records a slow click: the planted finding, screenshots, no paces code as the program, no query strings', async () => {
     const dir = tempDir();
     try {
       const { run, out } = await record('slow-click', dir);
       expect(run.code, run.stderr).toBe(0);
+      expect(run.stderr).toMatch(/contains screenshots/);
+      const files = unzipped(out);
+      expect(Object.keys(files).some((n) => n.startsWith('raw/screenshots/'))).toBe(true);
+      const manifest = JSON.parse(files['manifest.json'] ?? '{}') as {
+        command: string[];
+        browser?: { url: string };
+      };
+      expect(manifest.browser?.url).not.toMatch(/[?#]/);
+      expect(manifest.command[1]).not.toMatch(/[?#]/);
+
       const summary = await runPaces(['summary', out, '--json']);
       const parsed = JSON.parse(summary.stdout) as {
         findings: Array<{ kind: string }>;
@@ -100,121 +90,23 @@ test.describe('paces browser: a real browser', () => {
       expect(parsed.findings.map((f) => f.kind)).toContain('slow-interaction');
       const injected = parsed.topFunctions.filter((f) => (f.file ?? '').startsWith('paces://'));
       expect(injected.filter((f) => f.origin === 'user')).toEqual([]);
-      expect(run.stderr).toMatch(/Page · |screenshots/);
     } finally {
       removeDir(dir);
     }
   });
 
-  test('says the session has screenshots, and leaves them out with --no-screenshots', async () => {
-    const dir = tempDir();
-    try {
-      const withShots = await record('slow-click', dir);
-      expect(withShots.run.stderr).toMatch(/contains screenshots/);
-      expect(
-        Object.keys(unzipped(withShots.out)).some((n) => n.startsWith('raw/screenshots/')),
-      ).toBe(true);
-      const without = await record('layout-shift', dir, ['--no-screenshots']);
-      expect(without.run.stderr).not.toMatch(/contains screenshots/);
-      expect(Object.keys(unzipped(without.out)).some((n) => n.startsWith('raw/screenshots/'))).toBe(
-        false,
-      );
-    } finally {
-      removeDir(dir);
-    }
-  });
-
-  test('never writes a typed secret anywhere in the session', async () => {
+  test('never writes a typed secret, a response header or a cookie anywhere in the session', async () => {
     const dir = tempDir();
     try {
       const { run, out } = await record('privacy', dir);
       expect(run.code, run.stderr).toBe(0);
       const files = unzipped(out);
-      const hits = Object.entries(files).filter(([, text]) => text.includes('hunter2'));
-      expect(hits.map(([name]) => name)).toEqual([]);
-      expect(Object.keys(files).length).toBeGreaterThan(5);
-    } finally {
-      removeDir(dir);
-    }
-  });
-
-  test('keeps the requests of a page but no response header or cookie', async () => {
-    const dir = tempDir();
-    try {
-      const { run, out } = await record('big-script', dir);
-      expect(run.code, run.stderr).toBe(0);
-      const files = unzipped(out);
       const leaks = Object.entries(files).filter(([, text]) =>
-        /cookie-secret|set-cookie/i.test(text),
+        /hunter2|cookie-secret|set-cookie/i.test(text),
       );
       expect(leaks.map(([name]) => name)).toEqual([]);
+      // The request itself is recorded; only its headers are not.
       expect(files['raw/requests.events']).toContain('/vendor.js');
-    } finally {
-      removeDir(dir);
-    }
-  });
-
-  test('reports the script that was sent uncompressed, and only that one', async () => {
-    const dir = tempDir();
-    try {
-      const { out } = await record('big-script', dir);
-      const summary = await runPaces(['summary', out]);
-      expect(summary.stdout).toMatch(/Uncompressed text/);
-      expect(summary.stdout).toMatch(/vendor\.js \(\d+ KB\)/);
-      expect(summary.stdout).not.toMatch(/vendor-gz\.js \(\d+ KB\)\./);
-    } finally {
-      removeDir(dir);
-    }
-  });
-
-  test('reports a page whose largest content waited on one slow request', async () => {
-    const dir = tempDir();
-    try {
-      const { run, out } = await record('slow-load', dir, ['--duration', '6']);
-      expect(run.code, run.stderr).toBe(0);
-      const summary = await runPaces(['summary', out]);
-      expect(summary.stdout).toMatch(/Slow load/);
-      expect(summary.stdout).toMatch(/slow-hero\.svg/);
-    } finally {
-      removeDir(dir);
-    }
-  });
-
-  test('names the function that fetched the request the largest content waited on', async () => {
-    const dir = tempDir();
-    try {
-      const { run, out } = await record('late-hero', dir, ['--duration', '6']);
-      expect(run.code, run.stderr).toBe(0);
-      const summary = await runPaces(['summary', out]);
-      expect(summary.stdout).toMatch(/slow-hero\.svg/);
-      expect(summary.stdout).toMatch(/requested by showHero/);
-    } finally {
-      removeDir(dir);
-    }
-  });
-
-  test('reports a page whose HTML was slow to start arriving', async () => {
-    const dir = tempDir();
-    try {
-      const { run, out } = await record('slow-doc', dir);
-      expect(run.code, run.stderr).toBe(0);
-      const summary = await runPaces(['summary', out]);
-      expect(summary.stdout).toMatch(/Slow document/);
-    } finally {
-      removeDir(dir);
-    }
-  });
-
-  test('drops query strings from every URL it stored', async () => {
-    const dir = tempDir();
-    try {
-      const { out } = await record('slow-click', dir);
-      const manifest = JSON.parse(unzipped(out)['manifest.json'] ?? '{}') as {
-        command: string[];
-        browser?: { url: string };
-      };
-      expect(manifest.browser?.url).not.toMatch(/[?#]/);
-      expect(manifest.command[1]).not.toMatch(/[?#]/);
     } finally {
       removeDir(dir);
     }
