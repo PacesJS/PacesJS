@@ -22,6 +22,8 @@ Each of these cost a failing run to find, and each has a test (`PACES_BROWSER=<c
 - **Source text must be read when a script is parsed**: after the window closes the sessions are gone. An inline script's text is only part of its document, so it is laid out at its start line.
 - `Runtime.addBinding` delivers nothing until `Runtime.enable`; an overlay appended before `<body>` exists becomes the document root. Both are tested in a real page.
 - `ProfileChunk` events come from the profiler's thread; the `Profile` event names the profiled one.
+- A **covered window stops painting**. Windows' occlusion tracking and background throttling froze a window behind others, so a recording lost click-to-paint latency, the largest paint and its screenshots. The launch flags (`--disable-features=CalculateNativeWinOcclusion`, `--disable-backgrounding-occluded-windows`, `--disable-renderer-backgrounding`, `--disable-background-timer-throttling`) keep it painting; a test pins them.
+- Stopping the browser kills its **whole process tree**: on POSIX the descendants are listed with `ps` before the root is killed, since killing only the root left renderers running.
 
 ## What it costs
 
@@ -47,8 +49,9 @@ The capture-time filter drops 12,000 to 27,000 events per page (the browser's sc
 
 ## Known limits
 
-- Detecting the default browser on macOS and Linux is implemented and unit-tested against sample output, but has not been run on those systems. Nothing else here has been run on them either.
-- Verified with Edge only. Chrome, Brave, Vivaldi, Opera and Chromium share the protocol but have not been run. Chrome may refuse remote debugging on its default profile directory; paces always uses a fresh one.
+- Developed on Windows and run there with Edge and Chrome. The maintainer has also run it on macOS. On Linux (Ubuntu 24.04 under WSL2, Chrome 156) it works, but the browser stalled 6 to 19 seconds on its first navigation, with or without paces, so four real-browser timing tests are unreliable on that machine. Default-browser detection on Linux is unit-tested against sample output.
+- Brave, Vivaldi, Opera and Chromium share the protocol but have not been run. Chrome may refuse remote debugging on its default profile directory; paces always uses a fresh one.
+- Chromium only. Firefox would need WebDriver BiDi and a converter from Gecko profiles; Safari on the desktop has no remote profiling interface a third-party tool can use. Neither is built.
 - The injected script runs in the page's own JavaScript world, with one non-enumerable global (`__paces__`) and a binding named `__pacesBridge`. An isolated world was not tried. A page that deletes or shadows those can break the overlay and the marks (the profile still records).
 - A strict Content Security Policy was not tested against the overlay's styles (a constructed stylesheet in `adoptedStyleSheets`, which `style-src` should not block).
 - Tabs the user opens by hand are attached when the browser reports them; popups from `window.open` were not tested.
