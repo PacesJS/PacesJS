@@ -105,7 +105,7 @@ describe('browser model: the slow-load finding', () => {
   it('says where the time to the largest content went: busy, waiting on requests, or nothing', () => {
     const f = found('slow-load');
     expect(f).toHaveLength(1);
-    expect(f[0]?.summary).toMatch(/Largest content appeared at 2\.\d s/);
+    expect(f[0]?.summary).toMatch(/Largest content appeared 2\.\d s after the page began loading/);
     expect(f[0]?.summary).toMatch(/idle with requests in flight 2\.\d s/);
   });
 
@@ -122,6 +122,26 @@ describe('browser model: the slow-load finding', () => {
     expect(f).toHaveLength(1);
     expect(f[0]?.summary).toContain('slow-hero.svg');
     expect(f[0]?.summary).toMatch(/requested by showHero \(\S*late-hero\.html:\d+\)/);
+  });
+
+  it('measures each navigation from its own start, not the whole recording', () => {
+    const input = cloneInput('slow-click');
+    const nav = input.events.find((e) => e.name === 'navigationStart');
+    const lcp = input.events.find((e) => e.name === 'largestContentfulPaint::Candidate');
+    if (!nav || !lcp) throw new Error('the fixture lacks a navigation or a largest paint');
+    // A second page, 4 s later, whose content appears 100 ms after it began.
+    const later = (e: typeof nav): typeof nav => {
+      const copy = structuredClone(e);
+      copy.ts += 4_000_000;
+      return copy;
+    };
+    input.events.push(later(nav), later(lcp));
+    const m = analyze(recordingToCapture(input));
+    expect(m.findings.filter((f) => f.kind === 'slow-load')).toEqual([]);
+  });
+
+  it('says nothing about a page load that began while recording was paused', () => {
+    expect(found('navigate-while-paused')).toEqual([]);
   });
 
   it('does not name a requester for a request the parser made', () => {

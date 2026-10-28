@@ -13,6 +13,7 @@ export const BROWSER_FIXTURES = [
   'slow-doc',
   'late-hero',
   'paused-resume',
+  'navigate-while-paused',
 ] as const;
 export type BrowserFixtureName = (typeof BROWSER_FIXTURES)[number];
 

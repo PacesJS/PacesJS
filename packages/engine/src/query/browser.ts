@@ -16,6 +16,8 @@ export interface BrowserVital {
   name: (typeof VITAL_KIND_NAMES)[number];
   /** Layout shift score or largest paint size; 0 for the rest. */
   value: number;
+  /** When the navigation it belongs to began; -1 when that began while recording was paused. */
+  navigationUs: number;
 }
 
 export interface BrowserInput {
@@ -96,7 +98,7 @@ function idleStretches(model: ExecutionModel, durationUs: number): BrowserIdle[]
   const t = model.page?.requests;
   const out: BrowserIdle[] = [];
   for (const s of stretches(model, 0, durationUs)) {
-    if (s.cause === 'busy' || s.end - s.start < MIN_IDLE_US) continue;
+    if (s.cause === 'busy' || s.cause === 'paused' || s.end - s.start < MIN_IDLE_US) continue;
     const inFlight: Array<{ url: string; overlap: number }> = [];
     for (let i = 0; s.cause === 'requests' && t && i < t.length; i++) {
       const end = t.end[i] ?? -1;
@@ -152,6 +154,7 @@ export function browserTimeline(model: ExecutionModel): BrowserTimeline | null {
       timeUs: page.vitals.time[i] ?? 0,
       name: VITAL_KIND_NAMES[page.vitals.kind[i] ?? 0] ?? 'navigation',
       value: page.vitals.value[i] ?? 0,
+      navigationUs: page.vitals.navigation[i] ?? -1,
     });
   }
 

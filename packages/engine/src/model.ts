@@ -368,6 +368,8 @@ export interface VitalTable {
   kind: Uint8Array;
   /** Layout shift score, largest paint size; 0 for the rest. */
   value: Float64Array;
+  /** When the navigation this belongs to began; -1 when that began while recording was paused. */
+  navigation: Float64Array;
 }
 export const VITAL_KIND_NAMES = [
   'navigation',

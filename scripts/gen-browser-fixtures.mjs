@@ -26,11 +26,14 @@ const PAGES = [
   'slow-doc',
   'late-hero',
   'paused-resume',
+  'navigate-while-paused',
 ];
 // Pages whose story needs longer than the default recording.
 const PAGE_SECONDS = { 'slow-load': 5.5, 'slow-doc': 3.5, 'late-hero': 5.5 };
 // Recorded from slow-click, with a pause and a resume in the middle: two trace segments.
-const PAGE_FILE = { 'paused-resume': 'slow-click' };
+// 'navigate-while-paused' starts on hop.html, which moves to held-load.html while recording is paused.
+const PAGE_FILE = { 'paused-resume': 'slow-click', 'navigate-while-paused': 'hop' };
+const SCRIPTED = new Set(['paused-resume', 'navigate-while-paused']);
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const pages = positional.length > 0 ? positional : PAGES;
 const outDir = opt('--out') ?? join(root, 'packages/engine/test/fixtures/browser');
@@ -67,7 +70,7 @@ try {
       eventMarks: true,
       eventText: true,
       cacheCold: false,
-      ...(page === 'paused-resume' ? {} : { durationMs: (PAGE_SECONDS[page] ?? seconds) * 1000 }),
+      ...(SCRIPTED.has(page) ? {} : { durationMs: (PAGE_SECONDS[page] ?? seconds) * 1000 }),
     });
     if (page === 'paused-resume') {
       await wait(1500);
@@ -76,6 +79,18 @@ try {
       await wait(700);
       await run.controller.resume();
       await wait(1200);
+      await run.stop();
+    }
+    if (page === 'navigate-while-paused') {
+      await wait(600);
+      await run.controller.pause();
+      // The page moves on while nothing is recorded, then recording resumes, then its image arrives.
+      zoo.release('hop');
+      await wait(800);
+      await run.controller.resume();
+      await wait(2200);
+      zoo.release('hero');
+      await wait(1500);
       await run.stop();
     }
     const rec = await run.done;
