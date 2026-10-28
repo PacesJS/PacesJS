@@ -51,9 +51,12 @@ npx @pacesjs/paces browser http://localhost:3000
 paces opens a Chromium browser (Chrome, Edge, Brave, Vivaldi, Opera or Chromium: your default browser if it is one, else `--browser <path>`), loads the page, and records what its JavaScript did, plus rendering, frames, input and the loading milestones. Stop with `s` in the terminal, **Stop** in the page overlay, or by closing the window; the UI opens on what was recorded.
 
 - **A page, not a process.** Tracks are the page, its iframes (including cross-site ones) and its workers. Scripts from other sites are dependencies named for their host (`cdn.example.com`), so third-party cost is a finding. Rendering (style, layout, paint), frames, input and loading milestones come from trace events, so they are exact and carry no `~`; sampled JavaScript keeps its `~`.
-- **A filmstrip.** Screenshots of the page, aligned to the timeline. Pausing stops capture, so you can log in first.
+- **A filmstrip.** Screenshots of the page, aligned to the timeline. Pausing stops capture, so you can log in first; a pause shows as a small pause and play event in the Interactions lane and leaves its filmstrip slots empty.
+- **Lanes for what the page did.** Interactions are pills with an icon per kind (click, key, scroll, navigate, submit). Loading milestones are dots you hover to read their names and times. The Waiting lane is a density chart of the main thread's idle time: blue with a request in flight, grey with nothing in flight. Paused time is never counted as idle.
+- **Each navigation is its own page load.** A milestone belongs to the navigation that began it, so a page you reach after a pause or a click is judged on its own load, and a load whose start was not recorded is not judged at all.
 - **An overlay in the page** with **Pause**, **Mark** and **Stop** (`Alt+Shift+P` pauses or resumes, `Alt+Shift+M` marks). In the terminal, `p` pauses or resumes, `m` marks, `s` stops. `--paused` starts paused. `--no-overlay` removes it.
-- **Findings only a page has:** a task that blocked the main thread, a slow interaction, forced layout, third-party cost and layout shift.
+- **Findings only a page has:** a task that blocked the main thread, a slow interaction, forced layout, third-party cost, layout shift, a slow load (once per navigation, naming the request the largest content waited on and the function that fetched it), a slow document, and scripts sent as uncompressed text.
+- **A covered window still paints.** paces launches the browser with flags that stop the operating system from freezing a window behind others, so a recording of a window you cannot see matches one you can.
 - **A fresh browser profile each run**, so nothing you are logged in to is visible. To profile a logged-in session, start your own browser with `--remote-debugging-port=9222 --user-data-dir=<a folder>` and run `paces browser --attach 9222` (it joins `127.0.0.1` only, and leaves your browser running).
 
 What it records, and what it does not:
@@ -61,8 +64,10 @@ What it records, and what it does not:
 - It records what happens on the page, not what you type. Events are described by structure (`button#save "Save"`, `input[type=email]`), never by value; query strings and fragments are removed from stored URLs (`--keep-query` keeps them); `--no-event-text` drops the text-derived names too.
 - Screenshots can show anything that was on screen. paces says so when it saves a session that has them, and `--no-screenshots` leaves them out.
 - Chromium only. Firefox and Safari have no way to be driven this way, and paces refuses them before launching anything.
+- The header chip reads "JS sampled": tasks, rendering, input and milestones are exact, and only function times are sampled estimates.
+- Tested on Windows (Edge and Chrome) and macOS. Linux works under Chrome, but real-browser tests there were unreliable on one WSL2 machine, where the browser stalled for seconds on its first navigation. Brave, Vivaldi and Opera share the protocol and have not been run.
 
-Flags: `--browser <path>`, `--attach <port>`, `--paused`, `--duration <s>`, `--no-screenshots`, `--no-overlay`, `--no-event-marks`, `--no-event-text`, `--keep-query`, `--full-trace`, `--first-party <glob>`, `--root <dir>`, `--throttle <n>x`, `--cache cold`, `--out <file>`, `--no-open`. A DevTools Performance trace can also be opened with `paces import <trace.json>`. Coding agents get the same through the `profile_browser` MCP tool.
+Flags: `--browser <path>`, `--attach <port>`, `--paused`, `--duration <s>`, `--no-keys`, `--no-screenshots`, `--no-overlay`, `--no-event-marks`, `--no-event-text`, `--keep-query`, `--full-trace`, `--first-party <glob>`, `--root <dir>`, `--throttle <n>x`, `--cache cold`, `--out <file>`, `--no-open`. A DevTools Performance trace can also be opened with `paces import <trace.json>`. Coding agents get the same through the `profile_browser` MCP tool.
 
 ## Use paces from a coding agent
 
@@ -207,6 +212,7 @@ pnpm build
 pnpm test          # unit and integration
 pnpm test:e2e      # CLI and UI end-to-end, including screenshot tests
 pnpm lint
+pnpm coverage [package...]   # V8 coverage table; HTML in packages/<name>/coverage/ (set PACES_BROWSER to include the real-browser tests)
 pnpm fixtures      # regenerate engine fixtures from the zoo
 pnpm fixtures:browser   # the same for the browser zoo (needs a Chromium: PACES_BROWSER=<path>)
 pnpm --filter @pacesjs/ui dev   # UI on the orders-server fixture
