@@ -25,6 +25,14 @@ describe('browserArgs', () => {
     expect(args).toContain('--disable-background-timer-throttling');
   });
 
+  it('does not announce itself as automated, or Google refuses to sign the user in', () => {
+    expect(browserArgs('/tmp/p')).toContain('--disable-blink-features=AutomationControlled');
+  });
+
+  it('hides the "unsupported command-line flag" banner that flag would otherwise show', () => {
+    expect(browserArgs('/tmp/p')).toContain('--test-type');
+  });
+
   it('never opens a TCP debugging port', () => {
     expect(browserArgs('/tmp/p').some((a) => a.startsWith('--remote-debugging-port'))).toBe(false);
   });

@@ -27,6 +27,12 @@ export interface LaunchedBrowser {
 export function browserArgs(profileDir: string, windowSize = '1440,900'): string[] {
   return [
     '--remote-debugging-pipe',
+    // The pipe makes the browser report navigator.webdriver, and Google then refuses to sign the
+    // user in ("this browser may not be secure"). Verified on Edge: the pipe alone fails, with this
+    // flag it passes, and a loopback debugging port fails as the pipe does.
+    '--disable-blink-features=AutomationControlled',
+    // Without this the browser shows an "unsupported command-line flag" banner for the one above.
+    '--test-type',
     `--user-data-dir=${profileDir}`,
     '--no-first-run',
     '--no-default-browser-check',

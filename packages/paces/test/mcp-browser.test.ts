@@ -107,6 +107,14 @@ describe('profile_browser', () => {
     expect(seen.options?.until).toBeUndefined();
   });
 
+  it('records until the user stops it when until is "stop"', async () => {
+    const seen: Seen = { stopped: 0 };
+    const s = server(hooks({}, seen));
+    await tool(s, 'profile_browser').run({ url: 'http://x.test/', until: 'stop' }, ctx());
+    expect(seen.options?.until).toBeUndefined();
+    expect(seen.options?.durationMs).toBeUndefined();
+  });
+
   it('passes throttling and first-party hosts to the recording', async () => {
     const seen: Seen = { stopped: 0 };
     const s = server(hooks({}, seen));
@@ -210,6 +218,11 @@ describe('the guide names profile_browser and warns that a page runs code', () =
     expect(MCP_GUIDE).toContain('profile_browser');
     expect(MCP_GUIDE).toMatch(/page.s own JavaScript/i);
     expect(MCP_GUIDE).toMatch(/visible (browser )?window/i);
+  });
+
+  it('tells the agent the window is interactive so the user can sign in or act in it', () => {
+    expect(MCP_GUIDE).toMatch(/user can (sign in|log in)/i);
+    expect(MCP_GUIDE).toMatch(/interact/i);
   });
 
   it('repeats the warning in the connect-time instructions', () => {
