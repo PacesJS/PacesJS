@@ -47,8 +47,8 @@ export interface BrowserHooks {
 
 export interface BrowserProfileRequest {
   url: string;
-  /** `load`, `idle`, or seconds. Default `load`. */
-  until?: 'load' | 'idle' | number;
+  /** `load`, `idle`, `stop` (until the user stops it in the page) or seconds. Default `load`. */
+  until?: 'load' | 'idle' | 'stop' | number;
   throttle?: number;
   firstParty?: string[];
   cwd?: string;
@@ -166,10 +166,11 @@ function parseBrowserArgs(args: Record<string, unknown>): BrowserProfileRequest 
     until !== undefined &&
     until !== 'load' &&
     until !== 'idle' &&
+    until !== 'stop' &&
     !(typeof until === 'number' && until > 0 && until <= MAX_UNTIL_S)
   ) {
     throw new Error(
-      `until must be "load", "idle" or a number of seconds above 0 and up to ${MAX_UNTIL_S}.`,
+      `until must be "load", "idle", "stop" or a number of seconds above 0 and up to ${MAX_UNTIL_S}.`,
     );
   }
   return {
@@ -307,7 +308,11 @@ export function createPacesServer(options: PacesServerOptions): PacesServer {
       const until = request.until ?? 'load';
       const base = recordOptionsFor(flags, request.url, chosen.exe);
       const record: RecordOptions =
-        typeof until === 'number' ? { ...base, durationMs: until * 1000 } : { ...base, until };
+        typeof until === 'number'
+          ? { ...base, durationMs: until * 1000 }
+          : until === 'stop'
+            ? base
+            : { ...base, until };
       const line = (l: string): void => {
         log(l);
         ctx.progress?.(l);
@@ -428,15 +433,16 @@ export function createPacesServer(options: PacesServerOptions): PacesServer {
     {
       name: 'profile_browser',
       description:
-        'Open a visible browser window on the user\'s machine, load a web page and record what its JavaScript did, plus rendering, frames, input and loading milestones; the result is loaded for the other tools. WARNING: the page\'s own JavaScript runs on the user\'s machine, so only open pages the user asked for or the project\'s own dev server. Needs a desktop session and a Chromium browser (Chrome, Edge, Brave, Vivaldi, Opera, Chromium); refused without a display. until is "load" (default: stop shortly after the page loads), "idle" (stop when the network goes quiet) or seconds up to 300. A fresh temporary browser profile is used, so nothing is logged in. Returns the session path and the same digest as summary. One profile runs at a time, of either kind.',
+        'Open a visible browser window on the user\'s machine, load a web page and record what its JavaScript did, plus rendering, frames, input and loading milestones; the result is loaded for the other tools. WARNING: the page\'s own JavaScript runs on the user\'s machine, so only open pages the user asked for or the project\'s own dev server. Needs a desktop session and a Chromium browser (Chrome, Edge, Brave, Vivaldi, Opera, Chromium); refused without a display. until is "load" (default: stop shortly after the page loads), "idle" (stop when the network goes quiet), "stop" (record until the user presses the blue stop dot in the page, for pages that need the user to sign in or act first) or seconds up to 300. A fresh temporary browser profile is used, so nothing is logged in. Returns the session path and the same digest as summary. One profile runs at a time, of either kind.',
       inputSchema: {
         type: 'object',
         properties: {
           url: { type: 'string', description: 'The page to open, like http://localhost:3000.' },
           until: {
-            description: 'When to stop: "load", "idle", or a number of seconds (up to 300).',
+            description:
+              'When to stop: "load", "idle", "stop" (when the user stops it in the page) or a number of seconds (up to 300).',
             oneOf: [
-              { type: 'string', enum: ['load', 'idle'] },
+              { type: 'string', enum: ['load', 'idle', 'stop'] },
               { type: 'number', minimum: 1, maximum: MAX_UNTIL_S },
             ],
           },
