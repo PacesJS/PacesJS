@@ -39,7 +39,9 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm test --continue
+      # One package at a time: the Chromium-backed UI tests starve the engine's timing-sensitive
+      # tests of CPU on the runner (the engine timed out at 5 s on work that takes 70 ms).
+      - run: pnpm test --continue --concurrency=1
       - run: node --test scripts/next-version.test.mjs
 
   publish:
