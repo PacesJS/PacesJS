@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readSession } from '@pacesjs/format';
 import { main } from '../src/commands.js';
+import { shellArg } from '../src/report/format.js';
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const hotRegex = join(root, 'zoo', 'apps', 'hot-regex.cjs');
@@ -39,7 +40,9 @@ describe('paces --report', () => {
     expect(r.code, r.stderr).toBe(0);
     expect(r.stderr).not.toMatch(/http:\/\/127\.0\.0\.1/);
     expect(r.stdout).toContain('next:');
-    expect(r.stdout).toContain(`paces report ${file}`);
+    // The path is quoted when it holds a character a shell may treat specially, like the ~ in the
+    // 8.3 temp directory of a Windows runner.
+    expect(r.stdout).toContain(`paces report ${shellArg(file)}`);
     expect(r.stdout).not.toContain('\u001b[');
     expect(existsSync(file)).toBe(true);
   }, 60_000);
